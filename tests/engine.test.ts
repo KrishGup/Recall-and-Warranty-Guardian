@@ -522,3 +522,55 @@ nodes:
     expect(s2.nodes.b!.status).toBe("completed");
   });
 });
+
+describe("fork", () => {
+  it("re-runs from a node with a replacement spec while reusing upstream outputs", async () => {
+    const store = new RunStore(path.join(tmp, "runs-fork"));
+    const specV1 = parseSpecText(`
+name: forkme
+budget: { max_cost_usd: 5 }
+output: { from: b }
+nodes:
+  - id: a
+    kind: agent
+    prompt: "a {{ input.q }}"
+    output_schema: ${JSON.stringify(OUT)}
+  - id: b
+    kind: agent
+    prompt: "b {{ $nodes.a.output.value }}"
+    failure: { retries: 0, on_failure: block }
+    output_schema: ${JSON.stringify(OUT)}
+`);
+    const first = GraphRunner.create({ store, bridges: bridges({ alwaysFail: ["b"] }), spec: specV1, specFile: "<test>", input: { q: "x" }, bridge: "mock", gateWait: "return" });
+    const s1 = await first.run();
+    expect(s1.run.status).toBe("failed");
+    const aOutput = s1.nodes.a!.output;
+    const specV2 = parseSpecText(`
+name: forkme
+budget: { max_cost_usd: 5 }
+output: { from: c }
+nodes:
+  - id: a
+    kind: agent
+    prompt: "a {{ input.q }}"
+    output_schema: ${JSON.stringify(OUT)}
+  - id: b
+    kind: agent
+    prompt: "b v2 {{ $nodes.a.output.value }}"
+    output_schema: ${JSON.stringify(OUT)}
+  - id: c
+    kind: code
+    fn: identity
+    input: { a: $nodes.a.output.value, b: $nodes.b.output.value }
+`);
+    const forked = GraphRunner.fork({ store, bridges: bridges({}), runId: s1.run.id, from: ["b"], spec: specV2, bridge: "mock", gateWait: "return" });
+    const s2 = await forked.run();
+    expect(s2.run.status).toBe("completed");
+    expect(s2.run.forked_from).toBe(s1.run.id);
+    expect(s2.nodes.a!.output).toEqual(aOutput); // reused, not re-run
+    expect(s2.nodes.a!.attempts.length).toBe(1);
+    expect(s2.nodes.b!.status).toBe("completed");
+    expect(s2.nodes.c!.status).toBe("completed");
+    expect((s2.run.output as { a: string }).a).toBe((aOutput as { value: string }).value);
+  });
+});
