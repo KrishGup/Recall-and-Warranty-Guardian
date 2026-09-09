@@ -345,7 +345,7 @@ nodes:
     module: ./reducers/citation-check.js
     target: $nodes.write_sections.outputs
     input: { allowed: $nodes.allowed_sources.output.items }
-    repair: { node: write_sections, max_rounds: 1 }
+    repair: { node: write_sections, max_rounds: 2 }
 
   - id: assemble
     kind: code
