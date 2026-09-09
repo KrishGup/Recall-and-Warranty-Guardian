@@ -32,6 +32,12 @@ Never feed 20 raw worker outputs into one synthesis prompt. Put deterministic re
 ## 7. Verification should be asymmetric
 Worker: "find the strongest answer." Verifier: "find the reason this should be rejected." A `verify` node gets the adversarial preamble automatically, has authority to kill (`kill_threshold`), and can send rejections back through a bounded `repair:` cycle. A verifier nobody listens to is decoration (validator error under `verifier_can_kill`).
 
+### Lessons from live runs (gren, Sep 2026)
+- A verifier will happily reject outputs that are wrong because of YOUR plumbing: a marker file the worktree reducer left in the diff, a header that said `findings_verified: 45` when 15 survived, an arXiv `pdf/` URL that did not match the verified `abs/` URL. Treat every kill as evidence about the graph first, the model second.
+- Give writers the facts they are expected to state (coverage counts, what was killed) as explicit input; a "limits" section written without them will guess, and the editor will catch the guess.
+- Grade severity in editor prompts: kill only for fabricated/unsupported claims, contradictions or a missing required dimension; pass with listed reasons otherwise. An editor that kills for metadata quibbles never converges inside a bounded repair budget.
+- Loop rounds, mapped subgraphs and verify fan-outs are where budgets blow: cap the fan-out with code before the expensive step, and set `max_cost_usd` on every tool node.
+
 ## 8. Design failure domains before the graph runs
 Per node: `failure: { retries, fallback: {model|bridge}, timeout_ms, on_failure: block|continue, quorum }`. A fan-out with 9/10 workers done still produces output — and the output knows it is 9/10 (`$nodes.x.count`). Never hide missing work; degrade visibly. Block only when the node is critical.
 
