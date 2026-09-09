@@ -54,10 +54,12 @@ export class ApiBridge implements Bridge {
     const client = this.getClient();
     const system = [contractPreamble(req), req.system].filter(Boolean).join("\n\n");
     const useFormat = !this.formatUnsupported.has(req.model);
+    // The contract preamble + node system prompt are identical across every item of a fan-out and every retry,
+    // so mark them as a cache breakpoint: the volatile part (the per-item prompt) comes after it.
     const params: Anthropic.MessageCreateParamsNonStreaming = {
       model: req.model,
       max_tokens: req.max_output_tokens ?? 8000,
-      system,
+      system: [{ type: "text", text: system, cache_control: { type: "ephemeral" } }],
       messages: [{ role: "user", content: req.prompt }],
     };
     const outputConfig: Anthropic.OutputConfig = {};

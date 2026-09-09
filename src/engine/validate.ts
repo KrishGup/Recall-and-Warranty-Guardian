@@ -25,6 +25,26 @@ export function compile(schema: Record<string, unknown>): ValidateFunction {
   return fn;
 }
 
+/** Fill in `default` values declared in an object schema (top-level and nested objects). Does not mutate the input. */
+export function applyDefaults(schema: Record<string, unknown> | undefined, value: unknown): unknown {
+  if (!schema) return value;
+  const type = Array.isArray(schema.type) ? schema.type[0] : schema.type;
+  if (value === undefined && "default" in schema) return structuredClone(schema.default);
+  if (type === "object" && schema.properties && typeof schema.properties === "object") {
+    const src = value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+    const out: Record<string, unknown> = { ...src };
+    for (const [k, sub] of Object.entries(schema.properties as Record<string, Record<string, unknown>>)) {
+      const v = applyDefaults(sub, src[k]);
+      if (v !== undefined) out[k] = v;
+    }
+    return out;
+  }
+  if (type === "array" && Array.isArray(value) && schema.items && typeof schema.items === "object") {
+    return value.map((v) => applyDefaults(schema.items as Record<string, unknown>, v));
+  }
+  return value;
+}
+
 export function validateAgainst(schema: Record<string, unknown> | undefined, value: unknown): { ok: boolean; errors: string[] } {
   if (!schema || Object.keys(schema).length === 0) return { ok: true, errors: [] };
   let fn: ValidateFunction;

@@ -34,7 +34,7 @@ import {
 } from "../spec/schema.js";
 import { collectNodeRefs, evalCond, isRef, renderTemplate, resolveRef, resolveValue, type NodeView, type Scope } from "./expr.js";
 import { RunStore, addUsage, nowIso, type ApprovalRecord, type AttemptRecord, type Decision, type GrenEvent, type ItemRecord, type KilledRecord, type NodeRecord, type RunState } from "./state.js";
-import { validateAgainst } from "./validate.js";
+import { applyDefaults, validateAgainst } from "./validate.js";
 import { BridgeRegistry } from "../bridges/registry.js";
 import { BridgeError, type AgentRequest, type AgentResponse, type Bridge } from "../bridges/types.js";
 import { getReducer, type Reducer } from "../reducers/builtin.js";
@@ -94,6 +94,19 @@ export interface ResumeRunOptions extends RunnerBaseOptions {
   runId: string;
 }
 
+export interface ForkRunOptions extends RunnerBaseOptions {
+  /** Run to fork from. */
+  runId: string;
+  /** Nodes to re-run (they and everything downstream are reset; upstream outputs are reused). */
+  from: string[];
+  newRunId?: string;
+  /** Optional replacement spec (e.g. with edited prompts). Kept nodes must exist in it with the same id. */
+  spec?: GraphSpec;
+  specFile?: string;
+  /** Optional replacement input (only safe when the kept nodes did not read the changed fields). */
+  input?: unknown;
+}
+
 export class GraphRunner {
   readonly state: RunState;
   readonly analysis: Analysis;
@@ -124,8 +137,10 @@ export class GraphRunner {
     const a = analyze(o.spec);
     const errors = a.findings.filter((f) => f.level === "error");
     if (errors.length) throw new RunFailed(`graph "${o.spec.name}" failed validation:\n${errors.map((e) => `  - ${e.code}${e.node ? ` (${e.node})` : ""}: ${e.message}`).join("\n")}`);
+    let input = o.input;
     if (o.spec.input_schema) {
-      const v = validateAgainst(o.spec.input_schema, o.input);
+      input = applyDefaults(o.spec.input_schema, input ?? {});
+      const v = validateAgainst(o.spec.input_schema, input);
       if (!v.ok) throw new RunFailed(`input does not match input_schema:\n${v.errors.map((e) => `  - ${e}`).join("\n")}`);
     }
     const bridge = o.bridge ?? o.spec.defaults?.bridge ?? o.defaultBridge ?? "claude-code";
@@ -133,7 +148,7 @@ export class GraphRunner {
       id: o.runId,
       spec: o.spec,
       specFile: o.specFile,
-      input: o.input,
+      input,
       bridge,
       budget: o.spec.budget ?? {},
       frozen: effectiveFrozen(o.spec),
@@ -165,6 +180,70 @@ export class GraphRunner {
     o.store.save(state);
     const runner = new GraphRunner(o, state);
     runner.emit("run.resumed", {});
+    return runner;
+  }
+
+  /**
+   * Fork a run and re-execute from the given nodes, reusing every upstream output.
+   * The developer loop: change a late prompt, `gren fork <run> --from brief`, and only the tail re-runs.
+   */
+  static fork(o: ForkRunOptions): GraphRunner {
+    const state = o.store.fork(o.runId, o.newRunId);
+    if (o.spec) {
+      const a = analyze(o.spec);
+      const errors = a.findings.filter((f) => f.level === "error");
+      if (errors.length) throw new RunFailed(`replacement spec failed validation:\n${errors.map((e) => `  - ${e.code}${e.node ? ` (${e.node})` : ""}: ${e.message}`).join("\n")}`);
+      state.run.spec = o.spec;
+      state.run.spec_file = o.specFile ?? state.run.spec_file;
+      state.run.budget = o.spec.budget ?? {};
+      state.run.frozen = effectiveFrozen(o.spec);
+    }
+    if (o.input !== undefined) state.run.input = o.spec?.input_schema ? applyDefaults(o.spec.input_schema, o.input) : o.input;
+    const analysis = analyze(state.run.spec);
+    const ids = new Set(state.run.spec.nodes.map((n) => n.id));
+    for (const id of Object.keys(state.nodes)) if (!ids.has(id)) delete state.nodes[id];
+    for (const n of state.run.spec.nodes) {
+      if (!state.nodes[n.id]) state.nodes[n.id] = { id: n.id, kind: n.kind, status: "pending", attempts: [], cost_usd: 0, usage: {}, agent_calls: 0, retries: 0, repairs: 0 };
+    }
+    const reset = new Set<string>();
+    const stack = [...o.from];
+    while (stack.length) {
+      const cur = stack.pop()!;
+      if (!ids.has(cur)) throw new RunFailed(`fork: unknown node "${cur}"`);
+      if (reset.has(cur)) continue;
+      reset.add(cur);
+      for (const d of analysis.nodes[cur]?.dependents ?? []) stack.push(d);
+    }
+    // anything not terminal must also be reset (the source run may have been interrupted)
+    for (const rec of Object.values(state.nodes)) if (!["completed", "skipped", "failed"].includes(rec.status)) reset.add(rec.id);
+    const runner = new GraphRunner(o, state);
+    for (const id of reset) {
+      const rec = state.nodes[id]!;
+      rec.attempts = [];
+      rec.cost_usd = 0;
+      rec.usage = {};
+      rec.agent_calls = 0;
+      rec.retries = 0;
+      rec.repairs = 0;
+      rec.repair = undefined;
+      rec.verify = undefined;
+      rec.loop = undefined;
+      rec.side_effect_done = undefined;
+      runner.resetNode(id, `fork from ${o.runId}`);
+    }
+    // totals: keep only what the kept nodes spent
+    const kept = Object.values(state.nodes).filter((n) => !reset.has(n.id));
+    state.run.totals = {
+      cost_usd: kept.reduce((s, n) => s + n.cost_usd, 0),
+      usage: kept.reduce((s, n) => sumUsage(s, n.usage), {} as ReturnType<typeof sumUsage>),
+      agent_calls: kept.reduce((s, n) => s + n.agent_calls, 0),
+      retries: kept.reduce((s, n) => s + n.retries, 0),
+      wall_ms: 0,
+    };
+    state.run.decisions = state.run.decisions.filter((d) => !reset.has(d.node));
+    state.run.started_at = undefined;
+    o.store.save(state);
+    runner.emit("run.fork_prepared", { from: o.runId, reset: [...reset], kept: kept.map((n) => n.id) });
     return runner;
   }
 
@@ -772,7 +851,7 @@ export class GraphRunner {
     this.save();
   }
 
-  private resetNode(id: string, reason: string) {
+  resetNode(id: string, reason: string) {
     const rec = this.state.nodes[id]!;
     const node = this.nodeSpec(id);
     if (node.side_effect && rec.side_effect_done) return; // never re-run a side effect

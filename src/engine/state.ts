@@ -138,6 +138,8 @@ export interface RunRecord {
   context?: Record<string, unknown>;
   /** Visible degradation: nodes that failed but were tolerated, etc. */
   warnings?: string[];
+  /** Set when this run was created by `gren fork` from another run. */
+  forked_from?: string;
 }
 
 export interface RunState {
@@ -460,6 +462,24 @@ export class RunStore {
 
   delete(runId: string) {
     fs.rmSync(this.runDir(runId), { recursive: true, force: true });
+  }
+
+  /** Copy a run (state, artifacts, approvals, nested runs - not the inbox) under a new id. */
+  fork(srcId: string, newId?: string): RunState {
+    const src = this.load(srcId);
+    const id = newId ?? newRunId(`${src.run.graph.replace(/[^a-zA-Z0-9]+/g, "-").slice(0, 20)}-fork`);
+    const from = this.runDir(srcId);
+    const to = this.runDir(id);
+    if (fs.existsSync(to)) throw new Error(`run ${id} already exists`);
+    fs.mkdirSync(to, { recursive: true });
+    for (const sub of ["artifacts", "approvals", "nested"]) {
+      if (fs.existsSync(path.join(from, sub))) fs.cpSync(path.join(from, sub), path.join(to, sub), { recursive: true });
+    }
+    fs.mkdirSync(path.join(to, "inbox"), { recursive: true });
+    const state: RunState = { run: { ...src.run, id, status: "created", ended_at: undefined, error: undefined, output: undefined, warnings: undefined, forked_from: srcId, created_at: nowIso() }, nodes: src.nodes };
+    this.save(state);
+    this.appendEvent(id, { type: "run.forked", data: { from: srcId } });
+    return state;
   }
 }
 

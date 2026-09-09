@@ -171,7 +171,7 @@ async function askGate(runner: GraphRunner, gate: string, title: string, prompt:
   else runner.approve(gate, "rejected", "cli", a.replace(/^n(o)?\s*/i, "") || undefined);
 }
 
-async function cmdRun(positional: string[], flags: Flags, resume = false) {
+async function cmdRun(positional: string[], flags: Flags, resume: boolean | "fork" = false) {
   const store = new RunStore(runsDir(flags));
   const bridges = new BridgeRegistry({
     mock: {
@@ -189,7 +189,27 @@ async function cmdRun(positional: string[], flags: Flags, resume = false) {
   const log = quiet ? undefined : (m: string) => console.error(`  | ${m}`);
   const gateWait: "block" | "return" = flags.wait === false || flags["no-wait"] ? "return" : "block";
   let runner: GraphRunner;
-  if (resume) {
+  if (resume === "fork") {
+    const id = positional[0] ?? fail("usage: gren fork <run_id> --from node[,node] [--spec file] [--input JSON] [--id new_id]");
+    const from = (str(flags, "from") ?? fail("--from <node[,node]> is required")).split(",").map((s) => s.trim()).filter(Boolean);
+    const loaded = str(flags, "spec") ? loadGraph(str(flags, "spec")!) : undefined;
+    runner = GraphRunner.fork({
+      store,
+      bridges,
+      runId: id,
+      from,
+      newRunId: str(flags, "id"),
+      spec: loaded?.spec,
+      specFile: loaded?.file,
+      input: flags.input !== undefined ? parseInput(str(flags, "input")) : undefined,
+      bridge: str(flags, "bridge"),
+      defaultBridge: defaultBridgeName(),
+      onEvent,
+      log,
+      gateWait,
+      cwd: loaded?.dir ?? process.cwd(),
+    });
+  } else if (resume) {
     const id = positional[0] ?? fail("usage: gren resume <run_id>");
     runner = GraphRunner.resume({ store, bridges, runId: id, bridge: str(flags, "bridge"), onEvent, log, gateWait, cwd: process.cwd() });
   } else {
@@ -355,6 +375,8 @@ async function main() {
       return cmdRun(positional, flags, false);
     case "resume":
       return cmdRun(positional, flags, true);
+    case "fork":
+      return cmdRun(positional, flags, "fork");
     case "approve":
       return cmdApprove(positional, flags);
     case "tasks":
@@ -466,6 +488,7 @@ async function main() {
   gren analyze <spec> [--json]            dependency test, critical path, width, cost, checklist
   gren run <spec> [--input JSON|@file] [--bridge claude-code|api|inbox|mock] [--auto-approve] [--no-wait] [--json]
   gren resume <run_id>                    continue from the last checkpoint
+  gren fork <run_id> --from node[,node] [--spec file] [--input JSON]   re-run from those nodes, reuse upstream outputs
   gren status|events|metrics|output <run_id>
   gren approve <run_id> <gate> [--reject] [--comment TEXT]
   gren tasks [run_id] [--json]            pending inbox tasks for the orchestrator bridge
