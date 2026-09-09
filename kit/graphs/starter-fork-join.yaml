@@ -49,8 +49,9 @@ nodes:
     failure: { retries: 1, quorum: 0.67 }
     prompt: |
       Sub-question "{{ item.name }}": {{ item.question }}
-      Give 2-4 findings. Each: a specific claim, the evidence or reasoning behind it, and an honest confidence 0-1.
-      Say what you do not know instead of guessing.
+      You have no tools. Answer from reasoning and well-known practice, not from invented sources.
+      Give 2-4 findings. Each finding has one specific claim, the reasoning behind it (say "reasoning:" when it is not
+      a cited fact), and an honest confidence between 0 and 1. Use confidence 0.5 or lower for claims you cannot check.
     output_schema:
       type: object
       required: [findings]
@@ -78,12 +79,14 @@ nodes:
     kind: verify
     description: Adversarial check of each finding; killed findings never reach the answer.
     target: $nodes.dedupe.output.items
-    kill_threshold: 0.6
-    min_survivors: 2
+    kill_threshold: 0.8
+    min_survivors: 1
     prompt: |
       Finding: {{ json item }}
-      Try to reject it: is the claim specific and falsifiable, does the evidence actually support it, is the confidence honest?
-      Kill it if not. Give concrete reasons.
+      The workers had no tools. A finding based on reasoning is acceptable when it says so.
+      Kill the finding only for these reasons: the claim contradicts its own evidence, the claim is too vague to act on,
+      the numbers do not add up, or the confidence is above 0.6 for a claim that is not checkable.
+      Otherwise pass it. List any weaker problems as reasons but still pass.
 
   - id: answer
     kind: agent
