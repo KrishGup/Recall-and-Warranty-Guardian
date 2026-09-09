@@ -493,3 +493,32 @@ nodes:
     expect(evs.some((e) => e.type === "task.completed" && e.data?.source === "human")).toBe(true);
   });
 });
+
+describe("resume semantics", () => {
+  it("re-runs a blocking failure and its cascaded skips on resume", async () => {
+    const store = new RunStore(path.join(tmp, "runs-resume"));
+    const spec = parseSpecText(`
+name: res
+budget: { max_cost_usd: 5 }
+nodes:
+  - id: a
+    kind: agent
+    prompt: "a"
+    failure: { retries: 0, on_failure: block }
+    output_schema: ${JSON.stringify(OUT)}
+  - id: b
+    kind: code
+    fn: identity
+    input: { v: $nodes.a.output.value }
+`);
+    const first = GraphRunner.create({ store, bridges: bridges({ alwaysFail: ["a"] }), spec, specFile: "<test>", input: {}, bridge: "mock", gateWait: "return" });
+    const s1 = await first.run();
+    expect(s1.run.status).toBe("failed");
+    expect(s1.nodes.a!.status).toBe("failed");
+    const resumed = GraphRunner.resume({ store, bridges: bridges({}), runId: s1.run.id, gateWait: "return" });
+    const s2 = await resumed.run();
+    expect(s2.run.status).toBe("completed");
+    expect(s2.nodes.a!.status).toBe("completed");
+    expect(s2.nodes.b!.status).toBe("completed");
+  });
+});

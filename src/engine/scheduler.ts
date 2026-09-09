@@ -163,9 +163,10 @@ export class GraphRunner {
   static resume(o: ResumeRunOptions): GraphRunner {
     const state = o.store.load(o.runId);
     const byId = new Map(state.run.spec.nodes.map((n) => [n.id, n]));
+    const reset: string[] = [];
     for (const rec of Object.values(state.nodes)) {
+      const node = byId.get(rec.id);
       if (rec.status === "running" || rec.status === "waiting_task") {
-        const node = byId.get(rec.id);
         if (node?.side_effect && !rec.side_effect_done) {
           rec.status = "failed";
           rec.error = "interrupted while executing a side effect; not re-run automatically (frozen: no_side_effect_retry_without_idempotency). Inspect and resume manually.";
@@ -173,10 +174,23 @@ export class GraphRunner {
           rec.status = "pending";
           rec.error = undefined;
           if (rec.items) for (const it of rec.items) if (it.status !== "completed") it.status = "pending";
+          reset.push(rec.id);
         }
+      } else if (rec.status === "failed" && node && !(node.side_effect && rec.side_effect_done) && effectiveFailure(state.run.spec, node).on_failure === "block" && !/interrupted while executing a side effect/.test(rec.error ?? "")) {
+        // A blocking failure ended the previous attempt; resuming means trying it again (its retries start over).
+        rec.status = "pending";
+        rec.error = undefined;
+        if (rec.items) for (const it of rec.items) if (it.status !== "completed") it.status = "pending";
+        reset.push(rec.id);
+      } else if (rec.status === "skipped" && /^upstream /.test(rec.skip_reason ?? "")) {
+        // cascaded skips are re-evaluated once their upstream re-runs
+        rec.status = "pending";
+        rec.skip_reason = undefined;
+        reset.push(rec.id);
       }
     }
-    if (state.run.status !== "completed") state.run.status = "created";
+    if (state.run.status !== "completed" || reset.length) state.run.status = "created";
+    state.run.error = undefined;
     o.store.save(state);
     const runner = new GraphRunner(o, state);
     runner.emit("run.resumed", {});
