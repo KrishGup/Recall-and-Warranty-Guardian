@@ -1,5 +1,9 @@
 // Create an isolated git worktree + branch for a run (local, reversible - not a gated side effect).
-// input: { repo_path, branch? }  args: { dir: ".worktrees", base?: "HEAD", prefix: "gren/" }
+// input: { repo_path, branch? }  args: { dir: ".worktrees", base?: "HEAD", prefix: "gren/", link?: ["node_modules"] }
+//
+// WARNING (Windows): the worktree gets a JUNCTION to the main checkout's node_modules so tests can run there.
+// `git worktree remove --force` follows junctions and deletes the real node_modules. Remove worktrees with
+// ./git-worktree-remove.js (or `rmdir <worktree>\node_modules` first). A marker file documents this in the worktree.
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
@@ -36,6 +40,7 @@ export default async function gitWorktree(input, args, ctx) {
       }
     }
   }
+  if (linked.length) fs.writeFileSync(path.join(dir, "GREN-WORKTREE-README.txt"), `This worktree was created by gren run ${ctx.runId}.\nLinked from the main checkout (junction/symlink, NOT a copy): ${linked.join(", ")}\nDo NOT run "git worktree remove --force" here on Windows - it follows the junction and deletes the real folder.\nRemove with: node graphs/reducers/git-worktree-remove.js, or "rmdir <this dir>\\${linked[0]}" first, then git worktree remove.\n`, "utf8");
   ctx.log(`worktree ${dir} on branch ${branch} from ${baseCommit.slice(0, 8)}${linked.length ? ` (linked ${linked.join(", ")})` : ""}`);
   return { worktree: dir.replace(/\\/g, "/"), branch, base_commit: baseCommit, reused: false, linked };
 }
