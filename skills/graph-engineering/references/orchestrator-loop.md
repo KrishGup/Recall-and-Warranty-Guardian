@@ -66,6 +66,12 @@ Honesty rules (these keep the graph's metrics real):
 
 `gren_wait` returns `waiting_gates: [{gate, title, prompt, show}]`. Present `show` to the user, ask for approve/reject and a comment, then `gren_approve({run_id, gate, decision, comment, by: "<user>"})`. A rejection with a comment is fed back to the producer when the gate declares `on_reject.route`.
 
+## Iterating
+
+- A run failed at a late node? Fix the prompt/spec and `gren_fork({run_id, from: ["<node>"], spec_yaml})` (CLI: `gren fork <run> --from <node> --spec file.yaml`): upstream outputs are reused, only that node and everything downstream re-run.
+- A run was interrupted (process died, budget)? `gren_resume` / `gren resume <run>`: it continues from the checkpoint and re-runs blocking failures.
+- Read `gren_metrics` before touching prompts: kill rate, retry rate, speedup and compression tell you whether the topology or a node is the problem.
+
 ## Nested runs
 
 Loop rounds and subgraphs are separate runs (`<run_id>/nested/<node>/round-N`). `gren_tasks(run_id)` on the parent already includes their tasks; submit each with the `run_id` printed on the task.

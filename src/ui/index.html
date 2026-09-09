@@ -702,10 +702,11 @@
   $("#drawerToggle").addEventListener("click", () => { const d = $("#drawer"); d.classList.toggle("collapsed"); $("#drawerToggle").textContent = d.classList.contains("collapsed") ? "▴" : "▾"; setTimeout(() => data && canvas.fit(), 50); });
   $("#showNested").addEventListener("change", loadRuns);
   $("#modeSeg").querySelectorAll("button").forEach((b) => b.addEventListener("click", () => setMode(b.dataset.mode)));
-  function setMode(m) {
+  async function setMode(m) {
     mode = m; $("#modeSeg").querySelectorAll("button").forEach((x) => x.classList.toggle("active", x.dataset.mode === m));
     $("#runsMain").style.display = m === "runs" ? "" : "none"; $("#designMain").style.display = m === "design" ? "" : "none";
-    if (m === "design") { renderGraphLibrary(); if (!$("#yamlEditor").value) loadGraphIntoEditor(graphs[0]?.path); } else { loadRuns(); if (data) { renderGraph(true); canvas.fit(); selectedNode ? renderInspector(selectedNode) : renderRunInspector(); } }
+    if (m === "design") { await renderGraphLibrary(); if (!$("#yamlEditor").value) await loadGraphIntoEditor(graphs[0]?.path); setTimeout(() => dcanvas.fit(), 50); }
+    else { loadRuns(); if (data) { renderGraph(true); canvas.fit(); selectedNode ? renderInspector(selectedNode) : renderRunInspector(); } }
   }
 
   // ---------- design mode ----------

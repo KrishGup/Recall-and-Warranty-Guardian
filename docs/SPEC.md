@@ -170,6 +170,9 @@ Default: `gate_before_side_effect`, `spend_cap`, `no_unbounded_loops`, `structur
 | `inbox` | writes a task; an external worker (a Claude Code session with the gren MCP tools, the CLI, or a human) executes it and posts a schema-valid result | none |
 | `mock` | schema-driven deterministic output with latency/failure injection | none |
 
+## Resume semantics
+`gren resume <run_id>` continues from the checkpoint: nodes that were running are re-run (completed fan-out items are kept), a node that failed with `on_failure: block` is re-run with fresh retries, skips that cascaded from that failure are re-evaluated, and a `side_effect` node that was interrupted mid-execution is marked failed and never re-run automatically. Waiting gates pick up any approval recorded while the run was paused.
+
 ## Developer loop: fork
 `gren fork <run_id> --from <node[,node]> [--spec edited.yaml] [--input JSON]` (MCP: `gren_fork`, dashboard: "Fork run from here") copies the run, resets the named nodes and everything downstream, and re-executes only that part - upstream outputs (the expensive research fan-out, say) are reused. Iterate on a late prompt without paying for the whole graph.
 
