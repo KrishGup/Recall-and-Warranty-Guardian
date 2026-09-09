@@ -49,7 +49,7 @@ nodes:
     description: Cheap look at the inventory - which modules matter, how risky, what to focus on.
     tools: [Read, Grep, Glob]
     cwd: $input.repo_path
-    max_turns: 40
+    max_turns: 60
     max_cost_usd: 0.6
     input: { modules: $nodes.inventory.output.modules, largest_files: $nodes.inventory.output.largest_files, focus: $input.focus }
     prompt: |
@@ -94,8 +94,8 @@ nodes:
     max_width: 3
     tools: [Read, Grep, Glob]
     cwd: $input.repo_path
-    max_turns: 60
-    max_cost_usd: 1.2
+    max_turns: 100
+    max_cost_usd: 1.5
     failure: { retries: 1, quorum: 0.6, on_failure: block, fallback: { model: opus } }
     input: { system: $nodes.triage.output.system_description, focus: $input.focus }
     prompt: |
@@ -138,8 +138,8 @@ nodes:
     when: { eq: ["$nodes.route.output.route", single] }
     tools: [Read, Grep, Glob]
     cwd: $input.repo_path
-    max_turns: 60
-    max_cost_usd: 1.5
+    max_turns: 100
+    max_cost_usd: 2.0
     input: { system: $nodes.triage.output.system_description, modules: $nodes.triage.output.modules, focus: $input.focus }
     prompt: |
       Audit this small repository (modules and files in <input>). Read the files - do not guess from names.
@@ -173,14 +173,21 @@ nodes:
     input: { items: $nodes.dedupe.output.items }
     args: { path: severity, map: { critical: blocker, high: major, medium: minor, low: nit } }
 
+  - id: cap
+    kind: code
+    description: Compress before you verify - rank by severity and category, keep the top slice; verification is the expensive step.
+    module: ./reducers/prioritize.js
+    input: { items: $nodes.normalize.output.items }
+    args: { k: 24 }
+
   - id: verify_issues
     kind: verify
     description: Open the file; the evidence must exist and the issue must hold. Inflated severity is a kill too.
-    target: $nodes.normalize.output.items
+    target: $nodes.cap.output.items
     tools: [Read, Grep]
     cwd: $input.repo_path
-    max_turns: 14
-    max_cost_usd: 0.3
+    max_turns: 25
+    max_cost_usd: 0.35
     max_width: 4
     kill_threshold: 0.6
     prompt: |
@@ -206,8 +213,8 @@ nodes:
     max_width: 3
     tools: [Read, Grep]
     cwd: $input.repo_path
-    max_turns: 24
-    max_cost_usd: 0.7
+    max_turns: 40
+    max_cost_usd: 0.8
     failure: { retries: 1, quorum: 0.5, on_failure: block }
     prompt: |
       Verified issue #{{ item.rank }}:
@@ -235,8 +242,8 @@ nodes:
     target: $nodes.fix_plans.outputs
     tools: [Read]
     cwd: $input.repo_path
-    max_turns: 14
-    max_cost_usd: 0.4
+    max_turns: 25
+    max_cost_usd: 0.45
     max_width: 3
     kill_threshold: 0.6
     repair: { node: fix_plans, max_rounds: 1 }
@@ -263,9 +270,11 @@ nodes:
 
   - id: approve
     kind: gate
-    title: Write the audit report?
-    prompt: Every listed issue was confirmed in the file by a verifier; every fix plan survived adversarial review. Approve to write the report to out/.
-    show: { report: $nodes.report.output.markdown, counts: { issues: $nodes.report.output.issues, fixes: $nodes.report.output.fixes, dismissed: $nodes.report.output.dismissed } }
+    title: Write the audit report to a file?
+    prompt: Each issue below was confirmed in the file by a verifier. Each fix plan passed a review. Read the report. Then approve or reject.
+    approve_effect: The system writes the report to the out/ folder.
+    reject_effect: The system writes nothing. The run stops.
+    show: { counts: { issues: $nodes.report.output.issues, fixes: $nodes.report.output.fixes, dismissed: $nodes.report.output.dismissed }, report: $nodes.report.output.markdown }
 
   - id: write_report
     kind: code

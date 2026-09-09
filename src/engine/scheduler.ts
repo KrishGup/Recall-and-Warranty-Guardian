@@ -915,8 +915,8 @@ export class GraphRunner {
     const prompt = node.prompt ? renderTemplate(node.prompt, scope) : undefined;
     rec.status = "waiting_approval";
     rec.output = undefined;
-    rec.artifact = this.opts.store.writeArtifact(this.id, `${node.id}.gate`, { title: node.title, prompt, show });
-    this.emit("gate.waiting", { title: node.title, prompt, show, timeout_ms: node.timeout_ms }, node.id);
+    rec.artifact = this.opts.store.writeArtifact(this.id, `${node.id}.gate`, { title: node.title, prompt, show, approve_effect: node.approve_effect, reject_effect: node.reject_effect });
+    this.emit("gate.waiting", { title: node.title, prompt, show, approve_effect: node.approve_effect, reject_effect: node.reject_effect, timeout_ms: node.timeout_ms }, node.id);
     this.log(`gate "${node.id}" (${node.title}) is waiting for approval: gren approve ${this.id} ${node.id}`);
   }
 

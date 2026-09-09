@@ -95,7 +95,7 @@ export class ClaudeCodeBridge implements Bridge {
     let result: Record<string, unknown> | undefined;
     // Tool-using nodes need room for search/read turns; pure reasoning nodes do not. The USD cap is the
     // smaller of the bridge default and what is left of the run's spend cap.
-    const maxTurns = req.max_turns ?? (tools.length ? 30 : 3);
+    const maxTurns = req.max_turns ?? (tools.length ? 60 : 4);
     const maxBudgetUsd = Math.max(0.02, Math.min(this.opts.maxBudgetUsd ?? 2.0, req.max_cost_usd ?? Infinity));
     try {
       const q = sdk.query({

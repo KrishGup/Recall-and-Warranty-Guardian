@@ -94,8 +94,8 @@ nodes:
           map: $input.lanes
           max_width: 4
           tools: [WebSearch]
-          max_turns: 14
-          max_cost_usd: 0.35
+          max_turns: 25
+          max_cost_usd: 0.4
           failure: { retries: 1, quorum: 0.5, on_failure: block }
           input: { already_seen: $input.seen, round: $input.round }
           prompt: |
@@ -144,8 +144,8 @@ nodes:
           description: Open every candidate URL. Unreachable, irrelevant or low-quality pages are killed here, before any extraction cost.
           target: $nodes.drop_seen.output.items
           tools: [WebFetch]
-          max_turns: 6
-          max_cost_usd: 0.2
+          max_turns: 12
+          max_cost_usd: 0.25
           max_width: 4
           kill_threshold: 0.6
           input: { question: $input.question }
@@ -173,8 +173,8 @@ nodes:
     map: $nodes.sources.output.items
     max_width: 4
     tools: [WebFetch]
-    max_turns: 8
-    max_cost_usd: 0.3
+    max_turns: 16
+    max_cost_usd: 0.35
     failure: { retries: 1, quorum: 0.6, on_failure: block }
     input: { question: $nodes.scope.output.question, criteria: $nodes.scope.output.criteria }
     prompt: |
@@ -227,8 +227,8 @@ nodes:
     description: Re-open the source and try to falsify each finding - the quote must exist and support the claim.
     target: $nodes.dedupe_findings.output.items
     tools: [WebFetch]
-    max_turns: 6
-    max_cost_usd: 0.2
+    max_turns: 12
+    max_cost_usd: 0.25
     max_width: 5
     kill_threshold: 0.6
     min_survivors: 4

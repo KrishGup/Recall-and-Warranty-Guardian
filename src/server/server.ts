@@ -345,11 +345,28 @@ export async function startServer(o: ServerOptions): Promise<http.Server> {
       if (p === "/api/graph/validate" && req.method === "POST") {
         const b = await readBody(req);
         try {
-          const spec = parseSpecText(String(b.spec_yaml ?? ""));
-          return json(res, 200, { ok: true, analysis: analyze(spec) });
+          const spec = loadGraphFromObject(YAML.parse(String(b.spec_yaml ?? "")), o.graphsDir).spec;
+          return json(res, 200, { ok: true, spec, analysis: analyze(spec) });
         } catch (e) {
           return json(res, 200, { ok: false, error: (e as Error).message, issues: (e as { issues?: string[] }).issues ?? [] });
         }
+      }
+      if (p === "/api/graph/save" && req.method === "POST") {
+        const b = await readBody(req);
+        const rel = String(b.path ?? "");
+        if (!rel || rel.includes("..") || path.isAbsolute(rel)) return json(res, 400, { error: "path must be relative to the graphs dir" });
+        const spec = loadGraphFromObject(YAML.parse(String(b.spec_yaml ?? "")), o.graphsDir).spec;
+        const a = analyze(spec);
+        if (!a.ok) return json(res, 400, { error: "spec has errors", details: a.findings.filter((f) => f.level === "error").map((f) => `${f.code}${f.node ? ` (${f.node})` : ""}: ${f.message}`) });
+        const file = path.resolve(o.graphsDir, rel.endsWith(".yaml") || rel.endsWith(".yml") ? rel : `${rel}.yaml`);
+        fs.mkdirSync(path.dirname(file), { recursive: true });
+        fs.writeFileSync(file, String(b.spec_yaml), "utf8");
+        return json(res, 200, { ok: true, file });
+      }
+      if (p === "/api/graph/scaffold" && req.method === "POST") {
+        const b = await readBody(req);
+        const { scaffold } = await import("../cli/shapes.js");
+        return json(res, 200, { yaml: scaffold(String(b.shape ?? "fork-join"), String(b.name ?? "my-graph")) });
       }
       if (p === "/api/bridges") {
         const reg = new BridgeRegistry(o.bridgeOptions ?? {});

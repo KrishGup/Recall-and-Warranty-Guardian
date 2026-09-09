@@ -148,7 +148,13 @@ function printStatus(state: RunState, store: RunStore) {
   const waiting = Object.values(state.nodes).filter((n) => n.status === "waiting_approval");
   if (waiting.length) {
     console.log("");
-    for (const g of waiting) console.log(`  GATE WAITING: ${g.id}  ->  gren approve ${r.id} ${g.id} [--reject] [--comment "..."]`);
+    for (const g of waiting) {
+      const spec = r.spec.nodes.find((n) => n.id === g.id) as { title?: string; approve_effect?: string; reject_effect?: string } | undefined;
+      console.log(`  GATE WAITING: ${g.id} - ${spec?.title ?? ""}`);
+      if (spec?.approve_effect) console.log(`    If you approve: ${spec.approve_effect}`);
+      if (spec?.reject_effect) console.log(`    If you reject:  ${spec.reject_effect}`);
+      console.log(`    gren approve ${r.id} ${g.id} [--reject] [--comment "..."]`);
+    }
   }
   const tasks = store.listTasksDeep(r.id);
   if (tasks.length) {
@@ -158,10 +164,12 @@ function printStatus(state: RunState, store: RunStore) {
   }
 }
 
-async function askGate(runner: GraphRunner, gate: string, title: string, prompt: string | undefined, show: unknown): Promise<void> {
+async function askGate(runner: GraphRunner, gate: string, title: string, prompt: string | undefined, show: unknown, effects?: { approve?: string; reject?: string }): Promise<void> {
   console.log("");
   console.log(`=== HUMAN GATE: ${gate} - ${title} ===`);
   if (prompt) console.log(prompt);
+  if (effects?.approve) console.log(`If you approve: ${effects.approve}`);
+  if (effects?.reject) console.log(`If you reject:  ${effects.reject}`);
   if (show !== undefined) console.log(JSON.stringify(show, null, 2).slice(0, 4000));
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
   const answer = await new Promise<string>((res) => rl.question(`Approve "${gate}"? [y]es / [n]o / n <comment>: `, res));
@@ -247,7 +255,7 @@ async function cmdRun(positional: string[], flags: Flags, resume: boolean | "for
       if (autoApprove) {
         setTimeout(() => runner.approve(e.node!, "approved", "cli:auto-approve", "auto-approved by --auto-approve"), 10);
       } else if (interactive) {
-        void askGate(runner, e.node, String(e.data?.title ?? e.node), e.data?.prompt as string | undefined, e.data?.show);
+        void askGate(runner, e.node, String(e.data?.title ?? e.node), e.data?.prompt as string | undefined, e.data?.show, { approve: e.data?.approve_effect as string | undefined, reject: e.data?.reject_effect as string | undefined });
       } else {
         console.error(`gate "${e.node}" is waiting. Approve from another terminal: gren approve ${runner.id} ${e.node}`);
       }

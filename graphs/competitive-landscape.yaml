@@ -49,8 +49,8 @@ nodes:
         - id: search
           kind: agent
           tools: [WebSearch]
-          max_turns: 10
-          max_cost_usd: 0.35
+          max_turns: 20
+          max_cost_usd: 0.4
           input: { already_seen: $input.seen, round: $input.round }
           prompt: |
             Round {{ input.round }}. Find direct competitors of "{{ input.company }}" in the market "{{ input.market }}".
@@ -89,8 +89,8 @@ nodes:
           description: Open the homepage; kill anything that is not a real product competing in this market.
           target: $nodes.drop_seen.output.items
           tools: [WebFetch]
-          max_turns: 5
-          max_cost_usd: 0.2
+          max_turns: 10
+          max_cost_usd: 0.25
           max_width: 3
           kill_threshold: 0.6
           input: { company: $input.company, market: $input.market }
@@ -126,8 +126,8 @@ nodes:
         - id: pricing
           kind: agent
           tools: [WebSearch, WebFetch]
-          max_turns: 10
-          max_cost_usd: 0.4
+          max_turns: 20
+          max_cost_usd: 0.45
           prompt: |
             Research the pricing of {{ input.competitor.name }} ({{ input.competitor.url }}) in {{ input.market }}.
             Use at most 3 searches/fetches. Return the pricing model, concrete price points you actually saw (with plan names),
@@ -144,8 +144,8 @@ nodes:
         - id: product
           kind: agent
           tools: [WebSearch, WebFetch]
-          max_turns: 10
-          max_cost_usd: 0.4
+          max_turns: 20
+          max_cost_usd: 0.45
           prompt: |
             Research the product of {{ input.competitor.name }} ({{ input.competitor.url }}) in {{ input.market }}.
             Use at most 3 searches/fetches. Return the target segment, 3-6 key features, the main differentiator they claim,
@@ -162,8 +162,8 @@ nodes:
         - id: news
           kind: agent
           tools: [WebSearch]
-          max_turns: 8
-          max_cost_usd: 0.3
+          max_turns: 16
+          max_cost_usd: 0.35
           prompt: |
             Find up to 3 recent, dated news items (funding, launches, pricing changes, incidents) about {{ input.competitor.name }}.
             Use at most 2 searches. Only include items with a date and a URL from the results. Empty list is fine.

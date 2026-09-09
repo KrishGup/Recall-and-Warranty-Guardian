@@ -188,9 +188,11 @@ nodes:
 
   - id: approve_batch
     kind: gate
-    title: Send the automatically drafted replies?
-    prompt: These replies passed the policy check and the adversarial reviewer. Approve to send them (or start the run with auto_send=true to skip this gate).
-    show: { count: $nodes.auto_queue.output._stats, replies: $nodes.auto_queue.output.items }
+    title: Send the drafted replies?
+    prompt: The replies below passed the policy check and the reviewer. Read them. Then approve or reject.
+    approve_effect: The system sends these replies to the customers.
+    reject_effect: The system sends nothing. The run continues without them.
+    show: { replies: $nodes.auto_queue.output.items }
     auto_approve_when: { eq: ["$input.auto_send", true] }
 
   - id: send_auto
@@ -204,9 +206,11 @@ nodes:
 
   - id: approve_risky
     kind: gate
-    title: Review tickets that need a human
+    title: Hand these tickets to a person?
     when: { truthy: "$nodes.human_queue.output.items" }
-    prompt: These tickets were escalated (legal/security), failed the policy check, or their reply was rejected. Approve to send the surviving replies where one exists; reject to hold everything.
+    prompt: The system could not answer these tickets safely. Each row shows why.
+    approve_effect: The system puts these tickets in the human queue with the notes below.
+    reject_effect: The system holds these tickets. Nothing is recorded. The run continues.
     show: { tickets: $nodes.human_queue.output.items }
     on_reject: { fail_run: false }
 

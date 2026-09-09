@@ -6,144 +6,246 @@
 <title>gren · Graph Engineering Runtime</title>
 <style>
   :root {
-    --bg: #0f1115; --panel: #171a21; --panel2: #1e222b; --border: #2a2f3a; --text: #e6e8ee; --muted: #8b93a7;
-    --accent: #6ea8fe; --ok: #3fb950; --warn: #d29922; --bad: #f85149; --run: #58a6ff; --skip: #6e7681; --wait: #e3b341; --purple: #bc8cff;
-    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; --sans: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    --bg: #f5f6f8; --surface: #ffffff; --surface2: #f0f2f5; --border: #e3e6ea; --border2: #cfd4db;
+    --text: #1b2430; --muted: #66707d; --faint: #98a1ad;
+    --accent: #2563eb; --accent-soft: #e8efff; --ok: #16a34a; --ok-soft: #e7f7ec; --warn: #d97706; --warn-soft: #fff4e0;
+    --bad: #dc2626; --bad-soft: #fdecec; --run: #2563eb; --skip: #9aa3ae; --wait: #d97706; --purple: #7c3aed; --purple-soft: #f0e9ff;
+    --canvas: #fbfbfc; --grid: #e6e9ee; --shadow: 0 1px 2px rgba(16,24,40,.06), 0 1px 3px rgba(16,24,40,.1);
+    --shadow-lg: 0 10px 30px rgba(16,24,40,.12); --mono: ui-monospace, "JetBrains Mono", SFMono-Regular, Menlo, Consolas, monospace;
+    --sans: Inter, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; --radius: 10px;
+  }
+  [data-theme="dark"] {
+    --bg: #0f1216; --surface: #171b21; --surface2: #1e232b; --border: #2a303a; --border2: #3a424e; --text: #e6e9ee; --muted: #98a1ad; --faint: #6b7480;
+    --accent-soft: #1d2a4a; --ok-soft: #12301c; --warn-soft: #3a2a0f; --bad-soft: #3a1717; --purple-soft: #2a1d4a; --canvas: #12161b; --grid: #232932;
+    --shadow: 0 1px 2px rgba(0,0,0,.4); --shadow-lg: 0 10px 30px rgba(0,0,0,.5);
   }
   * { box-sizing: border-box; }
-  body { margin: 0; background: var(--bg); color: var(--text); font: 13px/1.45 var(--sans); height: 100vh; display: grid; grid-template-rows: 44px 1fr; }
-  header { display: flex; align-items: center; gap: 14px; padding: 0 14px; border-bottom: 1px solid var(--border); background: var(--panel); }
-  header h1 { font-size: 15px; margin: 0; letter-spacing: .3px; }
-  header h1 span { color: var(--muted); font-weight: 400; }
+  html, body { height: 100%; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 13px/1.45 var(--sans); display: grid; grid-template-rows: 52px 1fr; overflow: hidden; }
+  button { background: var(--surface); color: var(--text); border: 1px solid var(--border2); border-radius: 8px; padding: 6px 11px; cursor: pointer; font: inherit; font-weight: 500; transition: background .12s, border-color .12s; }
+  button:hover { background: var(--surface2); border-color: var(--accent); }
+  button.primary { background: var(--accent); color: #fff; border-color: var(--accent); } button.primary:hover { filter: brightness(1.06); }
+  button.danger { color: var(--bad); border-color: var(--bad); } button.ghost { border-color: transparent; background: transparent; } button.ghost:hover { background: var(--surface2); }
+  button.sm { padding: 3px 8px; font-size: 12px; border-radius: 6px; }
+  button:disabled { opacity: .5; cursor: default; }
+  input, select, textarea { width: 100%; background: var(--surface); color: var(--text); border: 1px solid var(--border2); border-radius: 8px; padding: 7px 9px; font: inherit; }
+  textarea { font-family: var(--mono); font-size: 12px; min-height: 100px; line-height: 1.5; }
+  input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
+  label { display: block; color: var(--muted); font-size: 11.5px; font-weight: 600; letter-spacing: .2px; margin: 10px 0 4px; text-transform: uppercase; }
+  pre, code { font-family: var(--mono); font-size: 12px; }
+  pre { background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 10px; overflow: auto; max-height: 380px; margin: 6px 0; white-space: pre-wrap; word-break: break-word; }
+  a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: underline; }
+  .chip { display: inline-flex; align-items: center; gap: 4px; padding: 1px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; border: 1px solid var(--border); background: var(--surface2); color: var(--muted); white-space: nowrap; }
+  .chip.ok { color: var(--ok); background: var(--ok-soft); border-color: transparent; } .chip.bad { color: var(--bad); background: var(--bad-soft); border-color: transparent; }
+  .chip.warn { color: var(--warn); background: var(--warn-soft); border-color: transparent; } .chip.accent { color: var(--accent); background: var(--accent-soft); border-color: transparent; }
+  .chip.purple { color: var(--purple); background: var(--purple-soft); border-color: transparent; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex: none; background: var(--faint); }
+  .st-completed { background: var(--ok); } .st-running { background: var(--run); animation: pulse 1.2s infinite; } .st-failed { background: var(--bad); }
+  .st-paused, .st-waiting_approval, .st-waiting_task { background: var(--wait); } .st-skipped { background: var(--skip); } .st-cancelled { background: var(--purple); } .st-pending, .st-created { background: var(--faint); }
+  @keyframes pulse { 0%,100% { opacity: 1 } 50% { opacity: .3 } }
+
+  /* header */
+  header { display: flex; align-items: center; gap: 12px; padding: 0 16px; background: var(--surface); border-bottom: 1px solid var(--border); }
+  header .brand { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 15px; letter-spacing: .2px; }
+  header .brand .logo { width: 26px; height: 26px; border-radius: 7px; background: linear-gradient(135deg, var(--accent), var(--purple)); display: grid; place-items: center; color: #fff; font-size: 13px; }
+  header .brand span { color: var(--muted); font-weight: 500; }
+  .seg { display: inline-flex; background: var(--surface2); border: 1px solid var(--border); border-radius: 9px; padding: 2px; }
+  .seg button { border: none; background: transparent; padding: 4px 12px; border-radius: 7px; color: var(--muted); }
+  .seg button.active { background: var(--surface); color: var(--text); box-shadow: var(--shadow); }
   header .spacer { flex: 1; }
-  .pill { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 11px; border: 1px solid var(--border); color: var(--muted); }
-  .pill.ok { color: var(--ok); border-color: var(--ok); } .pill.bad { color: var(--bad); border-color: var(--bad); } .pill.warn { color: var(--warn); border-color: var(--warn); }
-  button { background: var(--panel2); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 5px 10px; cursor: pointer; font: inherit; }
-  button:hover { border-color: var(--accent); } button.primary { background: var(--accent); color: #0b1020; border-color: var(--accent); font-weight: 600; }
-  button.danger { border-color: var(--bad); color: var(--bad); } button:disabled { opacity: .5; cursor: default; }
-  main { display: grid; grid-template-columns: 300px 1fr 380px; min-height: 0; }
-  aside, section, .inspector { min-height: 0; overflow: auto; }
-  aside { border-right: 1px solid var(--border); background: var(--panel); }
-  .inspector { border-left: 1px solid var(--border); background: var(--panel); padding: 12px; }
-  .runs-head { display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; border-bottom: 1px solid var(--border); position: sticky; top: 0; background: var(--panel); z-index: 2; }
-  .run { padding: 8px 12px; border-bottom: 1px solid var(--border); cursor: pointer; }
-  .run:hover { background: var(--panel2); } .run.active { background: #22304a; }
+  header .crumbs { color: var(--muted); font-size: 12.5px; display: flex; align-items: center; gap: 6px; }
+  header .crumbs a { color: var(--accent); }
+
+  /* layout */
+  .app { display: grid; grid-template-columns: 290px 1fr 420px; min-height: 0; }
+  .app.design { grid-template-columns: 290px 1fr 420px; }
+  aside, .inspector { min-height: 0; overflow: auto; background: var(--surface); }
+  aside { border-right: 1px solid var(--border); }
+  .inspector { border-left: 1px solid var(--border); padding: 14px; }
+  .main { display: grid; grid-template-rows: 1fr auto; min-height: 0; min-width: 0; }
+  .side-head { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; border-bottom: 1px solid var(--border); position: sticky; top: 0; background: var(--surface); z-index: 2; font-weight: 600; }
+  .side-head .count { color: var(--muted); font-weight: 500; }
+  .run { padding: 10px 14px; border-bottom: 1px solid var(--border); cursor: pointer; display: grid; gap: 4px; }
+  .run:hover { background: var(--surface2); } .run.active { background: var(--accent-soft); }
+  .run .title { display: flex; align-items: center; gap: 8px; font-weight: 600; }
   .run .id { font-family: var(--mono); font-size: 11px; color: var(--muted); word-break: break-all; }
-  .run .meta { display: flex; gap: 8px; align-items: center; margin-top: 3px; font-size: 12px; }
-  .run.nested { padding-left: 26px; font-size: 12px; }
-  .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
-  .st-completed { background: var(--ok); } .st-running { background: var(--run); animation: pulse 1.2s infinite; } .st-failed { background: var(--bad); } .st-paused, .st-waiting_approval, .st-waiting_task { background: var(--wait); } .st-skipped { background: var(--skip); } .st-pending, .st-created { background: #3a4150; } .st-cancelled { background: #8b5cf6; }
-  @keyframes pulse { 0%,100% { opacity: 1 } 50% { opacity: .35 } }
-  .tabs { display: flex; gap: 2px; padding: 8px 12px 0; border-bottom: 1px solid var(--border); background: var(--panel); position: sticky; top: 0; z-index: 2; }
-  .tabs button { border-radius: 6px 6px 0 0; border-bottom: none; background: transparent; color: var(--muted); }
-  .tabs button.active { background: var(--panel2); color: var(--text); }
-  .tabs .right { margin-left: auto; display: flex; gap: 6px; align-items: center; padding-bottom: 6px; }
-  .pane { padding: 12px; display: none; } .pane.active { display: block; }
-  .kv { display: grid; grid-template-columns: max-content 1fr; gap: 3px 12px; font-size: 12px; }
-  .kv div:nth-child(odd) { color: var(--muted); }
-  pre, code { font-family: var(--mono); font-size: 11.5px; }
-  pre { background: #0b0d12; border: 1px solid var(--border); border-radius: 6px; padding: 8px; overflow: auto; max-height: 360px; margin: 6px 0; white-space: pre-wrap; word-break: break-word; }
-  table { border-collapse: collapse; width: 100%; font-size: 12px; }
-  th, td { text-align: left; padding: 4px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
-  th { color: var(--muted); font-weight: 500; position: sticky; top: 0; background: var(--panel2); }
-  tr.clickable { cursor: pointer; } tr.clickable:hover { background: var(--panel2); }
-  .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 8px; margin-bottom: 12px; }
-  .card { background: var(--panel2); border: 1px solid var(--border); border-radius: 8px; padding: 10px; }
-  .card .label { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .4px; }
-  .card .value { font-size: 20px; font-weight: 600; margin-top: 2px; }
-  .card .sub { color: var(--muted); font-size: 11px; margin-top: 2px; }
-  .hint { border-left: 3px solid var(--warn); padding: 4px 10px; margin: 6px 0; background: #1f1c14; border-radius: 0 6px 6px 0; }
-  .finding { padding: 4px 8px; border-radius: 6px; margin: 4px 0; font-size: 12px; background: var(--panel2); }
-  .finding.error { border-left: 3px solid var(--bad); } .finding.warning { border-left: 3px solid var(--warn); } .finding.info { border-left: 3px solid var(--accent); }
-  .graph-scroll { overflow: auto; border: 1px solid var(--border); border-radius: 8px; background: #0b0d12; max-height: calc(100vh - 150px); }
-  svg { display: block; background: #0b0d12; }
-  .tabs { flex-wrap: wrap; }
-  .node rect { fill: var(--panel2); stroke: var(--border); stroke-width: 1.5; rx: 8; }
-  .node.status-running rect { stroke: var(--run); stroke-width: 2.5; } .node.status-completed rect { stroke: var(--ok); } .node.status-failed rect { stroke: var(--bad); stroke-width: 2.5; }
-  .node.status-waiting_approval rect, .node.status-waiting_task rect { stroke: var(--wait); stroke-width: 2.5; stroke-dasharray: 5 3; } .node.status-skipped rect { stroke: var(--skip); stroke-dasharray: 3 3; opacity: .6; }
-  .node.critical rect { filter: drop-shadow(0 0 4px rgba(110,168,254,.45)); }
-  .node.selected rect { stroke: #fff; stroke-width: 2.5; }
-  .node text { fill: var(--text); font-family: var(--sans); font-size: 12px; pointer-events: none; }
-  .node text.sub { fill: var(--muted); font-size: 10.5px; } .node text.badge { fill: var(--text); font-size: 10.5px; font-family: var(--mono); }
+  .run .meta { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; font-size: 11.5px; color: var(--muted); }
+  .run.nested { padding-left: 28px; } .run.nested .title { font-weight: 500; font-size: 12.5px; }
+  .graph-item { padding: 10px 14px; border-bottom: 1px solid var(--border); cursor: pointer; }
+  .graph-item:hover { background: var(--surface2); } .graph-item.active { background: var(--accent-soft); }
+  .graph-item .name { font-weight: 600; } .graph-item .desc { color: var(--muted); font-size: 12px; margin-top: 2px; }
+
+  /* canvas */
+  .canvas-wrap { position: relative; min-height: 0; background: var(--canvas); background-image: radial-gradient(var(--grid) 1px, transparent 1px); background-size: 18px 18px; overflow: hidden; }
+  .canvas-wrap svg { width: 100%; height: 100%; display: block; cursor: grab; touch-action: none; }
+  .canvas-wrap svg.dragging { cursor: grabbing; }
+  .toolbar { position: absolute; top: 12px; left: 12px; display: flex; gap: 6px; align-items: center; z-index: 3; }
+  .toolbar .group { display: inline-flex; background: var(--surface); border: 1px solid var(--border); border-radius: 9px; box-shadow: var(--shadow); overflow: hidden; }
+  .toolbar .group button { border: none; border-radius: 0; background: transparent; padding: 6px 10px; border-right: 1px solid var(--border); }
+  .toolbar .group button:last-child { border-right: none; } .toolbar .group button.on { background: var(--accent-soft); color: var(--accent); }
+  .legend { position: absolute; bottom: 12px; left: 12px; display: flex; gap: 12px; flex-wrap: wrap; color: var(--muted); font-size: 11px; background: var(--surface); border: 1px solid var(--border); border-radius: 9px; padding: 6px 10px; box-shadow: var(--shadow); z-index: 3; }
+  .legend i { display: inline-block; width: 22px; border-top: 2px solid var(--border2); vertical-align: middle; margin-right: 5px; }
+  .run-strip { position: absolute; top: 12px; right: 12px; display: flex; gap: 6px; align-items: center; z-index: 3; background: var(--surface); border: 1px solid var(--border); border-radius: 9px; padding: 5px 8px; box-shadow: var(--shadow); }
+  .edge-tip { position: absolute; pointer-events: none; background: var(--surface); border: 1px solid var(--border2); border-radius: 8px; padding: 7px 10px; box-shadow: var(--shadow-lg); font-size: 11.5px; max-width: 420px; z-index: 5; display: none; }
+  .edge-tip .k { color: var(--muted); font-weight: 600; margin-bottom: 3px; } .edge-tip code { display: block; font-size: 11px; }
+  .empty { color: var(--muted); padding: 40px; text-align: center; }
   .node { cursor: pointer; }
-  .edge { fill: none; stroke: #3d4451; stroke-width: 1.5; } .edge.gate { stroke: var(--wait); stroke-dasharray: 6 3; } .edge.repair { stroke: var(--bad); stroke-dasharray: 4 3; } .edge.route { stroke: var(--purple); } .edge.order { stroke-dasharray: 2 4; } .edge.status { stroke: var(--warn); stroke-dasharray: 2 3; }
-  .edge.critical { stroke: var(--accent); stroke-width: 2.5; }
-  .edge.active { stroke: var(--ok); }
-  .legend { display: flex; gap: 14px; flex-wrap: wrap; color: var(--muted); font-size: 11px; margin: 6px 0; align-items: center; }
-  .legend i { display: inline-block; width: 22px; border-top: 2px solid #3d4451; vertical-align: middle; margin-right: 4px; }
-  .events { font-family: var(--mono); font-size: 11.5px; } .events div { padding: 2px 4px; border-bottom: 1px solid #1c2028; white-space: pre-wrap; word-break: break-word; }
-  .events .t { color: var(--muted); } .events .type { color: var(--accent); } .events .node { color: var(--purple); }
+  .node rect.card { fill: var(--surface); stroke: var(--border2); stroke-width: 1.2; rx: 10; filter: drop-shadow(0 1px 2px rgba(16,24,40,.08)); }
+  .node.status-running rect.card { stroke: var(--run); stroke-width: 2; stroke-dasharray: 6 4; animation: dash 1.2s linear infinite; }
+  @keyframes dash { to { stroke-dashoffset: -20; } }
+  .node.status-completed rect.card { stroke: #b7dfc3; } .node.status-failed rect.card { stroke: var(--bad); stroke-width: 2; }
+  .node.status-waiting_approval rect.card, .node.status-waiting_task rect.card { stroke: var(--wait); stroke-width: 2; }
+  .node.status-skipped { opacity: .55; } .node.status-skipped rect.card { stroke-dasharray: 3 3; }
+  .node.selected rect.card { stroke: var(--accent); stroke-width: 2.5; filter: drop-shadow(0 6px 14px rgba(37,99,235,.25)); }
+  .node.dim { opacity: .28; } .node.critical rect.stripe { } .node.critical rect.card { stroke: var(--accent); }
+  .node text { fill: var(--text); font-family: var(--sans); pointer-events: none; }
+  .node text.id { font-size: 13px; font-weight: 700; } .node text.sub { fill: var(--muted); font-size: 11px; } .node text.badge { fill: var(--text); font-size: 11px; font-family: var(--mono); }
+  .node text.icon { font-size: 13px; }
+  .edge { fill: none; stroke: var(--border2); stroke-width: 1.6; pointer-events: stroke; cursor: pointer; }
+  .edge-hit { fill: none; stroke: transparent; stroke-width: 14; pointer-events: stroke; cursor: pointer; }
+  .edge.gate { stroke: var(--wait); stroke-dasharray: 7 4; } .edge.repair { stroke: var(--bad); stroke-dasharray: 4 3; } .edge.route { stroke: var(--purple); } .edge.order { stroke-dasharray: 2 4; } .edge.status { stroke: var(--warn); stroke-dasharray: 2 3; }
+  .edge.critical { stroke: var(--accent); stroke-width: 2.6; } .edge.active { stroke: var(--ok); }
+  .edge.hi { stroke: var(--accent); stroke-width: 2.8; } .edge.dim { opacity: .18; }
+  .nested-badge rect { fill: var(--purple-soft); stroke: none; rx: 6; } .nested-badge text { fill: var(--purple); font-size: 10.5px; font-weight: 600; }
+
+  /* drawer */
+  .drawer { border-top: 1px solid var(--border); background: var(--surface); display: grid; grid-template-rows: 38px 1fr; height: 42vh; min-height: 120px; }
+  .drawer.collapsed { height: 38px; }
+  .drawer .tabs { display: flex; align-items: center; gap: 2px; padding: 0 10px; border-bottom: 1px solid var(--border); }
+  .drawer .tabs button { border: none; background: transparent; color: var(--muted); padding: 8px 12px; border-radius: 0; border-bottom: 2px solid transparent; font-weight: 600; }
+  .drawer .tabs button.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .drawer .tabs .right { margin-left: auto; display: flex; gap: 6px; align-items: center; }
+  .pane { display: none; overflow: auto; padding: 12px 14px; } .pane.active { display: block; }
+  .drawer.collapsed .pane { display: none; }
+  table { border-collapse: collapse; width: 100%; font-size: 12.5px; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; font-size: 11.5px; text-transform: uppercase; letter-spacing: .3px; position: sticky; top: 0; background: var(--surface); }
+  tr.clickable { cursor: pointer; } tr.clickable:hover { background: var(--surface2); }
+  .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 10px; margin-bottom: 12px; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; box-shadow: var(--shadow); }
+  .card .label { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .4px; font-weight: 600; }
+  .card .value { font-size: 22px; font-weight: 700; margin-top: 4px; letter-spacing: -.3px; } .card .sub { color: var(--muted); font-size: 11.5px; margin-top: 3px; }
+  .hint { border-left: 3px solid var(--warn); padding: 6px 10px; margin: 6px 0; background: var(--warn-soft); border-radius: 0 8px 8px 0; }
+  .finding { padding: 6px 10px; border-radius: 8px; margin: 5px 0; font-size: 12.5px; background: var(--surface2); border-left: 3px solid var(--border2); }
+  .finding.error { border-left-color: var(--bad); } .finding.warning { border-left-color: var(--warn); } .finding.info { border-left-color: var(--accent); }
+  .events { font-family: var(--mono); font-size: 11.5px; }
+  .events div { padding: 3px 4px; border-bottom: 1px solid var(--border); white-space: pre-wrap; word-break: break-word; display: grid; grid-template-columns: 90px 160px 150px 1fr; gap: 8px; }
+  .events .t { color: var(--faint); } .events .type { color: var(--accent); } .events .node { color: var(--purple); }
   .events .bad { color: var(--bad); } .events .good { color: var(--ok); } .events .warn { color: var(--wait); }
-  .modal-bg { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: none; align-items: center; justify-content: center; z-index: 10; }
-  .modal-bg.open { display: flex; }
-  .modal { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; width: 760px; max-width: 95vw; max-height: 90vh; overflow: auto; padding: 16px; }
-  .modal h2 { margin: 0 0 10px; font-size: 15px; }
-  label { display: block; color: var(--muted); font-size: 11px; margin: 8px 0 3px; }
-  input, select, textarea { width: 100%; background: #0b0d12; color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; font: inherit; }
-  textarea { font-family: var(--mono); font-size: 11.5px; min-height: 90px; }
+  .kv { display: grid; grid-template-columns: max-content 1fr; gap: 5px 14px; font-size: 12.5px; }
+  .kv div:nth-child(odd) { color: var(--muted); font-weight: 600; font-size: 11.5px; text-transform: uppercase; letter-spacing: .2px; padding-top: 2px; }
+  .gatebox { border: 1px solid var(--wait); background: var(--warn-soft); border-radius: var(--radius); padding: 12px; margin: 10px 0; }
+  .taskbox { border: 1px solid var(--border); background: var(--surface); border-radius: var(--radius); padding: 12px; margin: 10px 0; box-shadow: var(--shadow); }
+  details summary { cursor: pointer; color: var(--muted); font-size: 12px; font-weight: 600; margin: 8px 0 4px; }
   .row { display: flex; gap: 10px; } .row > * { flex: 1; }
-  .gatebox { border: 1px solid var(--wait); background: #2a2410; border-radius: 8px; padding: 10px; margin: 8px 0; }
-  .taskbox { border: 1px solid var(--border); background: var(--panel2); border-radius: 8px; padding: 10px; margin: 8px 0; }
-  .muted { color: var(--muted); } .mono { font-family: var(--mono); font-size: 11.5px; }
-  .empty { color: var(--muted); padding: 30px; text-align: center; }
-  details summary { cursor: pointer; color: var(--muted); font-size: 12px; margin: 6px 0; }
-  .toast { position: fixed; bottom: 14px; right: 14px; background: var(--panel2); border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; z-index: 20; display: none; }
+  .modal-bg { position: fixed; inset: 0; background: rgba(15,20,30,.45); display: none; align-items: center; justify-content: center; z-index: 20; }
+  .modal-bg.open { display: flex; }
+  .modal { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; width: 780px; max-width: 95vw; max-height: 90vh; overflow: auto; padding: 20px; box-shadow: var(--shadow-lg); }
+  .modal h2 { margin: 0 0 12px; font-size: 16px; }
+  .toast { position: fixed; bottom: 16px; right: 16px; background: var(--surface); border: 1px solid var(--border2); border-radius: 10px; padding: 10px 14px; z-index: 30; display: none; box-shadow: var(--shadow-lg); }
+  .muted { color: var(--muted); } .mono { font-family: var(--mono); font-size: 12px; }
+  h3 { margin: 0 0 8px; font-size: 14px; } h4 { margin: 12px 0 6px; font-size: 12.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .3px; }
+
+  /* design mode */
+  .design-main { display: grid; grid-template-rows: 1fr auto; min-height: 0; }
+  .editor-wrap { display: grid; grid-template-columns: minmax(380px, 46%) 1fr; min-height: 0; }
+  .editor { border-right: 1px solid var(--border); display: grid; grid-template-rows: 40px 1fr; min-height: 0; background: var(--surface); }
+  .editor .bar { display: flex; align-items: center; gap: 8px; padding: 0 10px; border-bottom: 1px solid var(--border); }
+  .editor textarea { border: none; border-radius: 0; height: 100%; resize: none; padding: 12px; font-size: 12px; }
+  .editor textarea:focus { outline: none; }
 </style>
 </head>
 <body>
 <header>
-  <h1>gren <span>· Graph Engineering Runtime</span></h1>
-  <span id="sse" class="pill">connecting…</span>
-  <span id="bridges" class="pill">bridges…</span>
+  <div class="brand"><div class="logo">g</div>gren <span>· Graph Engineering Runtime</span></div>
+  <div class="seg" id="modeSeg"><button data-mode="runs" class="active">Runs</button><button data-mode="design">Design</button></div>
+  <div class="crumbs" id="crumbs"></div>
   <div class="spacer"></div>
-  <label style="margin:0;display:flex;align-items:center;gap:4px"><input type="checkbox" id="showNested" style="width:auto"> nested</label>
+  <span id="sse" class="chip">connecting…</span>
+  <span id="bridges" class="chip">bridges…</span>
+  <button class="ghost sm" id="themeBtn" title="Toggle theme">☾</button>
   <button id="newRun" class="primary">＋ New run</button>
 </header>
-<main>
-  <aside>
-    <div class="runs-head"><strong>Runs</strong><span id="runCount" class="muted"></span></div>
+
+<div class="app" id="app">
+  <aside id="sidebar">
+    <div class="side-head"><span>Runs</span><span><label style="display:inline-flex;gap:4px;align-items:center;margin:0;text-transform:none;font-weight:500"><input type="checkbox" id="showNested" style="width:auto"> nested</label> <span class="count" id="runCount"></span></span></div>
     <div id="runs"></div>
   </aside>
-  <section>
-    <div class="tabs" id="tabs">
-      <button data-tab="graph" class="active">Graph</button>
-      <button data-tab="nodes">Nodes</button>
-      <button data-tab="events">Events</button>
-      <button data-tab="metrics">Metrics</button>
-      <button data-tab="decisions">Decisions</button>
-      <button data-tab="tasks">Tasks <span id="taskBadge"></span></button>
-      <button data-tab="analysis">Analysis</button>
-      <button data-tab="spec">Spec</button>
-      <button data-tab="output">Output</button>
-      <div class="right" id="runActions"></div>
+
+  <div class="main" id="runsMain">
+    <div class="canvas-wrap" id="canvasWrap">
+      <div class="toolbar">
+        <div class="group"><button id="fitBtn" title="Fit to view">⤢ Fit</button><button id="zoomIn">＋</button><button id="zoomOut">－</button><button id="zoomReset">100%</button></div>
+        <div class="group"><button id="cpBtn" class="on" title="Highlight the critical path">Critical path</button><button id="layoutBtn" title="Reset node positions">Auto-layout</button></div>
+      </div>
+      <div class="run-strip" id="runActions"></div>
+      <svg id="svg"><defs>
+        <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#cfd4db"/></marker>
+        <marker id="arrowc" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#2563eb"/></marker>
+        <marker id="arrowg" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#d97706"/></marker>
+        <marker id="arrowr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#dc2626"/></marker>
+        <marker id="arrowp" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#7c3aed"/></marker>
+        <marker id="arrowok" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#16a34a"/></marker>
+      </defs><g id="viewport"></g></svg>
+      <div class="edge-tip" id="edgeTip"></div>
+      <div class="legend"><span><i style="border-color:var(--accent);border-width:3px"></i>critical path</span><span><i></i>data</span><span><i style="border-color:var(--wait);border-style:dashed"></i>gate</span><span><i style="border-color:var(--bad);border-style:dashed"></i>repair</span><span><i style="border-color:var(--purple)"></i>route</span><span><i style="border-style:dotted"></i>ordering-only</span><span class="muted">drag nodes · wheel to zoom · hover an edge to see what crosses it</span></div>
+      <div class="empty" id="canvasEmpty" style="position:absolute;inset:0;display:grid;place-items:center">Select a run, or switch to Design to build a graph.</div>
     </div>
-    <div id="pane-graph" class="pane active"><div class="empty">Select a run or start one.</div></div>
-    <div id="pane-nodes" class="pane"></div>
-    <div id="pane-events" class="pane"><div class="events" id="events"></div></div>
-    <div id="pane-metrics" class="pane"></div>
-    <div id="pane-decisions" class="pane"></div>
-    <div id="pane-tasks" class="pane"></div>
-    <div id="pane-analysis" class="pane"></div>
-    <div id="pane-spec" class="pane"><pre id="specText"></pre></div>
-    <div id="pane-output" class="pane"><pre id="outputText"></pre></div>
-  </section>
+    <div class="drawer" id="drawer">
+      <div class="tabs" id="tabs">
+        <button data-tab="events" class="active">Events</button>
+        <button data-tab="metrics">Metrics</button>
+        <button data-tab="decisions">Decisions</button>
+        <button data-tab="tasks">Tasks <span id="taskBadge"></span></button>
+        <button data-tab="analysis">Analysis</button>
+        <button data-tab="spec">Spec</button>
+        <button data-tab="output">Output</button>
+        <div class="right"><input id="eventFilter" placeholder="filter events…" style="width:180px;padding:4px 8px"><button class="ghost sm" id="drawerToggle">▾</button></div>
+      </div>
+      <div id="pane-events" class="pane active"><div class="events" id="events"></div></div>
+      <div id="pane-metrics" class="pane"></div>
+      <div id="pane-decisions" class="pane"></div>
+      <div id="pane-tasks" class="pane"></div>
+      <div id="pane-analysis" class="pane"></div>
+      <div id="pane-spec" class="pane"><pre id="specText"></pre></div>
+      <div id="pane-output" class="pane"><pre id="outputText"></pre></div>
+    </div>
+  </div>
+
+  <div class="main design-main" id="designMain" style="display:none">
+    <div class="editor-wrap">
+      <div class="editor">
+        <div class="bar"><strong id="designTitle">untitled.yaml</strong><span class="muted" id="designStatus"></span><span style="flex:1"></span><button class="sm" id="validateBtn">Validate</button><button class="sm" id="saveBtn">Save</button><button class="sm primary" id="designRunBtn">Run…</button></div>
+        <textarea id="yamlEditor" spellcheck="false"></textarea>
+      </div>
+      <div class="canvas-wrap" id="designCanvasWrap">
+        <div class="toolbar"><div class="group"><button id="dfitBtn">⤢ Fit</button><button id="dzoomIn">＋</button><button id="dzoomOut">－</button></div></div>
+        <svg id="dsvg"><g id="dviewport"></g></svg>
+        <div class="edge-tip" id="dedgeTip"></div>
+        <div class="empty" id="designEmpty" style="position:absolute;inset:0;display:grid;place-items:center">Validate to preview the graph.</div>
+      </div>
+    </div>
+    <div class="drawer" id="designDrawer"><div class="tabs"><button class="active">Analysis</button></div><div class="pane active" id="designAnalysis"><div class="muted">Findings, the dependency test and the checklist appear here after Validate.</div></div></div>
+  </div>
+
   <div class="inspector" id="inspector"><div class="empty">Click a node to inspect it.</div></div>
-</main>
+</div>
 
 <div class="modal-bg" id="modal">
   <div class="modal">
     <h2>New run</h2>
     <label>Graph</label>
     <select id="graphSelect"></select>
-    <div id="graphInfo" class="muted" style="margin:4px 0 0"></div>
+    <div id="graphInfo" class="muted" style="margin:6px 0 0"></div>
     <div class="row">
-      <div><label>Bridge</label><select id="bridgeSelect"><option value="">(default)</option><option value="claude-code">claude-code (subscription)</option><option value="api">api (ANTHROPIC_API_KEY)</option><option value="inbox">inbox (orchestrator / human worker)</option><option value="mock">mock (no tokens)</option></select></div>
-      <div><label>Options</label><label style="margin:6px 0;display:flex;gap:6px;align-items:center;color:var(--text)"><input type="checkbox" id="autoApprove" style="width:auto"> auto-approve gates (demo only)</label></div>
+      <div><label>Bridge</label><select id="bridgeSelect"><option value="">(default)</option><option value="claude-code">claude-code · headless sessions (login)</option><option value="api">api · ANTHROPIC_API_KEY</option><option value="inbox">inbox · orchestrator / human worker</option><option value="mock">mock · no tokens</option></select></div>
+      <div><label>Options</label><label style="text-transform:none;font-weight:500;display:flex;gap:6px;align-items:center;margin:8px 0;color:var(--text)"><input type="checkbox" id="autoApprove" style="width:auto"> auto-approve gates (demo only)</label></div>
     </div>
     <label>Input (JSON)</label>
     <textarea id="inputJson">{}</textarea>
-    <div id="newRunError" style="color:var(--bad);margin:6px 0"></div>
-    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:10px"><button id="cancelNew">Cancel</button><button id="startNew" class="primary">Start run</button></div>
+    <div id="newRunError" style="color:var(--bad);margin:8px 0"></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px"><button id="cancelNew">Cancel</button><button id="startNew" class="primary">Start run</button></div>
   </div>
 </div>
 <div class="toast" id="toast"></div>
@@ -152,8 +254,8 @@
 (() => {
   const $ = (s, el = document) => el.querySelector(s);
   const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-  const fmtMs = (ms) => ms === undefined || ms === null ? "–" : ms < 1000 ? `${Math.round(ms)}ms` : ms < 60000 ? `${(ms / 1000).toFixed(1)}s` : `${Math.floor(ms / 60000)}m${Math.round((ms % 60000) / 1000)}s`;
-  const fmtUsd = (v) => `$${Number(v ?? 0).toFixed(4)}`;
+  const fmtMs = (ms) => ms === undefined || ms === null ? "–" : ms < 1000 ? `${Math.round(ms)}ms` : ms < 60000 ? `${(ms / 1000).toFixed(1)}s` : `${Math.floor(ms / 60000)}m${String(Math.round((ms % 60000) / 1000)).padStart(2, "0")}s`;
+  const fmtUsd = (v) => `$${Number(v ?? 0).toFixed(v >= 1 ? 2 : 4)}`;
   const api = async (path, body) => {
     const r = await fetch(path, body ? { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) } : undefined);
     const j = await r.json();
@@ -161,25 +263,175 @@
     return j;
   };
   const toast = (msg, bad) => { const t = $("#toast"); t.textContent = msg; t.style.display = "block"; t.style.borderColor = bad ? "var(--bad)" : "var(--ok)"; clearTimeout(t._t); t._t = setTimeout(() => (t.style.display = "none"), 3500); };
+  const KIND_ICON = { agent: "◆", code: "⚙", verify: "✓", gate: "⏸", router: "⇄", loop: "↻", subgraph: "▣" };
+  const KIND_COLOR = { agent: "#2563eb", code: "#66707d", verify: "#16a34a", gate: "#d97706", router: "#7c3aed", loop: "#0891b2", subgraph: "#7c3aed" };
 
-  let runs = [], current = null, data = null, selectedNode = null, eventsSeq = 0, graphs = [], refreshTimer = null, tab = "graph";
+  // ---------- theme ----------
+  const applyTheme = (t) => { document.documentElement.setAttribute("data-theme", t); $("#themeBtn").textContent = t === "dark" ? "☀" : "☾"; try { localStorage.setItem("gren.theme", t); } catch {} };
+  let theme = "light"; try { theme = localStorage.getItem("gren.theme") || "light"; } catch {}
+  applyTheme(theme);
+  $("#themeBtn").addEventListener("click", () => applyTheme(document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark"));
+
+  // ---------- state ----------
+  let runs = [], allRuns = [], current = null, data = null, selectedNode = null, eventsSeq = 0, graphs = [], refreshTimer = null, tab = "events", mode = "runs", showCritical = true;
+
+  // ---------- generic canvas (pan/zoom/drag) ----------
+  function makeCanvas(svgId, viewportId, tipId, opts) {
+    const svg = $(svgId), vp = $(viewportId), tip = $(tipId);
+    const view = { x: 40, y: 40, k: 1 };
+    const state = { nodes: [], edges: [], pos: {}, key: "" };
+    const applyView = () => vp.setAttribute("transform", `translate(${view.x},${view.y}) scale(${view.k})`);
+    let drag = null;
+    svg.addEventListener("pointerdown", (e) => {
+      const g = e.target.closest(".node");
+      if (g) { drag = { type: "node", id: g.dataset.id, sx: e.clientX, sy: e.clientY, ox: state.pos[g.dataset.id].x, oy: state.pos[g.dataset.id].y, moved: false }; }
+      else if (!e.target.closest(".edge-hit")) { drag = { type: "pan", sx: e.clientX, sy: e.clientY, ox: view.x, oy: view.y }; svg.classList.add("dragging"); }
+      if (drag) svg.setPointerCapture(e.pointerId);
+    });
+    svg.addEventListener("pointermove", (e) => {
+      if (!drag) return;
+      const dx = e.clientX - drag.sx, dy = e.clientY - drag.sy;
+      if (drag.type === "pan") { view.x = drag.ox + dx; view.y = drag.oy + dy; applyView(); }
+      else { if (Math.abs(dx) + Math.abs(dy) > 3) drag.moved = true; state.pos[drag.id].x = drag.ox + dx / view.k; state.pos[drag.id].y = drag.oy + dy / view.k; draw(true); }
+    });
+    svg.addEventListener("pointerup", (e) => {
+      if (drag?.type === "node") { if (drag.moved) savePositions(); else opts.onSelect?.(drag.id); }
+      drag = null; svg.classList.remove("dragging");
+    });
+    svg.addEventListener("wheel", (e) => {
+      e.preventDefault();
+      const rect = svg.getBoundingClientRect(); const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+      const factor = Math.exp(-e.deltaY * 0.0015); const k2 = Math.min(3, Math.max(0.2, view.k * factor));
+      view.x = mx - (mx - view.x) * (k2 / view.k); view.y = my - (my - view.y) * (k2 / view.k); view.k = k2; applyView();
+    }, { passive: false });
+    const savePositions = () => { try { localStorage.setItem(`gren.pos.${state.key}`, JSON.stringify(state.pos)); } catch {} };
+    const loadPositions = () => { try { return JSON.parse(localStorage.getItem(`gren.pos.${state.key}`) || "null"); } catch { return null; } };
+    function fit() {
+      const rect = svg.getBoundingClientRect(); const ps = Object.values(state.pos); if (!ps.length) return;
+      const minX = Math.min(...ps.map((p) => p.x)), minY = Math.min(...ps.map((p) => p.y)), maxX = Math.max(...ps.map((p) => p.x + p.w)), maxY = Math.max(...ps.map((p) => p.y + p.h));
+      const k = Math.min(1.25, Math.max(0.2, Math.min((rect.width - 80) / (maxX - minX + 1), (rect.height - 80) / (maxY - minY + 1))));
+      view.k = k; view.x = (rect.width - (maxX - minX) * k) / 2 - minX * k; view.y = (rect.height - (maxY - minY) * k) / 2 - minY * k; applyView();
+    }
+    function zoom(f) { const rect = svg.getBoundingClientRect(); const mx = rect.width / 2, my = rect.height / 2; const k2 = Math.min(3, Math.max(0.2, view.k * f)); view.x = mx - (mx - view.x) * (k2 / view.k); view.y = my - (my - view.y) * (k2 / view.k); view.k = k2; applyView(); }
+    function layout(nodes, edges, levels) {
+      const W = 236, H = 92, GX = 90, GY = 30;
+      const byLevel = levels.length ? levels.map((l) => [...l]) : [nodes.map((n) => n.id)];
+      const idx = {}; byLevel.forEach((ids, li) => ids.forEach((id, i) => (idx[id] = { li, i })));
+      const preds = {}, succs = {};
+      for (const e of edges) { if (e.kind === "repair") continue; (preds[e.to] ??= []).push(e.from); (succs[e.from] ??= []).push(e.to); }
+      for (let sweep = 0; sweep < 4; sweep++) {
+        const down = sweep % 2 === 0;
+        const order = down ? byLevel.map((_, i) => i) : byLevel.map((_, i) => i).reverse();
+        for (const li of order) {
+          const ids = byLevel[li];
+          const bary = ids.map((id) => { const nb = (down ? preds[id] : succs[id]) || []; const vals = nb.filter((n) => idx[n]).map((n) => idx[n].i); return { id, b: vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : idx[id].i }; });
+          bary.sort((a, b) => a.b - b.b); byLevel[li] = bary.map((x) => x.id); byLevel[li].forEach((id, i) => (idx[id].i = i));
+        }
+      }
+      const maxRows = Math.max(...byLevel.map((l) => l.length));
+      const pos = {};
+      byLevel.forEach((ids, li) => { const total = ids.length * H + (ids.length - 1) * GY; const off = (maxRows * (H + GY) - total) / 2; ids.forEach((id, ri) => (pos[id] = { x: li * (W + GX), y: off + ri * (H + GY), w: W, h: H })); });
+      return pos;
+    }
+    function set(nodes, edges, levels, key, keepPos) {
+      state.nodes = nodes; state.edges = edges; state.key = key;
+      const saved = keepPos ? loadPositions() : null;
+      const auto = layout(nodes, edges, levels);
+      state.pos = {}; for (const n of nodes) state.pos[n.id] = saved?.[n.id] ? { ...auto[n.id], ...saved[n.id] } : auto[n.id];
+    }
+    function draw(quick) {
+      const { nodes, edges, pos } = state; const sel = opts.selected?.();
+      const rel = new Set(); if (sel) { rel.add(sel); const walk = (id, dir) => { for (const e of edges) { if (e.kind === "repair") continue; const nxt = dir === "up" ? (e.to === id ? e.from : null) : (e.from === id ? e.to : null); if (nxt && !rel.has(nxt)) { rel.add(nxt); walk(nxt, dir); } } }; walk(sel, "up"); walk(sel, "down"); }
+      const cp = new Set(showCritical ? (opts.criticalPath?.() || []) : []);
+      const edgeSvg = edges.map((e, i) => {
+        const f = pos[e.from], t = pos[e.to]; if (!f || !t) return "";
+        const back = e.kind === "repair";
+        const x1 = f.x + f.w, y1 = f.y + f.h / 2, x2 = t.x, y2 = t.y + t.h / 2;
+        const d = back ? `M${f.x + f.w / 2},${f.y} C${f.x + f.w / 2},${f.y - 60} ${t.x + t.w / 2},${t.y - 60} ${t.x + t.w / 2},${t.y}` : `M${x1},${y1} C${x1 + 50},${y1} ${x2 - 50},${y2} ${x2},${y2}`;
+        const st = opts.nodeStatus?.(e.from), st2 = opts.nodeStatus?.(e.to);
+        const active = st === "completed" && ["completed", "running", "waiting_approval"].includes(st2);
+        const crit = cp.has(e.from) && cp.has(e.to) && !back;
+        const hi = sel && (e.from === sel || e.to === sel);
+        const dim = sel && !hi && !(rel.has(e.from) && rel.has(e.to));
+        const marker = hi ? "arrowc" : crit ? "arrowc" : e.kind === "gate" ? "arrowg" : e.kind === "repair" ? "arrowr" : e.kind === "route" ? "arrowp" : active ? "arrowok" : "arrow";
+        return `<path class="edge-hit" d="${d}" data-i="${i}"></path><path class="edge ${e.kind} ${crit ? "critical" : ""} ${active && !crit ? "active" : ""} ${hi ? "hi" : ""} ${dim ? "dim" : ""}" d="${d}" marker-end="url(#${marker})" data-i="${i}"></path>`;
+      }).join("");
+      const nodeSvg = nodes.map((n) => {
+        const p = pos[n.id]; const status = opts.nodeStatus?.(n.id) || "pending"; const info = opts.nodeInfo?.(n.id) || {};
+        const dim = sel && sel !== n.id && !rel.has(n.id);
+        const color = KIND_COLOR[n.kind] || "#66707d";
+        return `<g class="node status-${status} ${cp.has(n.id) ? "critical" : ""} ${sel === n.id ? "selected" : ""} ${dim ? "dim" : ""}" data-id="${esc(n.id)}" transform="translate(${p.x},${p.y})">
+          <rect class="card" width="${p.w}" height="${p.h}"></rect>
+          <rect class="stripe" x="0" y="0" width="5" height="${p.h}" rx="2" fill="${color}"></rect>
+          <circle cx="20" cy="20" r="5" class="${status === "running" ? "st-running" : ""}" fill="${{ completed: "#16a34a", running: "#2563eb", failed: "#dc2626", skipped: "#9aa3ae", waiting_approval: "#d97706", waiting_task: "#d97706" }[status] || "#c5cad2"}"></circle>
+          <text x="32" y="24" class="id">${esc(n.id)}</text>
+          <text x="${p.w - 10}" y="24" class="icon" text-anchor="end" fill="${color}">${KIND_ICON[n.kind] || ""}</text>
+          <text x="16" y="45" class="sub">${esc(info.sub || n.kind)}</text>
+          <text x="16" y="66" class="badge">${esc(info.badge || "")}</text>
+          <text x="${p.w - 10}" y="82" class="sub" text-anchor="end">${esc(info.right || "")}</text>
+          ${info.nested ? `<g class="nested-badge" transform="translate(16,72)"><rect width="58" height="14"></rect><text x="5" y="10.5">nested ↗</text></g>` : ""}
+          <title>${esc(n.id)} · ${n.kind} · ${status}${n.description ? "\n" + esc(n.description) : ""}${info.tip ? "\n" + esc(info.tip) : ""}</title>
+        </g>`;
+      }).join("");
+      vp.innerHTML = edgeSvg + nodeSvg;
+      if (!quick) applyView();
+      vp.querySelectorAll(".edge-hit, .edge").forEach((p) => {
+        p.addEventListener("pointerenter", (ev) => { const e = edges[Number(p.dataset.i)]; tip.innerHTML = `<div class="k">${esc(e.from)} → ${esc(e.to)} · ${e.kind}</div>${e.data.map((d) => `<code>${esc(d)}</code>`).join("")}`; tip.style.display = "block"; });
+        p.addEventListener("pointermove", (ev) => { const r = svg.getBoundingClientRect(); tip.style.left = `${ev.clientX - r.left + 14}px`; tip.style.top = `${ev.clientY - r.top + 14}px`; });
+        p.addEventListener("pointerleave", () => (tip.style.display = "none"));
+      });
+    }
+    return { set, draw, fit, zoom, reset: () => { view.k = 1; applyView(); }, autoLayout: () => { try { localStorage.removeItem(`gren.pos.${state.key}`); } catch {} set(state.nodes, state.edges, opts.levels?.() || [], state.key, false); draw(); fit(); }, state };
+  }
+
+  const canvas = makeCanvas("#svg", "#viewport", "#edgeTip", {
+    onSelect: (id) => { selectedNode = id; canvas.draw(true); renderInspector(id); },
+    selected: () => selectedNode,
+    criticalPath: () => (data?.metrics?.critical_path?.nodes?.length > 1 ? data.metrics.critical_path.nodes : data?.analysis?.critical_path?.nodes) || [],
+    levels: () => data?.analysis?.levels || [],
+    nodeStatus: (id) => data?.nodes?.[id]?.status || "pending",
+    nodeInfo: (id) => {
+      if (!data) return {}; const n = data.nodes[id] || {}; const spec = data.run.spec.nodes.find((s) => s.id === id) || {}; const an = data.analysis.nodes[id] || {};
+      let badge = "";
+      if (n.items) badge = `${n.items.filter((i) => i.status === "completed").length}/${n.items.length} items`;
+      if (n.verify) badge += ` · kill ${(n.verify.kill_rate * 100).toFixed(0)}%`;
+      if (n.route) badge = `→ ${n.route}`;
+      if (n.gate?.decision) badge = `${n.gate.decision} · ${n.gate.by || ""}`;
+      if (n.loop) badge = `${n.loop.rounds} rounds · ${n.loop.collected} items`;
+      if (n.status === "waiting_approval") badge = "awaiting approval";
+      if (n.status === "waiting_task") badge = "inbox task";
+      if (n.status === "skipped") badge = "skipped";
+      if (n.status === "failed") badge = "failed";
+      const sub = [an.model ? an.model.replace("claude-", "") : spec.kind, spec.map ? "map" : null, spec.tools?.length ? spec.tools.join("/") : null, spec.side_effect ? "side-effect" : null, spec.effort].filter(Boolean).join(" · ");
+      const right = n.status === "completed" || n.status === "failed" ? `${fmtMs(n.duration_ms)}${n.cost_usd ? " · " + fmtUsd(n.cost_usd) : ""}` : "";
+      return { sub, badge, right, nested: spec.kind === "loop" || spec.kind === "subgraph", tip: n.error || n.skip_reason || "" };
+    },
+  });
+  const dcanvas = makeCanvas("#dsvg", "#dviewport", "#dedgeTip", { onSelect: (id) => showDesignNode(id), selected: () => designSel, criticalPath: () => designAnalysis?.critical_path?.nodes || [], levels: () => designAnalysis?.levels || [], nodeStatus: () => "pending", nodeInfo: (id) => { const an = designAnalysis?.nodes[id] || {}; const spec = designSpec?.nodes.find((s) => s.id === id) || {}; return { sub: [an.model ? an.model.replace("claude-", "") : spec.kind, spec.map ? "map" : null, spec.tools?.length ? spec.tools.join("/") : null, spec.side_effect ? "side-effect" : null].filter(Boolean).join(" · "), badge: an.on_critical_path ? `~${fmtMs(an.est_ms)} · est ${fmtUsd(an.est_cost_usd)}` : `est ${fmtUsd(an.est_cost_usd)}`, nested: spec.kind === "loop" || spec.kind === "subgraph" }; } });
+  $("#fitBtn").addEventListener("click", () => canvas.fit()); $("#zoomIn").addEventListener("click", () => canvas.zoom(1.25)); $("#zoomOut").addEventListener("click", () => canvas.zoom(0.8)); $("#zoomReset").addEventListener("click", () => canvas.reset());
+  $("#layoutBtn").addEventListener("click", () => canvas.autoLayout());
+  $("#cpBtn").addEventListener("click", () => { showCritical = !showCritical; $("#cpBtn").classList.toggle("on", showCritical); canvas.draw(true); });
+  $("#dfitBtn").addEventListener("click", () => dcanvas.fit()); $("#dzoomIn").addEventListener("click", () => dcanvas.zoom(1.25)); $("#dzoomOut").addEventListener("click", () => dcanvas.zoom(0.8));
+  window.addEventListener("resize", () => { if (data) canvas.fit(); });
 
   // ---------- runs list ----------
   async function loadRuns() {
-    runs = await api(`/api/runs?all=${$("#showNested").checked ? 1 : 0}`);
+    allRuns = await api(`/api/runs?all=1`);
+    runs = $("#showNested").checked ? allRuns : allRuns.filter((r) => !r.parent);
     $("#runCount").textContent = `${runs.length}`;
     const el = $("#runs");
     el.innerHTML = runs.map((r) => `
       <div class="run ${r.parent ? "nested" : ""} ${current === r.id ? "active" : ""}" data-id="${esc(r.id)}">
-        <div><span class="dot st-${r.status}"></span> <strong>${esc(r.graph)}</strong> ${r.in_process ? '<span class="pill">live</span>' : ""}</div>
-        <div class="id">${esc(r.parent ? r.id.split("/nested/").slice(1).join("/") : r.id)}</div>
-        <div class="meta"><span class="pill">${r.status}</span><span class="muted">${r.nodes.completed}/${r.nodes.total}</span><span class="muted">${fmtUsd(r.cost_usd)}</span>${r.nodes.waiting ? `<span class="pill warn">${r.nodes.waiting} waiting</span>` : ""}</div>
+        <div class="title"><span class="dot st-${r.status}"></span>${esc(r.graph)} ${r.in_process ? '<span class="chip accent">live</span>' : ""}</div>
+        <div class="id">${esc(r.parent ? r.id.split("/nested/").slice(1).join(" › ") : r.id)}</div>
+        <div class="meta"><span class="chip ${r.status === "completed" ? "ok" : r.status === "failed" ? "bad" : r.status === "paused" ? "warn" : ""}">${r.status}</span><span>${r.nodes.completed}/${r.nodes.total}</span><span>${fmtUsd(r.cost_usd)}</span>${r.nodes.waiting ? `<span class="chip warn">${r.nodes.waiting} waiting</span>` : ""}</div>
       </div>`).join("") || '<div class="empty">No runs yet.</div>';
     el.querySelectorAll(".run").forEach((d) => d.addEventListener("click", () => selectRun(d.dataset.id)));
   }
 
-  async function selectRun(id) {
-    current = id; selectedNode = null; eventsSeq = 0; $("#events").innerHTML = "";
+  async function selectRun(id, keepSelection) {
+    if (current !== id) { selectedNode = null; eventsSeq = 0; $("#events").innerHTML = ""; }
+    current = id;
     await refresh(true);
     loadRuns();
   }
@@ -187,157 +439,97 @@
   async function refresh(full = false) {
     if (!current) return;
     try { data = await api(`/api/run?id=${encodeURIComponent(current)}`); } catch (e) { toast(e.message, true); return; }
-    renderActions(); renderGraph(); renderNodes(); renderMetrics(); renderDecisions(); renderTasks(); renderAnalysis();
+    $("#canvasEmpty").style.display = "none";
+    renderCrumbs(); renderActions(); renderGraph(full); renderMetrics(); renderDecisions(); renderTasks(); renderAnalysis($("#pane-analysis"), data.analysis);
     $("#specText").textContent = data.spec_yaml; $("#outputText").textContent = JSON.stringify(data.run.output ?? null, null, 2);
     if (full) { const evs = await api(`/api/run/events?id=${encodeURIComponent(current)}&after=0`); evs.forEach(appendEvent); }
-    if (selectedNode) renderInspector(selectedNode); else renderRunInspector();
+    if (selectedNode && data.nodes[selectedNode]) renderInspector(selectedNode); else { selectedNode = null; renderRunInspector(); }
   }
-  const scheduleRefresh = () => { clearTimeout(refreshTimer); refreshTimer = setTimeout(() => refresh(false), 250); };
+  const scheduleRefresh = () => { clearTimeout(refreshTimer); refreshTimer = setTimeout(() => refresh(false), 300); };
+
+  function renderCrumbs() {
+    const r = data.run; const parts = [];
+    if (r.parent) parts.push(`<a href="#" data-run="${esc(r.parent.run_id)}">${esc(r.parent.run_id.split("/nested/")[0])}</a> › <span>${esc(r.parent.node_id)}${r.parent.round ? " · round " + r.parent.round : ""}</span> ›`);
+    parts.push(`<strong>${esc(r.graph)}</strong>`);
+    if (r.forked_from) parts.push(`<span class="chip purple">forked from ${esc(r.forked_from)}</span>`);
+    $("#crumbs").innerHTML = parts.join(" ");
+    $("#crumbs").querySelectorAll("a").forEach((a) => a.addEventListener("click", (e) => { e.preventDefault(); selectRun(a.dataset.run); }));
+  }
 
   function renderActions() {
-    const r = data.run;
-    const btns = [];
-    if (r.status === "running" && data.in_process) btns.push(`<button class="danger" data-act="cancel">Cancel</button>`);
-    if ((r.status === "paused" || r.status === "failed" || r.status === "cancelled" || r.status === "created") && !data.in_process) btns.push(`<button data-act="resume">Resume here</button>`);
-    if (!data.in_process && r.status !== "running") btns.push(`<button class="danger" data-act="delete">Delete</button>`);
-    btns.push(`<span class="pill">${r.status}</span><span class="pill">${fmtUsd(r.totals.cost_usd)}</span><span class="pill">${fmtMs(r.totals.wall_ms)}</span>`);
+    const r = data.run; const btns = [];
+    btns.push(`<span class="chip ${r.status === "completed" ? "ok" : r.status === "failed" ? "bad" : r.status === "paused" ? "warn" : "accent"}">${r.status}</span><span class="chip">${fmtUsd(r.totals.cost_usd)}</span><span class="chip">${fmtMs(r.totals.wall_ms)}</span>`);
+    if (r.status === "running" && data.in_process) btns.push(`<button class="danger sm" data-act="cancel">Cancel</button>`);
+    if ((r.status === "paused" || r.status === "failed" || r.status === "cancelled" || r.status === "created") && !data.in_process) btns.push(`<button class="sm" data-act="resume">Resume here</button>`);
+    if (!data.in_process && r.status !== "running") btns.push(`<button class="danger sm ghost" data-act="delete">Delete</button>`);
     $("#runActions").innerHTML = btns.join("");
     $("#runActions").querySelectorAll("button").forEach((b) => b.addEventListener("click", async () => {
       try {
         if (b.dataset.act === "cancel") await api("/api/run/cancel", { id: current });
         if (b.dataset.act === "resume") await api("/api/run/resume", { id: current });
-        if (b.dataset.act === "delete") { if (!confirm(`Delete run ${current}?`)) return; await api("/api/run/delete", { id: current }); current = null; data = null; $("#pane-graph").innerHTML = '<div class="empty">Select a run.</div>'; }
+        if (b.dataset.act === "delete") { if (!confirm(`Delete run ${current}?`)) return; await api("/api/run/delete", { id: current }); current = null; data = null; $("#viewport").innerHTML = ""; $("#canvasEmpty").style.display = "grid"; $("#inspector").innerHTML = '<div class="empty">Select a run.</div>'; }
         toast("ok"); loadRuns(); scheduleRefresh();
       } catch (e) { toast(e.message, true); }
     }));
   }
 
-  // ---------- graph ----------
-  function layout() {
-    const a = data.analysis, nodes = data.nodes;
-    const levels = a.levels.length ? a.levels : [Object.keys(nodes)];
-    const W = 178, H = 62, GX = 70, GY = 22;
-    const pos = {};
-    let maxRows = Math.max(...levels.map((l) => l.length));
-    levels.forEach((ids, li) => {
-      const totalH = ids.length * H + (ids.length - 1) * GY;
-      const offset = (maxRows * (H + GY) - totalH) / 2;
-      ids.forEach((id, ri) => { pos[id] = { x: 20 + li * (W + GX), y: 20 + offset + ri * (H + GY), w: W, h: H }; });
-    });
-    const width = 40 + levels.length * (W + GX) - GX, height = 40 + maxRows * (H + GY) - GY;
-    return { pos, width, height };
+  function renderGraph(full) {
+    const nodes = data.run.spec.nodes.map((n) => ({ id: n.id, kind: n.kind, description: n.description }));
+    const key = `${data.run.graph}:${data.run.spec.nodes.map((n) => n.id).join(",")}`;
+    const same = canvas.state.key === key && canvas.state.nodes.length === nodes.length;
+    if (!same) canvas.set(nodes, data.analysis.edges, data.analysis.levels, key, true);
+    canvas.draw(same);
+    if (!same) canvas.fit();
   }
 
-  function renderGraph() {
-    const pane = $("#pane-graph");
-    if (!data) return;
-    const { pos, width, height } = layout();
-    const cp = new Set(data.metrics.critical_path.nodes.length > 1 ? data.metrics.critical_path.nodes : data.analysis.critical_path.nodes);
-    const edges = data.analysis.edges.map((e) => {
-      const f = pos[e.from], t = pos[e.to]; if (!f || !t) return "";
-      const x1 = f.x + f.w, y1 = f.y + f.h / 2, x2 = t.x, y2 = t.y + t.h / 2;
-      const back = e.kind === "repair";
-      const path = back ? `M${f.x + f.w / 2},${f.y} C${f.x + f.w / 2},${f.y - 40} ${t.x + t.w / 2},${t.y - 40} ${t.x + t.w / 2},${t.y}` : `M${x1},${y1} C${x1 + 35},${y1} ${x2 - 35},${y2} ${x2},${y2}`;
-      const active = data.nodes[e.from]?.status === "completed" && ["completed", "running", "waiting_approval"].includes(data.nodes[e.to]?.status);
-      const crit = cp.has(e.from) && cp.has(e.to) && !back;
-      return `<path class="edge ${e.kind} ${crit ? "critical" : ""} ${active && !crit ? "active" : ""}" d="${path}" marker-end="url(#arrow${crit ? "c" : e.kind === "gate" ? "g" : e.kind === "repair" ? "r" : ""})"><title>${esc(e.from)} → ${esc(e.to)} [${e.kind}]\n${esc(e.data.join("\n"))}</title></path>`;
-    }).join("");
-    const nodesSvg = Object.entries(pos).map(([id, p]) => {
-      const n = data.nodes[id] || { status: "pending" }, spec = data.run.spec.nodes.find((s) => s.id === id) || {}, an = data.analysis.nodes[id] || {};
-      let badge = "";
-      if (n.items) badge = `${n.items.filter((i) => i.status === "completed").length}/${n.items.length}`;
-      if (n.verify) badge += ` kill ${(n.verify.kill_rate * 100).toFixed(0)}%`;
-      if (n.route) badge = `→ ${n.route}`;
-      if (n.gate?.decision) badge = n.gate.decision;
-      if (n.loop) badge = `${n.loop.rounds} rounds · ${n.loop.collected}`;
-      if (n.status === "waiting_approval") badge = "⏸ awaiting approval";
-      if (n.status === "waiting_task") badge = "inbox task";
-      const sub = [spec.kind, an.model ? an.model.replace("claude-", "") : null, spec.map ? "map" : null, spec.side_effect ? "side-effect" : null].filter(Boolean).join(" · ");
-      const right = n.status === "completed" || n.status === "failed" ? `${fmtMs(n.duration_ms)}${n.cost_usd ? " " + fmtUsd(n.cost_usd) : ""}` : "";
-      return `<g class="node status-${n.status} ${cp.has(id) ? "critical" : ""} ${selectedNode === id ? "selected" : ""}" data-id="${esc(id)}" transform="translate(${p.x},${p.y})">
-        <rect width="${p.w}" height="${p.h}"></rect>
-        <circle cx="12" cy="14" r="4" class="st-${n.status}" fill="${{ completed: "#3fb950", running: "#58a6ff", failed: "#f85149", skipped: "#6e7681", waiting_approval: "#e3b341", waiting_task: "#e3b341", pending: "#3a4150" }[n.status] || "#3a4150"}"></circle>
-        <text x="22" y="18" font-weight="600">${esc(id)}</text>
-        <text x="10" y="35" class="sub">${esc(sub)}</text>
-        <text x="10" y="52" class="badge">${esc(badge)}</text>
-        <text x="${p.w - 8}" y="52" class="sub" text-anchor="end">${esc(right)}</text>
-        <title>${esc(id)} (${n.status})${spec.description ? "\n" + esc(spec.description) : ""}${n.error ? "\nERROR: " + esc(n.error) : ""}${n.skip_reason ? "\n" + esc(n.skip_reason) : ""}</title>
-      </g>`;
-    }).join("");
-    pane.innerHTML = `
-      <div class="legend"><span><i style="border-color:var(--accent);border-width:3px"></i>critical path</span><span><i></i>data</span><span><i style="border-color:var(--wait);border-style:dashed"></i>gate</span><span><i style="border-color:var(--bad);border-style:dashed"></i>repair (bounded)</span><span><i style="border-color:var(--purple)"></i>route</span><span><i style="border-style:dotted"></i>ordering-only</span><span class="muted">hover an edge to see what data crosses it</span></div>
-      <div class="graph-scroll"><svg viewBox="0 0 ${width} ${height}" width="${Math.max(width, 600)}" height="${Math.max(height, 160)}">
-        <defs>
-          <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#3d4451"/></marker>
-          <marker id="arrowc" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#6ea8fe"/></marker>
-          <marker id="arrowg" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#e3b341"/></marker>
-          <marker id="arrowr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#f85149"/></marker>
-        </defs>${edges}${nodesSvg}</svg></div>`;
-    pane.querySelectorAll(".node").forEach((g) => g.addEventListener("click", () => { selectedNode = g.dataset.id; renderGraph(); renderInspector(selectedNode); }));
-  }
-
-  // ---------- nodes table ----------
-  function renderNodes() {
-    const rows = Object.values(data.nodes).map((n) => {
-      const an = data.analysis.nodes[n.id] || {};
-      const detail = [n.items ? `items ${n.items.filter((i) => i.status === "completed").length}/${n.items.length}` : "", n.verify ? `kill ${(n.verify.kill_rate * 100).toFixed(0)}% (${n.verify.killed.length}/${n.verify.total})` : "", n.route ? `route=${n.route}` : "", n.gate?.decision ? `${n.gate.decision} by ${n.gate.by}` : "", n.loop ? `${n.loop.rounds} rounds · ${n.loop.stop_reason}` : "", n.retries ? `retries ${n.retries}` : "", n.repairs ? `repairs ${n.repairs}` : "", n.error ? `<span style="color:var(--bad)">${esc(n.error.slice(0, 120))}</span>` : "", n.skip_reason ? `<span class="muted">${esc(n.skip_reason)}</span>` : ""].filter(Boolean).join(" · ");
-      return `<tr class="clickable" data-id="${esc(n.id)}"><td><span class="dot st-${n.status}"></span> ${esc(n.id)}</td><td>${n.kind}</td><td>${an.model ? esc(an.model.replace("claude-", "")) : ""}</td><td>${n.status}</td><td>${fmtMs(n.duration_ms)}</td><td>${fmtUsd(n.cost_usd)}</td><td>${n.attempts.length}</td><td>${detail}</td></tr>`;
-    }).join("");
-    $("#pane-nodes").innerHTML = `<table><thead><tr><th>node</th><th>kind</th><th>model</th><th>status</th><th>dur</th><th>cost</th><th>att</th><th>detail</th></tr></thead><tbody>${rows}</tbody></table>`;
-    $("#pane-nodes").querySelectorAll("tr.clickable").forEach((tr) => tr.addEventListener("click", () => { selectedNode = tr.dataset.id; renderGraph(); renderInspector(selectedNode); }));
-  }
-
-  // ---------- metrics ----------
+  // ---------- drawer panes ----------
   function renderMetrics() {
     const m = data.metrics;
     const card = (label, value, sub) => `<div class="card"><div class="label">${label}</div><div class="value">${value}</div>${sub ? `<div class="sub">${sub}</div>` : ""}</div>`;
     const cards = [
       card("wall clock", fmtMs(m.wall_ms), `critical path ${fmtMs(m.critical_path.ms)}`),
       card("parallel speedup", `${m.parallel_speedup}×`, `sum of work ${fmtMs(m.sum_of_node_ms)}`),
-      card("cost", fmtUsd(m.cost_usd), `${m.agent_calls} agent calls`),
+      card("cost", fmtUsd(m.cost_usd), `${m.agent_calls} agent calls${m.human.cost_unknown_calls ? ` · ${m.human.cost_unknown_calls} unreported` : ""}`),
       card("peak width", `${m.width.peak}${m.width.budget ? " / " + m.width.budget : ""}`, `${m.width.agent_seconds}s agent time`),
       card("node failure rate", `${(m.node_failure_rate * 100).toFixed(0)}%`, `retry rate ${(m.retry_rate * 100).toFixed(0)}%`),
       card("verifier kill rate", `${(m.verifier.kill_rate * 100).toFixed(0)}%`, `${m.verifier.killed}/${m.verifier.candidates} killed`),
       card("fan-out", `${m.fan_out.workers} workers`, `${m.fan_out.failed_workers} failed${m.fan_out.unique_per_worker !== null ? " · " + m.fan_out.unique_per_worker + " unique/worker" : ""}`),
       card("compression", `${(m.compression.ratio * 100).toFixed(0)}% kept`, `${m.compression.records_in} → ${m.compression.records_out}`),
-      card("human", `${m.human.gates} gates`, `${m.human.approved} ok · ${m.human.rejected} rejected · ${m.human.auto} auto · ${m.human.manual_tasks} manual tasks`),
+      card("human", `${m.human.gates} gates`, `${m.human.approved} ok · ${m.human.rejected} rejected · ${m.human.auto} auto · ${m.human.manual_tasks} manual${m.human.orchestrator_tasks ? " · " + m.human.orchestrator_tasks + " orchestrator" : ""}`),
       card("tokens", `${(m.tokens.input / 1000).toFixed(1)}k in`, `${(m.tokens.output / 1000).toFixed(1)}k out · ${(m.tokens.cache_read / 1000).toFixed(1)}k cached`),
     ].join("");
-    const byModel = Object.entries(m.cost_by_model).map(([k, v]) => `<span class="pill">${esc(k)} ${fmtUsd(v)}</span>`).join(" ");
-    const rows = m.nodes.map((n) => `<tr><td>${n.on_critical_path ? "★ " : ""}${esc(n.id)}</td><td>${n.kind}</td><td>${n.status}</td><td>${fmtMs(n.duration_ms)}</td><td>${fmtUsd(n.cost_usd)}</td><td>${n.attempts}${n.failed_attempts ? ` <span style="color:var(--bad)">(${n.failed_attempts} failed)</span>` : ""}</td><td>${n.retries}</td><td>${n.items ? `${n.items.completed}/${n.items.total}` : ""}</td><td>${n.kill_rate !== undefined ? (n.kill_rate * 100).toFixed(0) + "%" : ""}</td><td>${n.compression ? `${n.compression.in}→${n.compression.out}` : ""}</td></tr>`).join("");
+    const byModel = Object.entries(m.cost_by_model).map(([k, v]) => `<span class="chip">${esc(k.replace("claude-", ""))} ${fmtUsd(v)}</span>`).join(" ");
+    const rows = m.nodes.map((n) => `<tr class="clickable" data-id="${esc(n.id)}"><td>${n.on_critical_path ? "★ " : ""}${esc(n.id)}</td><td>${n.kind}</td><td><span class="dot st-${n.status}"></span> ${n.status}</td><td>${fmtMs(n.duration_ms)}</td><td>${fmtUsd(n.cost_usd)}</td><td>${n.attempts}${n.failed_attempts ? ` <span style="color:var(--bad)">(${n.failed_attempts} failed)</span>` : ""}</td><td>${n.retries}</td><td>${n.items ? `${n.items.completed}/${n.items.total}` : ""}</td><td>${n.kill_rate !== undefined ? (n.kill_rate * 100).toFixed(0) + "%" : ""}</td><td>${n.compression ? `${n.compression.in}→${n.compression.out}` : ""}</td></tr>`).join("");
     $("#pane-metrics").innerHTML = `<div class="cards">${cards}</div><div style="margin:6px 0">${byModel}</div>${m.hints.map((h) => `<div class="hint">${esc(h)}</div>`).join("")}
-      <div class="muted" style="margin:10px 0 4px">critical path: ${m.critical_path.nodes.map(esc).join(" → ")}</div>
+      <div class="muted" style="margin:10px 0 6px">critical path: ${m.critical_path.nodes.map(esc).join(" → ")}</div>
       <table><thead><tr><th>node</th><th>kind</th><th>status</th><th>dur</th><th>cost</th><th>attempts</th><th>retries</th><th>items</th><th>kill</th><th>compress</th></tr></thead><tbody>${rows}</tbody></table>`;
+    $("#pane-metrics").querySelectorAll("tr.clickable").forEach((tr) => tr.addEventListener("click", () => { selectedNode = tr.dataset.id; canvas.draw(true); renderInspector(selectedNode); }));
   }
-
   function renderDecisions() {
-    const rows = data.run.decisions.map((d) => `<tr><td class="mono">${esc(d.at.slice(11, 23))}</td><td>${esc(d.node)}</td><td><span class="pill">${d.kind}</span></td><td>${esc(d.detail)}${d.state ? `<details><summary>state</summary><pre>${esc(JSON.stringify(d.state, null, 2))}</pre></details>` : ""}</td></tr>`).join("");
-    $("#pane-decisions").innerHTML = rows ? `<table><thead><tr><th>at</th><th>node</th><th>kind</th><th>decision (with the state that produced it)</th></tr></thead><tbody>${rows}</tbody></table>` : '<div class="empty">No decisions recorded yet.</div>';
+    const rows = data.run.decisions.map((d) => `<tr><td class="mono">${esc(d.at.slice(11, 23))}</td><td>${esc(d.node)}</td><td><span class="chip ${d.kind === "failure" ? "bad" : d.kind === "gate" ? "warn" : d.kind === "route" ? "purple" : ""}">${d.kind}</span></td><td>${esc(d.detail)}${d.state ? `<details><summary>state that produced it</summary><pre>${esc(JSON.stringify(d.state, null, 2))}</pre></details>` : ""}</td></tr>`).join("");
+    $("#pane-decisions").innerHTML = rows ? `<table><thead><tr><th>at</th><th>node</th><th>kind</th><th>decision</th></tr></thead><tbody>${rows}</tbody></table>` : '<div class="empty">No decisions recorded yet.</div>';
   }
-
-  function renderAnalysis() {
-    const a = data.analysis;
-    $("#pane-analysis").innerHTML = `
+  function renderAnalysis(el, a) {
+    if (!a) { el.innerHTML = ""; return; }
+    el.innerHTML = `
       <div class="cards">${[["est. critical path", fmtMs(a.critical_path.est_ms)], ["sum of work", fmtMs(a.sum_of_work_ms)], ["est. speedup", a.parallel_speedup + "×"], ["max width", a.max_width], ["est. cost", `${fmtUsd(a.est_cost_usd.min)} – ${fmtUsd(a.est_cost_usd.max)}`]].map(([l, v]) => `<div class="card"><div class="label">${l}</div><div class="value" style="font-size:16px">${v}</div></div>`).join("")}</div>
       <div class="muted">frozen: ${a.frozen.join(", ")}</div>
-      <h4 style="margin:10px 0 4px">Findings</h4>${a.findings.length ? a.findings.map((f) => `<div class="finding ${f.level}"><strong>${f.level}</strong> ${esc(f.code)}${f.node ? ` <span class="mono">(${esc(f.node)})</span>` : ""}: ${esc(f.message)}</div>`).join("") : '<div class="muted">none</div>'}
-      <h4 style="margin:10px 0 4px">Checklist</h4>${a.checklist.map((c) => `<div>${c.ok === true ? "✅" : c.ok === false ? "❌" : "▫️"} ${esc(c.item)}${c.note ? ` <span class="muted">— ${esc(c.note)}</span>` : ""}</div>`).join("")}
-      <h4 style="margin:10px 0 4px">Edges — what crosses</h4><table><thead><tr><th>from</th><th>to</th><th>kind</th><th>data</th></tr></thead><tbody>${a.edges.map((e) => `<tr><td>${esc(e.from)}</td><td>${esc(e.to)}</td><td>${e.kind}</td><td class="mono">${e.data.map(esc).join("<br>")}</td></tr>`).join("")}</tbody></table>`;
+      <h4>Findings</h4>${a.findings.length ? a.findings.map((f) => `<div class="finding ${f.level}"><strong>${f.level}</strong> ${esc(f.code)}${f.node ? ` <span class="mono">(${esc(f.node)})</span>` : ""}: ${esc(f.message)}</div>`).join("") : '<div class="muted">none</div>'}
+      <h4>Checklist</h4>${a.checklist.map((c) => `<div>${c.ok === true ? "✅" : c.ok === false ? "❌" : "▫️"} ${esc(c.item)}${c.note ? ` <span class="muted">— ${esc(c.note)}</span>` : ""}</div>`).join("")}
+      <h4>Edges — what crosses</h4><table><thead><tr><th>from</th><th>to</th><th>kind</th><th>data</th></tr></thead><tbody>${a.edges.map((e) => `<tr><td>${esc(e.from)}</td><td>${esc(e.to)}</td><td><span class="chip">${e.kind}</span></td><td class="mono">${e.data.map(esc).join("<br>")}</td></tr>`).join("")}</tbody></table>`;
   }
-
-  // ---------- tasks (inbox) ----------
   function renderTasks() {
     const tasks = data.tasks || [];
-    $("#taskBadge").innerHTML = tasks.length ? `<span class="pill warn">${tasks.length}</span>` : "";
+    $("#taskBadge").innerHTML = tasks.length ? `<span class="chip warn">${tasks.length}</span>` : "";
     if (!tasks.length) { $("#pane-tasks").innerHTML = `<div class="empty">No pending inbox tasks.${data.run.bridge === "inbox" ? "" : " (This run uses the " + esc(data.run.bridge) + " bridge.)"}</div>`; return; }
-    $("#pane-tasks").innerHTML = `<div class="muted" style="margin-bottom:8px">These tasks are waiting for a worker. A Claude Code session with the gren MCP server (gren_tasks / gren_complete_task), the CLI (<code>gren tasks --json</code> / <code>gren complete</code>), or you can execute them.</div>` + tasks.map((t) => `
+    $("#pane-tasks").innerHTML = `<div class="muted" style="margin-bottom:8px">Waiting for a worker: a Claude Code session with the gren MCP tools (gren_tasks / gren_complete_task), the CLI (<code>gren tasks --json</code> / <code>gren complete</code>), or you.</div>` + tasks.map((t) => `
       <div class="taskbox" data-task="${esc(t.task_id)}" data-run="${esc(t.run_id)}">
-        <div><strong>${esc(t.node_id)}${t.item_index !== undefined ? "#" + t.item_index : ""}</strong> <span class="pill">${esc(t.model)}${t.effort ? " · " + t.effort : ""}</span> <span class="pill">${t.role}</span> <span class="pill">${t.status}</span> <span class="muted mono">${esc(t.task_id)}</span></div>
+        <div><strong>${esc(t.node_id)}${t.item_index !== undefined ? "#" + t.item_index : ""}</strong> <span class="chip accent">${esc(t.model.replace("claude-", ""))}${t.effort ? " · " + t.effort : ""}</span> <span class="chip">${t.role}</span> <span class="chip">${t.status}</span> <span class="muted mono">${esc(t.task_id)}</span></div>
         <details><summary>system prompt</summary><pre>${esc(t.system)}</pre></details>
         <details open><summary>prompt</summary><pre>${esc(t.prompt)}</pre></details>
         <details><summary>output schema</summary><pre>${esc(JSON.stringify(t.output_schema, null, 2))}</pre></details>
         <label>result (JSON)</label><textarea class="taskOut" placeholder='{"..."}'></textarea>
-        <div class="row" style="margin-top:6px"><input class="taskCost" placeholder="cost usd (optional)"><input class="taskWorker" placeholder="worker name (optional)"><button class="primary submitTask">Submit result</button><button class="failTask">Report failure</button></div>
+        <div class="row" style="margin-top:8px"><input class="taskCost" placeholder="cost usd (optional)"><input class="taskWorker" placeholder="worker name (optional)"><button class="primary submitTask">Submit result</button><button class="failTask">Report failure</button></div>
         <div class="taskErr" style="color:var(--bad)"></div>
       </div>`).join("");
     $("#pane-tasks").querySelectorAll(".taskbox").forEach((box) => {
@@ -345,7 +537,7 @@
         const err = box.querySelector(".taskErr"); err.textContent = "";
         try {
           let output;
-          if (!asError) { try { output = JSON.parse(box.querySelector(".taskOut").value); } catch (e) { err.textContent = "result is not valid JSON"; return; } }
+          if (!asError) { try { output = JSON.parse(box.querySelector(".taskOut").value); } catch { err.textContent = "result is not valid JSON"; return; } }
           await api("/api/run/task", { id: box.dataset.run, task_id: box.dataset.task, output, error: asError ? (box.querySelector(".taskOut").value || "worker reported failure") : undefined, cost_usd: box.querySelector(".taskCost").value ? Number(box.querySelector(".taskCost").value) : undefined, worker: box.querySelector(".taskWorker").value || "dashboard", source: "human" });
           toast("submitted"); scheduleRefresh();
         } catch (e) { err.textContent = e.message; }
@@ -355,17 +547,34 @@
     });
   }
 
+  // Readable rendering of a gate's `show` payload: arrays of records become tables, strings become text, the rest JSON.
+  function renderShow(v, depth = 0) {
+    if (v === null || v === undefined) return '<span class="muted">—</span>';
+    if (typeof v === "string") return v.length > 600 || v.includes("\n") ? `<pre>${esc(v)}</pre>` : `<div>${esc(v)}</div>`;
+    if (typeof v !== "object") return `<div>${esc(String(v))}</div>`;
+    if (Array.isArray(v)) {
+      if (!v.length) return '<span class="muted">(empty)</span>';
+      if (v.every((x) => x && typeof x === "object" && !Array.isArray(x))) {
+        const cols = [...new Set(v.flatMap((x) => Object.keys(x)))].filter((c) => !c.startsWith("_")).slice(0, 8);
+        return `<table><thead><tr>${cols.map((c) => `<th>${esc(c)}</th>`).join("")}</tr></thead><tbody>${v.map((x) => `<tr>${cols.map((c) => `<td style="max-width:260px;overflow:hidden;text-overflow:ellipsis">${esc(typeof x[c] === "object" ? JSON.stringify(x[c]).slice(0, 160) : String(x[c] ?? "")).slice(0, 200)}</td>`).join("")}</tr>`).join("")}</tbody></table>`;
+      }
+      return `<ul style="margin:4px 0 4px 18px;padding:0">${v.map((x) => `<li>${typeof x === "object" ? esc(JSON.stringify(x)) : esc(String(x))}</li>`).join("")}</ul>`;
+    }
+    if (depth > 1) return `<pre>${esc(JSON.stringify(v, null, 2))}</pre>`;
+    return `<div class="kv" style="margin:6px 0">${Object.entries(v).filter(([k]) => !k.startsWith("_")).map(([k, x]) => `<div>${esc(k)}</div><div>${renderShow(x, depth + 1)}</div>`).join("")}</div>`;
+  }
+
   // ---------- inspector ----------
   function renderRunInspector() {
-    const r = data.run;
-    $("#inspector").innerHTML = `<h3 style="margin:0 0 8px">${esc(r.graph)}</h3><div class="kv">
-      <div>run</div><div class="mono">${esc(r.id)}</div><div>status</div><div><span class="pill">${r.status}</span></div><div>bridge</div><div>${esc(r.bridge)}</div>
+    const r = data.run; const children = allRuns.filter((x) => x.parent?.run_id === r.id);
+    $("#inspector").innerHTML = `<h3>${esc(r.graph)}</h3>${r.spec.description ? `<div class="muted" style="margin-bottom:8px">${esc(r.spec.description)}</div>` : ""}<div class="kv">
+      <div>run</div><div class="mono">${esc(r.id)}</div><div>status</div><div><span class="chip ${r.status === "completed" ? "ok" : r.status === "failed" ? "bad" : r.status === "paused" ? "warn" : "accent"}">${r.status}</span></div><div>bridge</div><div>${esc(r.bridge)}</div>
       <div>cost</div><div>${fmtUsd(r.totals.cost_usd)}</div><div>calls</div><div>${r.totals.agent_calls}</div><div>retries</div><div>${r.totals.retries}</div><div>wall</div><div>${fmtMs(r.totals.wall_ms)}</div>
-      <div>budget</div><div class="mono">${esc(JSON.stringify(r.budget))}</div><div>frozen</div><div class="mono" style="font-size:10.5px">${r.frozen.join(", ")}</div>
-      ${r.parent ? `<div>parent</div><div><a href="#" data-run="${esc(r.parent.run_id)}" class="mono parentLink">${esc(r.parent.run_id)}</a> · ${esc(r.parent.node_id)}${r.parent.round ? " round " + r.parent.round : ""}</div>` : ""}
+      <div>budget</div><div class="mono">${esc(JSON.stringify(r.budget))}</div><div>frozen</div><div class="mono" style="font-size:11px">${r.frozen.join(", ")}</div>
       </div>${r.error ? `<pre style="border-color:var(--bad)">${esc(r.error)}</pre>` : ""}${(r.warnings || []).map((w) => `<div class="hint">${esc(w)}</div>`).join("")}
+      ${children.length ? `<h4>Nested runs (${children.length})</h4>${children.map((c) => `<div><span class="dot st-${c.status}"></span> <a href="#" class="childLink" data-run="${esc(c.id)}">${esc(c.id.split("/nested/").slice(1).join(" › "))}</a> <span class="muted">${c.nodes.completed}/${c.nodes.total} · ${fmtUsd(c.cost_usd)}</span></div>`).join("")}` : ""}
       <details open><summary>input</summary><pre>${esc(JSON.stringify(r.input, null, 2))}</pre></details>`;
-    $("#inspector").querySelectorAll(".parentLink").forEach((a) => a.addEventListener("click", (e) => { e.preventDefault(); selectRun(a.dataset.run); }));
+    $("#inspector").querySelectorAll(".childLink").forEach((a) => a.addEventListener("click", (e) => { e.preventDefault(); $("#showNested").checked = true; selectRun(a.dataset.run); }));
   }
 
   async function renderInspector(id) {
@@ -374,116 +583,157 @@
     let gate = "";
     if (n.status === "waiting_approval") {
       const art = n.artifact ? await api(`/api/run/artifact?id=${encodeURIComponent(current)}&path=${encodeURIComponent(n.artifact)}`) : null;
-      gate = `<div class="gatebox"><strong>⏸ ${esc(spec.title || id)}</strong><div class="muted" style="margin:4px 0">${esc(art?.prompt || spec.prompt || "")}</div>${art?.show !== undefined ? `<details open><summary>what you are approving</summary><pre>${esc(JSON.stringify(art.show, null, 2))}</pre></details>` : ""}
-        <label>comment</label><input id="gateComment" placeholder="optional; on reject it is sent back as feedback"><div class="row" style="margin-top:6px"><button class="primary" id="gateApprove">Approve</button><button class="danger" id="gateReject">Reject</button></div></div>`;
+      const eff = (spec.approve_effect || spec.reject_effect) ? `<div style="margin:8px 0;display:grid;gap:4px"><div><span class="chip ok">If you approve</span> ${esc(spec.approve_effect || "the graph continues")}</div><div><span class="chip bad">If you reject</span> ${esc(spec.reject_effect || (spec.on_reject?.route ? `your comment goes back to "${spec.on_reject.route}" and it runs again` : spec.on_reject?.fail_run === false ? "the graph continues without this step" : "the run stops"))}</div></div>` : "";
+      gate = `<div class="gatebox"><strong>⏸ ${esc(spec.title || id)}</strong><div class="muted" style="margin:4px 0">${esc(art?.prompt || spec.prompt || "")}</div>${eff}${art?.show !== undefined ? `<details open><summary>what you are deciding on</summary>${renderShow(art.show)}</details>` : ""}
+        <label>comment</label><input id="gateComment" placeholder="optional; on reject it is sent back as feedback"><div class="row" style="margin-top:8px"><button class="primary" id="gateApprove">Approve</button><button class="danger" id="gateReject">Reject</button></div></div>`;
     }
-    const attempts = n.attempts.length ? `<table><thead><tr><th>#</th><th>item</th><th>status</th><th>model</th><th>dur</th><th>cost</th><th>src</th></tr></thead><tbody>${n.attempts.map((a) => `<tr class="clickable" data-art="${esc(a.artifact || "")}"><td>${a.attempt}</td><td>${a.item ?? ""}</td><td>${a.status}${a.error ? ` <span style="color:var(--bad)">${esc(a.error.slice(0, 80))}</span>` : ""}</td><td>${esc((a.model || a.bridge || "").replace("claude-", ""))}</td><td>${fmtMs(a.duration_ms)}</td><td>${fmtUsd(a.cost_usd)}</td><td>${esc(a.source || "")}</td></tr>`).join("")}</tbody></table>` : "";
-    const items = n.items ? `<details><summary>items (${n.items.filter((i) => i.status === "completed").length}/${n.items.length})</summary><table><thead><tr><th>#</th><th>status</th><th>dur</th><th>error / output</th></tr></thead><tbody>${n.items.map((i) => `<tr><td>${i.index}</td><td>${i.status}</td><td>${fmtMs(i.duration_ms)}</td><td class="mono" style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(i.error || JSON.stringify(i.output || "").slice(0, 120))}</td></tr>`).join("")}</tbody></table></details>` : "";
+    const children = allRuns.filter((x) => x.parent?.run_id === current && x.parent?.node_id === id);
+    const attempts = n.attempts.length ? `<table><thead><tr><th>#</th><th>item</th><th>status</th><th>model</th><th>dur</th><th>cost</th><th>src</th></tr></thead><tbody>${n.attempts.map((a) => `<tr class="clickable" data-art="${esc(a.artifact || "")}"><td>${a.attempt}</td><td>${a.item ?? ""}</td><td>${a.status}${a.error ? ` <span style="color:var(--bad)">${esc(a.error.slice(0, 90))}</span>` : ""}</td><td>${esc((a.model || a.bridge || "").replace("claude-", ""))}</td><td>${fmtMs(a.duration_ms)}</td><td>${fmtUsd(a.cost_usd)}</td><td>${esc(a.source || "")}</td></tr>`).join("")}</tbody></table>` : "";
+    const items = n.items ? `<details><summary>items (${n.items.filter((i) => i.status === "completed").length}/${n.items.length})</summary><table><thead><tr><th>#</th><th>status</th><th>dur</th><th>error / output</th></tr></thead><tbody>${n.items.map((i) => `<tr><td>${i.index}</td><td><span class="dot st-${i.status}"></span> ${i.status}</td><td>${fmtMs(i.duration_ms)}</td><td class="mono" style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(i.error || JSON.stringify(i.output ?? "").slice(0, 140))}</td></tr>`).join("")}</tbody></table></details>` : "";
     const killed = n.verify?.killed?.length ? `<details open><summary>killed (${n.verify.killed.length}/${n.verify.total})</summary>${n.verify.killed.map((k) => `<div class="finding error"><strong>#${k.index}</strong> (${(k.confidence * 100).toFixed(0)}%) ${k.reasons.map(esc).join("; ")}<details><summary>item</summary><pre>${esc(JSON.stringify(k.item, null, 2))}</pre></details></div>`).join("")}</details>` : "";
-    const loop = n.loop && n.output?.per_round ? `<details open><summary>rounds</summary><table><thead><tr><th>round</th><th>found</th><th>new</th><th>cost</th><th>run</th></tr></thead><tbody>${n.output.per_round.map((r) => `<tr><td>${r.round}</td><td>${r.items}</td><td>${r.fresh}</td><td>${fmtUsd(r.cost_usd)}</td><td><a href="#" class="mono roundLink" data-run="${esc(r.run_id)}">open</a></td></tr>`).join("")}</tbody></table></details>` : "";
-    const nested = spec.kind === "subgraph" ? `<div><a href="#" class="roundLink" data-run="${esc(current + "/nested/" + id + "/" + n.attempts.length)}">open nested run</a></div>` : "";
-    $("#inspector").innerHTML = `<h3 style="margin:0 0 6px"><span class="dot st-${n.status}"></span> ${esc(id)} <span class="pill">${n.kind}</span></h3>
-      ${spec.description ? `<div class="muted" style="margin-bottom:6px">${esc(spec.description)}</div>` : ""}
+    const nested = children.length ? `<h4>Nested runs</h4>${children.map((c) => `<div><span class="dot st-${c.status}"></span> <a href="#" class="childLink" data-run="${esc(c.id)}">${esc(c.id.split("/nested/").slice(2).join(" › "))}</a> <span class="muted">${c.nodes.completed}/${c.nodes.total} · ${fmtUsd(c.cost_usd)}</span></div>`).join("")}` : "";
+    const loopRounds = n.loop && n.output?.per_round ? `<details open><summary>rounds</summary><table><thead><tr><th>round</th><th>found</th><th>new</th><th>cost</th><th>dur</th></tr></thead><tbody>${n.output.per_round.map((r) => `<tr><td>${r.round}</td><td>${r.items}</td><td>${r.fresh}</td><td>${fmtUsd(r.cost_usd)}</td><td>${fmtMs(r.duration_ms)}</td></tr>`).join("")}</tbody></table></details>` : "";
+    const canFork = !data.in_process && ["completed", "failed", "cancelled", "paused"].includes(data.run.status) && ["completed", "failed", "skipped"].includes(n.status);
+    $("#inspector").innerHTML = `<h3><span class="dot st-${n.status}"></span> ${esc(id)} <span class="chip" style="color:${KIND_COLOR[n.kind]}">${KIND_ICON[n.kind]} ${n.kind}</span></h3>
+      ${spec.description ? `<div class="muted" style="margin-bottom:8px">${esc(spec.description)}</div>` : ""}
       ${gate}
-      <div class="kv"><div>status</div><div>${n.status}${n.skip_reason ? ` <span class="muted">${esc(n.skip_reason)}</span>` : ""}</div>${an.model ? `<div>model</div><div>${esc(an.model)}${spec.effort ? " · " + spec.effort : ""}</div>` : ""}<div>duration</div><div>${fmtMs(n.duration_ms)}</div><div>cost</div><div>${fmtUsd(n.cost_usd)} · ${n.agent_calls} calls · ${n.retries} retries · ${n.repairs} repairs</div>
-      <div>deps</div><div class="mono">${(an.deps || []).map(esc).join(", ") || "—"}</div><div>dependents</div><div class="mono">${(an.dependents || []).map(esc).join(", ") || "—"}</div>${n.route ? `<div>route</div><div>${esc(n.route)} <span class="muted">${esc(n.route_reason || "")}</span></div>` : ""}${n.gate?.decision ? `<div>gate</div><div>${n.gate.decision} by ${esc(n.gate.by || "")}${n.gate.comment ? ": " + esc(n.gate.comment) : ""}</div>` : ""}${n.loop ? `<div>loop</div><div>${n.loop.rounds} rounds · ${n.loop.converged ? "converged" : "not converged"} · ${esc(n.loop.stop_reason)}</div>` : ""}</div>
+      <div class="kv"><div>status</div><div>${n.status}${n.skip_reason ? ` <span class="muted">${esc(n.skip_reason)}</span>` : ""}</div>${an.model ? `<div>model</div><div>${esc(an.model)}${spec.effort ? " · " + spec.effort : ""}${spec.tools?.length ? " · tools " + spec.tools.join(", ") : ""}</div>` : ""}<div>duration</div><div>${fmtMs(n.duration_ms)}</div><div>cost</div><div>${fmtUsd(n.cost_usd)} · ${n.agent_calls} calls · ${n.retries} retries · ${n.repairs} repairs</div>
+      <div>reads</div><div class="mono">${(an.deps || []).map(esc).join(", ") || "—"}</div><div>feeds</div><div class="mono">${(an.dependents || []).map(esc).join(", ") || "—"}</div>${n.route ? `<div>route</div><div>${esc(n.route)} <span class="muted">${esc(n.route_reason || "")}</span></div>` : ""}${n.gate?.decision ? `<div>gate</div><div>${n.gate.decision} by ${esc(n.gate.by || "")}${n.gate.comment ? ": " + esc(n.gate.comment) : ""}</div>` : ""}${n.loop ? `<div>loop</div><div>${n.loop.rounds} rounds · ${n.loop.converged ? "converged" : "not converged"} · ${esc(n.loop.stop_reason)}</div>` : ""}</div>
       ${n.error ? `<pre style="border-color:var(--bad)">${esc(n.error)}</pre>` : ""}
       ${n.repair ? `<details open><summary>repair feedback (round ${n.repair.round})</summary><pre>${esc(JSON.stringify(n.repair.feedback, null, 2))}</pre></details>` : ""}
-      ${killed}${loop}${nested}${items}
+      ${killed}${loopRounds}${nested}${items}
       <details ${n.output !== undefined ? "open" : ""}><summary>output</summary><pre>${esc(JSON.stringify(n.output !== undefined ? n.output : n.outputs, null, 2))}</pre></details>
-      <details><summary>attempts (${n.attempts.length}) — click a row to see prompt & raw output</summary>${attempts}</details>
+      <details><summary>attempts (${n.attempts.length}) — click a row for prompt & raw output</summary>${attempts}</details>
       <div id="artifact"></div>
       <details><summary>node spec</summary><pre>${esc(JSON.stringify(spec, null, 2))}</pre></details>
-      ${!data.in_process && ["completed", "failed", "cancelled", "paused"].includes(data.run.status) && ["completed", "failed", "skipped"].includes(n.status) ? `<div style="margin-top:8px"><button id="forkFrom">Fork run from here (re-run ${esc(id)} + downstream)</button></div>` : ""}`;
-    $("#forkFrom")?.addEventListener("click", async () => {
-      try { const r = await api("/api/run/fork", { id: current, from: [id] }); toast(`forked: ${r.run_id}`); await loadRuns(); selectRun(r.run_id); } catch (e) { toast(e.message, true); }
-    });
+      ${canFork ? `<div style="margin-top:10px"><button id="forkFrom">⑂ Fork run from here</button> <span class="muted">re-runs ${esc(id)} and everything downstream</span></div>` : ""}`;
     $("#inspector").querySelectorAll("tr.clickable[data-art]").forEach((tr) => tr.addEventListener("click", async () => {
       if (!tr.dataset.art) return;
       const art = await api(`/api/run/artifact?id=${encodeURIComponent(current)}&path=${encodeURIComponent(tr.dataset.art)}`);
       $("#artifact").innerHTML = `<details open><summary>artifact ${esc(tr.dataset.art)}</summary>${art?.request ? `<div class="muted">prompt</div><pre>${esc(art.request.prompt)}</pre><div class="muted">system</div><pre>${esc(art.request.system || "")}</pre>` : ""}<div class="muted">response</div><pre>${esc(JSON.stringify(art?.response ?? art, null, 2))}</pre></details>`;
     }));
-    $("#inspector").querySelectorAll(".roundLink").forEach((a) => a.addEventListener("click", (e) => { e.preventDefault(); $("#showNested").checked = true; selectRun(a.dataset.run); }));
+    $("#inspector").querySelectorAll(".childLink").forEach((a) => a.addEventListener("click", (e) => { e.preventDefault(); $("#showNested").checked = true; selectRun(a.dataset.run); }));
     const decide = async (decision) => { try { await api("/api/run/approve", { id: current, gate: id, decision, by: "dashboard", comment: $("#gateComment").value || undefined }); toast(`${decision}`); scheduleRefresh(); } catch (e) { toast(e.message, true); } };
     $("#gateApprove")?.addEventListener("click", () => decide("approved"));
     $("#gateReject")?.addEventListener("click", () => decide("rejected"));
+    $("#forkFrom")?.addEventListener("click", async () => { try { const r = await api("/api/run/fork", { id: current, from: [id] }); toast(`forked: ${r.run_id}`); await loadRuns(); selectRun(r.run_id); } catch (e) { toast(e.message, true); } });
   }
 
   // ---------- events ----------
   function appendEvent(e) {
-    if (e.seq <= eventsSeq && e.run_id === current) return;
-    if (e.run_id === current) eventsSeq = Math.max(eventsSeq, e.seq);
-    const el = $("#events");
-    const d = e.data || {};
+    if (e.run_id === current) { if (e.seq <= eventsSeq) return; eventsSeq = Math.max(eventsSeq, e.seq); }
+    const el = $("#events"); const d = e.data || {};
     const cls = /failed|kill|invalid|cancel|budget|rejected/.test(e.type) ? "bad" : /completed|approved|finished/.test(e.type) ? "good" : /waiting|paused|retry|task\.created/.test(e.type) ? "warn" : "";
     let detail = "";
     if (e.type === "node.completed") detail = `${fmtMs(d.duration_ms)} ${fmtUsd(d.cost_usd)}${d.items ? ` items ${d.items.completed}/${d.items.total}` : ""}`;
-    else if (e.type === "call.finished") detail = d.ok ? `${fmtMs(d.duration_ms)} ${fmtUsd(d.cost_usd)} ${d.source || ""}` : `FAILED ${d.error}`;
-    else if (e.type === "call.started") detail = `${d.model} via ${d.bridge} attempt ${d.attempt} (${d.width_active} active)`;
+    else if (e.type === "call.finished") detail = d.ok ? `${fmtMs(d.duration_ms)} ${fmtUsd(d.cost_usd)} ${d.source || ""}${d.repairs ? " repairs " + d.repairs : ""}` : `FAILED ${d.error}`;
+    else if (e.type === "call.started") detail = `${(d.model || "").replace("claude-", "")} via ${d.bridge} attempt ${d.attempt} (${d.width_active} active)`;
     else if (e.type === "verify.kill") detail = `KILL ${(d.confidence * 100).toFixed(0)}%: ${(d.reasons || [])[0] || ""}`;
     else if (e.type === "route.selected") detail = `→ ${d.route} (${d.reason})`;
     else if (e.type === "gate.waiting") detail = `WAITING: ${d.title}`;
     else if (e.type === "repair.scheduled") detail = `round ${d.round} → ${d.producer}`;
     else if (e.type === "run.completed") detail = `${fmtUsd(d.cost_usd)} in ${fmtMs(d.wall_ms)}${d.degraded ? " DEGRADED" : ""}`;
     else if (e.type === "task.created") detail = `inbox task ${d.task_id} (${d.model})`;
-    else detail = Object.keys(d).length ? JSON.stringify(d).slice(0, 200) : "";
+    else if (e.type === "loop.round.finished") detail = `round ${d.round}: ${d.items} found, ${d.fresh} new, dry ${d.dry_rounds}`;
+    else detail = Object.keys(d).length ? JSON.stringify(d).slice(0, 220) : "";
     const div = document.createElement("div");
-    div.innerHTML = `<span class="t">${esc(e.ts.slice(11, 23))}</span> <span class="type ${cls}">${esc(e.type.padEnd(20))}</span> <span class="node">${esc(e.node || "")}${e.item !== undefined ? "#" + e.item : ""}</span> ${esc(detail)}`;
+    div.dataset.text = `${e.type} ${e.node || ""} ${detail}`.toLowerCase();
+    div.innerHTML = `<span class="t">${esc(e.ts.slice(11, 23))}</span><span class="type ${cls}">${esc(e.type)}</span><span class="node">${esc(e.node || "")}${e.item !== undefined ? "#" + e.item : ""}</span><span>${esc(detail)}</span>`;
+    const f = $("#eventFilter").value.trim().toLowerCase(); if (f && !div.dataset.text.includes(f)) div.style.display = "none";
     el.appendChild(div);
-    if (el.children.length > 2000) el.removeChild(el.firstChild);
+    if (el.children.length > 3000) el.removeChild(el.firstChild);
     if (tab === "events") el.parentElement.scrollTop = el.parentElement.scrollHeight;
   }
+  $("#eventFilter").addEventListener("input", () => { const f = $("#eventFilter").value.trim().toLowerCase(); $("#events").querySelectorAll("div").forEach((d) => (d.style.display = !f || d.dataset.text.includes(f) ? "" : "none")); });
 
   // ---------- SSE ----------
   function connect() {
     const es = new EventSource("/api/events");
-    es.onopen = () => { $("#sse").textContent = "live"; $("#sse").className = "pill ok"; };
-    es.onerror = () => { $("#sse").textContent = "reconnecting…"; $("#sse").className = "pill bad"; };
+    es.onopen = () => { $("#sse").textContent = "live"; $("#sse").className = "chip ok"; };
+    es.onerror = () => { $("#sse").textContent = "reconnecting…"; $("#sse").className = "chip bad"; };
     es.onmessage = (m) => {
-      const e = JSON.parse(m.data);
-      if (e.type === "hello") return;
+      const e = JSON.parse(m.data); if (e.type === "hello") return;
       if (e.run_id === current) { appendEvent(e); scheduleRefresh(); }
+      else if (current && e.run_id.startsWith(current + "/nested/")) scheduleRefresh();
       if (/^run\./.test(e.type) || e.type === "gate.waiting" || e.type === "task.created") loadRuns();
     };
   }
 
-  // ---------- tabs ----------
+  // ---------- tabs / drawer / mode ----------
   $("#tabs").querySelectorAll("button[data-tab]").forEach((b) => b.addEventListener("click", () => {
-    tab = b.dataset.tab;
+    tab = b.dataset.tab; $("#drawer").classList.remove("collapsed");
     $("#tabs").querySelectorAll("button[data-tab]").forEach((x) => x.classList.toggle("active", x === b));
-    document.querySelectorAll(".pane").forEach((p) => p.classList.toggle("active", p.id === `pane-${tab}`));
+    document.querySelectorAll("#drawer .pane").forEach((p) => p.classList.toggle("active", p.id === `pane-${tab}`));
     if (tab === "events") { const el = $("#events"); el.parentElement.scrollTop = el.parentElement.scrollHeight; }
   }));
+  $("#drawerToggle").addEventListener("click", () => { const d = $("#drawer"); d.classList.toggle("collapsed"); $("#drawerToggle").textContent = d.classList.contains("collapsed") ? "▴" : "▾"; setTimeout(() => data && canvas.fit(), 50); });
   $("#showNested").addEventListener("change", loadRuns);
+  $("#modeSeg").querySelectorAll("button").forEach((b) => b.addEventListener("click", () => setMode(b.dataset.mode)));
+  function setMode(m) {
+    mode = m; $("#modeSeg").querySelectorAll("button").forEach((x) => x.classList.toggle("active", x.dataset.mode === m));
+    $("#runsMain").style.display = m === "runs" ? "" : "none"; $("#designMain").style.display = m === "design" ? "" : "none";
+    if (m === "design") { renderGraphLibrary(); if (!$("#yamlEditor").value) loadGraphIntoEditor(graphs[0]?.path); } else { loadRuns(); if (data) { renderGraph(true); canvas.fit(); selectedNode ? renderInspector(selectedNode) : renderRunInspector(); } }
+  }
+
+  // ---------- design mode ----------
+  let designSpec = null, designAnalysis = null, designPath = "untitled.yaml", designSel = null;
+  async function renderGraphLibrary() {
+    graphs = await api("/api/graphs");
+    $("#sidebar").innerHTML = `<div class="side-head"><span>Graphs</span><button class="sm" id="newGraphBtn">＋ New</button></div>` + graphs.map((g) => `<div class="graph-item ${g.path === designPath ? "active" : ""}" data-path="${esc(g.path)}"><div class="name"><span class="dot ${g.ok ? "st-completed" : "st-failed"}"></span> ${esc(g.name)}</div><div class="desc">${esc(g.description || g.error || "")}</div><div class="muted" style="font-size:11px;margin-top:3px">${g.nodes} nodes · ${g.errors} errors · ${g.warnings} warnings</div></div>`).join("");
+    $("#sidebar").querySelectorAll(".graph-item").forEach((d) => d.addEventListener("click", () => loadGraphIntoEditor(d.dataset.path)));
+    $("#newGraphBtn").addEventListener("click", async () => {
+      const shapes = await api("/api/shapes"); const pick = prompt(`Shape (${shapes.map((s) => s.id).join(" | ")}):`, shapes[0].id); if (!pick) return;
+      const name = prompt("Graph name:", "my-graph"); if (!name) return;
+      const r = await api("/api/graph/scaffold", { shape: pick, name }); designPath = `${name}.yaml`; $("#designTitle").textContent = designPath; $("#yamlEditor").value = r.yaml; validateDesign();
+    });
+  }
+  async function loadGraphIntoEditor(p) {
+    if (!p) return; const r = await api(`/api/graph?path=${encodeURIComponent(p)}`).catch((e) => ({ error: e.message }));
+    designPath = p; $("#designTitle").textContent = p; $("#yamlEditor").value = r.yaml ?? ""; $("#sidebar").querySelectorAll(".graph-item").forEach((d) => d.classList.toggle("active", d.dataset.path === p));
+    if (r.error) { $("#designStatus").textContent = r.error; $("#designAnalysis").innerHTML = `<div class="finding error">${esc(r.error)}</div>`; return; }
+    designSpec = r.spec; designAnalysis = r.analysis; drawDesign();
+  }
+  async function validateDesign() {
+    const r = await api("/api/graph/validate", { spec_yaml: $("#yamlEditor").value });
+    if (!r.ok) { $("#designStatus").innerHTML = `<span style="color:var(--bad)">invalid</span>`; $("#designAnalysis").innerHTML = `<div class="finding error">${esc(r.error)}</div>${(r.issues || []).map((i) => `<div class="finding error">${esc(i)}</div>`).join("")}`; return false; }
+    designSpec = r.spec; designAnalysis = r.analysis; drawDesign(); return r.analysis.ok;
+  }
+  function drawDesign() {
+    const a = designAnalysis; $("#designEmpty").style.display = "none";
+    $("#designStatus").innerHTML = a.ok ? `<span class="chip ok">valid</span> ${a.findings.filter((f) => f.level === "warning").length} warnings` : `<span class="chip bad">${a.findings.filter((f) => f.level === "error").length} errors</span>`;
+    dcanvas.set(designSpec.nodes.map((n) => ({ id: n.id, kind: n.kind, description: n.description })), a.edges, a.levels, `design:${designSpec.name}`, true); dcanvas.draw(); dcanvas.fit();
+    renderAnalysis($("#designAnalysis"), a);
+  }
+  function showDesignNode(id) { designSel = id; dcanvas.draw(true); const spec = designSpec?.nodes.find((n) => n.id === id); const an = designAnalysis?.nodes[id]; $("#inspector").innerHTML = `<h3>${KIND_ICON[spec?.kind] || ""} ${esc(id)} <span class="chip">${esc(spec?.kind)}</span></h3>${spec?.description ? `<div class="muted">${esc(spec.description)}</div>` : ""}<div class="kv" style="margin-top:8px"><div>model</div><div>${esc(an?.model || "—")}</div><div>est</div><div>${fmtMs(an?.est_ms)} · ${fmtUsd(an?.est_cost_usd)}</div><div>reads</div><div class="mono">${(an?.deps || []).map(esc).join(", ") || "—"}</div><div>feeds</div><div class="mono">${(an?.dependents || []).map(esc).join(", ") || "—"}</div></div><details open><summary>node spec</summary><pre>${esc(JSON.stringify(spec, null, 2))}</pre></details>`; }
+  $("#validateBtn").addEventListener("click", validateDesign);
+  $("#saveBtn").addEventListener("click", async () => { if (!(await validateDesign())) { toast("fix the errors before saving", true); return; } const p = prompt("Save as (relative to graphs/):", designPath); if (!p) return; try { await api("/api/graph/save", { path: p, spec_yaml: $("#yamlEditor").value }); designPath = p; $("#designTitle").textContent = p; toast(`saved ${p}`); renderGraphLibrary(); } catch (e) { toast(e.message, true); } });
+  $("#designRunBtn").addEventListener("click", async () => { if (!(await validateDesign())) { toast("fix the errors first", true); return; } try { await api("/api/graph/save", { path: designPath, spec_yaml: $("#yamlEditor").value }); } catch (e) { toast(e.message, true); return; } await openModal(designPath); });
+  let editTimer; $("#yamlEditor").addEventListener("input", () => { clearTimeout(editTimer); editTimer = setTimeout(validateDesign, 900); });
 
   // ---------- new run modal ----------
-  async function openModal() {
+  async function openModal(preselect) {
     graphs = await api("/api/graphs");
-    $("#graphSelect").innerHTML = graphs.map((g) => `<option value="${esc(g.path)}" ${g.ok ? "" : "disabled"}>${esc(g.name)} — ${esc(g.path)}${g.ok ? "" : " (invalid)"}</option>`).join("");
+    $("#graphSelect").innerHTML = graphs.map((g) => `<option value="${esc(g.path)}" ${g.ok ? "" : "disabled"} ${g.path === preselect ? "selected" : ""}>${esc(g.name)} — ${esc(g.path)}${g.ok ? "" : " (invalid)"}</option>`).join("");
     const fill = () => {
-      const g = graphs.find((x) => x.path === $("#graphSelect").value);
-      if (!g) return;
+      const g = graphs.find((x) => x.path === $("#graphSelect").value); if (!g) return;
       $("#graphInfo").innerHTML = `${esc(g.description || "")}<br><span class="muted">${g.nodes} nodes · ${g.errors} errors · ${g.warnings} warnings · budget ${esc(JSON.stringify(g.budget || {}))}</span>`;
-      const props = g.input_schema?.properties || {};
-      const obj = {};
-      for (const [k, v] of Object.entries(props)) obj[k] = v.default !== undefined ? v.default : v.examples?.[0] !== undefined ? v.examples[0] : v.type === "array" ? [] : v.type === "integer" || v.type === "number" ? 0 : v.type === "boolean" ? false : `<${k}>`;
+      const props = g.input_schema?.properties || {}; const obj = {};
+      for (const [k, v] of Object.entries(props)) obj[k] = v.default !== undefined ? v.default : v.examples?.[0] !== undefined ? v.examples[0] : v.type === "array" ? [] : v.type === "integer" || v.type === "number" ? 0 : v.type === "boolean" ? false : v.type === "object" ? {} : `<${k}>`;
       $("#inputJson").value = JSON.stringify(obj, null, 2);
     };
-    $("#graphSelect").onchange = fill; fill();
-    $("#newRunError").textContent = "";
-    $("#modal").classList.add("open");
+    $("#graphSelect").onchange = fill; fill(); $("#newRunError").textContent = ""; $("#modal").classList.add("open");
   }
-  $("#newRun").addEventListener("click", openModal);
+  $("#newRun").addEventListener("click", () => openModal());
   $("#cancelNew").addEventListener("click", () => $("#modal").classList.remove("open"));
   $("#startNew").addEventListener("click", async () => {
     try {
       const input = JSON.parse($("#inputJson").value || "{}");
       const r = await api("/api/runs", { graph: $("#graphSelect").value, input, bridge: $("#bridgeSelect").value || undefined, auto_approve: $("#autoApprove").checked });
-      $("#modal").classList.remove("open"); toast(`started ${r.run_id}`); await loadRuns(); selectRun(r.run_id);
+      $("#modal").classList.remove("open"); toast(`started ${r.run_id}`); setMode("runs"); await loadRuns(); selectRun(r.run_id);
     } catch (e) { $("#newRunError").textContent = e.message; }
   });
 
-  api("/api/bridges").then((b) => { $("#bridges").textContent = `default bridge: ${b.default} · ${b.bridges.filter((x) => x.ok).map((x) => x.name).join(", ")} available`; }).catch(() => {});
+  api("/api/bridges").then((b) => { $("#bridges").textContent = `default: ${b.default} · ${b.bridges.filter((x) => x.ok).map((x) => x.name).join(", ")}`; }).catch(() => {});
   loadRuns().then(() => { const first = runs[0]; if (first) selectRun(first.id); });
   connect();
   setInterval(() => { if (data && (data.run.status === "running" || data.run.status === "paused")) scheduleRefresh(); }, 3000);

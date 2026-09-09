@@ -201,6 +201,9 @@ export const GateNodeZ = NodeBaseZ.extend({
   kind: z.literal("gate"),
   title: z.string(),
   prompt: z.string().optional(),
+  /** Plain-language consequences shown to the approver: one short sentence each. */
+  approve_effect: z.string().optional(),
+  reject_effect: z.string().optional(),
   /** `$ref`/mapping of what the human sees when deciding. */
   show: z.unknown().optional(),
   timeout_ms: z.number().int().positive().optional(),

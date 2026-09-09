@@ -50,8 +50,9 @@ function statusSummary(store: RunStore, state: RunState) {
     .filter((n) => n.status === "waiting_approval")
     .map((n) => {
       const spec = state.run.spec.nodes.find((s) => s.id === n.id);
-      const art = n.artifact ? (store.readArtifact(state.run.id, n.artifact) as { title?: string; prompt?: string; show?: unknown } | undefined) : undefined;
-      return { gate: n.id, title: (spec as { title?: string } | undefined)?.title, prompt: art?.prompt, show: art?.show };
+      const art = n.artifact ? (store.readArtifact(state.run.id, n.artifact) as { title?: string; prompt?: string; show?: unknown; approve_effect?: string; reject_effect?: string } | undefined) : undefined;
+      const g = spec as { title?: string; approve_effect?: string; reject_effect?: string } | undefined;
+      return { gate: n.id, title: g?.title, prompt: art?.prompt, if_you_approve: g?.approve_effect ?? art?.approve_effect, if_you_reject: g?.reject_effect ?? art?.reject_effect, show: art?.show };
     });
   const tasks = store.listTasksDeep(state.run.id).map((t) => ({ task_id: t.task_id, run_id: t.run_id, node: t.node_id, item: t.item_index, model: t.model, effort: t.effort, role: t.role, status: t.status }));
   return {
