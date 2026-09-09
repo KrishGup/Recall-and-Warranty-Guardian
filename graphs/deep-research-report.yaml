@@ -312,7 +312,11 @@ nodes:
     map: $nodes.materialize.output.sections
     max_width: 3
     failure: { retries: 1, quorum: 1, on_failure: block }
-    input: { question: $nodes.scope.output.question, audience: $input.audience, title: $nodes.outline.output.title }
+    input:
+      question: $nodes.scope.output.question
+      audience: $input.audience
+      title: $nodes.outline.output.title
+      coverage: { sources_opened: $nodes.sources.output._stats.out, findings_candidates: $nodes.verify_findings.output.total, findings_survived: $nodes.rank.output._stats.out, finding_kill_rate: $nodes.verify_findings.kill_rate, discovery_rounds: $nodes.discover.output.rounds }
     prompt: |
       Write the section "{{ item.heading }}" of the report "{{ nodes.outline.output.title }}" for {{ input.audience }}.
       Goal of the section: {{ item.goal }}
@@ -323,6 +327,9 @@ nodes:
       Rules: 150-400 words of markdown (no heading line - it is added later). Every factual statement must come from the
       evidence; cite with the exact source_url strings in `citations`. If the evidence is thin, say so in the text rather
       than filling gaps. Return the section heading unchanged.
+      If this is the "limits of the evidence" section: state ONLY the coverage numbers given in <input> (sources opened,
+      findings that were candidates vs survived, kill rate, discovery rounds) and what the criteria could not be answered
+      with; never guess which individual sources did or did not contribute.
     output_schema:
       type: object
       required: [heading, body, citations]
@@ -355,7 +362,7 @@ nodes:
       summary: $nodes.outline.output.summary_plan
       sections: $nodes.citation_check.survivors
       sources: $nodes.sources.output.items
-      meta: { question: $nodes.scope.output.question, sources_used: $nodes.extract.count, findings_verified: $nodes.verify_findings.output.total, finding_kill_rate: $nodes.verify_findings.kill_rate }
+      meta: { question: $nodes.scope.output.question, sources_opened: $nodes.sources.output._stats.out, findings_candidates: $nodes.verify_findings.output.total, findings_survived: $nodes.rank.output._stats.out, finding_kill_rate: $nodes.verify_findings.kill_rate }
 
   - id: editor
     kind: verify
@@ -364,17 +371,19 @@ nodes:
     description: Adversarial editor with kill authority; rejections go back to the writers (bounded).
     target: $nodes.assemble.output.markdown
     min_survivors: 1
-    kill_threshold: 0.6
-    repair: { node: write_sections, max_rounds: 1 }
+    kill_threshold: 0.75
+    repair: { node: write_sections, max_rounds: 2 }
     input: { question: $nodes.scope.output.question, criteria: $nodes.scope.output.criteria, findings: $nodes.rank.output.items }
     prompt: |
       Full draft report:
       {{ item }}
 
-      Attack it as a demanding editor: (1) any statement not supported by a finding in <input>, (2) contradictions between
-      sections, (3) sections that do not serve the question or the criteria, (4) missing or dishonest limits/caveats,
-      (5) citations that do not correspond to the finding used. Kill it if you find a disqualifying problem and list every
-      problem as a separate reason with the section heading; pass it only if a skeptical reader would trust it.
+      Review it as a demanding editor. List every problem you find as a separate reason with the section heading.
+      KILL (confidence >= 0.75) only for disqualifying problems: a statement or number not supported by any finding in
+      <input>, a fabricated name/citation, a contradiction between sections, or a required dimension of the question that
+      is missing although the findings cover it. PASS (verdict "pass", still listing the problems as reasons) when the
+      problems are imprecise wording, a weak finding that the report already caveats, or metadata quibbles - the writers
+      only see the findings, so do not fail them for facts they could not know.
 
   - id: approve
     kind: gate

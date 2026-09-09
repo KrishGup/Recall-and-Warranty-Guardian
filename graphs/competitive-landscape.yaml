@@ -199,15 +199,14 @@ nodes:
 
   - id: matrix_rows
     kind: code
-    description: Flatten profiles into table rows (code, not a model).
-    fn: identity
+    description: Flatten profiles into readable table rows (code, not a model).
+    module: ./reducers/flatten-profiles.js
     input: { items: $nodes.profile.outputs }
 
   - id: matrix
     kind: code
     module: ./reducers/markdown-table.js
-    input: { items: $nodes.profile.outputs }
-    args: { fields: [name, url, pricing, product, lanes] }
+    input: { items: $nodes.matrix_rows.output.items, fields: $nodes.matrix_rows.output.fields }
 
   - id: positioning
     kind: subgraph
