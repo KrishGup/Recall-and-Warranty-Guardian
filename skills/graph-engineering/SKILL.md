@@ -47,6 +47,8 @@ Rules the validator enforces or flags (fix, do not argue with them):
 - `map:` fan-outs declare `max_width` and `failure.quorum`; the join reads `$nodes.x.outputs` AND `$nodes.x.count` so incompleteness is visible
 - a `verify` node's `survivors`/`killed` must be consumed downstream or drive `repair:` — otherwise it is decoration
 - `side_effect: true` requires `requires_gate:`; `budget.max_cost_usd` is mandatory; loops need `until.max_rounds` and a convergence rule
+- every tool-using node (WebSearch/WebFetch/Read/Grep/Edit/Bash) sets `max_turns` AND `max_cost_usd`; verifiers that must open a source declare `tools: [WebFetch]` or `[Read, Grep]`
+- nodes that modify files run in an isolated worktree (`cwd:` from a `git-worktree` code node); commits, pushes, PRs and messages are separate `side_effect` nodes, each behind its own gate
 - routers are deterministic: `routes[].when` conditions over node outputs; downstream branches use `when: { eq: [$nodes.route.output.route, x] }`; joins list the branches under `optional:`
 
 Save with `gren_write_graph` (validates first) or write the file and run `gren validate`.
@@ -76,7 +78,7 @@ The engine schedules nodes, validates every result, applies failure policies and
 4. Parse the subagent's JSON, then `gren_complete_task({run_id, task_id, output, model, source: "subagent"})`. If the output is rejected by the schema, fix it or re-run the subagent with the validation errors. If a task cannot be done, `gren_complete_task({…, error})` so the failure policy applies — never fabricate.
 5. Repeat from 1 until `status` is `completed`/`failed`. `pending_tasks` may include tasks from nested loop rounds (their `run_id` differs) — submit each to its own `run_id`.
 
-Gates: `waiting_gates` means a human must decide. Show the user the gate's `show` payload and ask; only call `gren_approve` with what they decided (or when they explicitly pre-authorised auto-approval for a demo).
+Gates: `waiting_gates` means a human must decide. Ask in plain language (short sentences, one idea each, ASD-STE100 style): what the system is about to do, what happens if they approve, what happens if they reject, and a compact summary of the payload (counts and a few rows, not raw JSON). Only call `gren_approve` with what they decided (or when they explicitly pre-authorised auto-approval for a demo). When you author a gate, always fill `approve_effect` and `reject_effect`.
 
 ## 5. Monitor and iterate
 

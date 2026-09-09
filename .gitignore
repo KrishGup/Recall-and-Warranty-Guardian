@@ -1,6 +1,8 @@
-node_modules/
-dist/
-runs/
 *.log
-.env
 .DS_Store
+.env
+.worktrees/
+dist/
+node_modules/
+out/
+runs/

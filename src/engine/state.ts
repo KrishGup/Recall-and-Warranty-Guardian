@@ -363,6 +363,31 @@ export class RunStore {
     return out;
   }
 
+  /** Nested run ids (loop rounds, subgraph items) under a run, recursively. */
+  nestedRunIds(runId: string, depth = 0): string[] {
+    const out: string[] = [];
+    if (depth > 6) return out;
+    const nested = path.join(this.runDir(runId), "nested");
+    if (!fs.existsSync(nested)) return out;
+    for (const node of fs.readdirSync(nested, { withFileTypes: true })) {
+      if (!node.isDirectory()) continue;
+      const nodeDir = path.join(nested, node.name);
+      for (const child of fs.readdirSync(nodeDir, { withFileTypes: true })) {
+        if (!child.isDirectory() || !fs.existsSync(path.join(nodeDir, child.name, "run.json"))) continue;
+        const id = `${runId}/nested/${node.name}/${child.name}`;
+        out.push(id, ...this.nestedRunIds(id, depth + 1));
+      }
+    }
+    return out;
+  }
+
+  /** Events of a run and all nested runs (for graph-wide width/verifier metrics). */
+  readEventsDeep(runId: string): GrenEvent[] {
+    const all = this.readEvents(runId);
+    for (const id of this.nestedRunIds(runId)) all.push(...this.readEvents(id));
+    return all.sort((a, b) => a.ts.localeCompare(b.ts));
+  }
+
   writeArtifact(runId: string, name: string, data: unknown): string {
     const rel = path.join("artifacts", `${name}.json`);
     const abs = path.join(this.runDir(runId), rel);

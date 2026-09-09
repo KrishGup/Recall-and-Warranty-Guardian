@@ -101,8 +101,10 @@ Fixed verifier output: `{ verdict: pass|kill, reasons: [], confidence: 0..1 }`. 
 - id: approve
   kind: gate
   title: Publish?
-  prompt: what the approver should consider
-  show: { brief: $nodes.brief.output }   # what the human sees
+  prompt: what the approver should consider     # short, plain sentences (ASD-STE100 style)
+  approve_effect: The system writes the report to the out/ folder.    # one sentence: what happens on approve
+  reject_effect: The system writes nothing. The run stops.            # one sentence: what happens on reject
+  show: { brief: $nodes.brief.output }   # what the human sees (arrays of records render as tables)
   timeout_ms: 86400000
   on_timeout: reject                      # or wait (default)
   on_reject: { route: brief }             # send comment back as repair feedback (bounded 3) - or { fail_run: false }

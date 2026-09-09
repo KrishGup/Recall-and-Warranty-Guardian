@@ -25,7 +25,7 @@ import { RunStore, nowIso, type GrenEvent } from "../engine/state.js";
 import { GraphRunner } from "../engine/scheduler.js";
 import { analyze } from "../spec/analyze.js";
 import { loadGraph, loadGraphFromObject, parseSpecText } from "../spec/load.js";
-import { computeMetrics } from "../metrics/metrics.js";
+import { computeMetricsDeep } from "../metrics/metrics.js";
 import { BridgeRegistry, defaultBridgeName, type BridgeRegistryOptions } from "../bridges/registry.js";
 import { validateAgainst } from "../engine/validate.js";
 import { SHAPES } from "../cli/shapes.js";
@@ -255,7 +255,7 @@ export async function startServer(o: ServerOptions): Promise<http.Server> {
           run: state.run,
           nodes: state.nodes,
           analysis: analyze(state.run.spec),
-          metrics: computeMetrics(state, events),
+          metrics: computeMetricsDeep(store, id),
           tasks: store.listTasksDeep(id),
           spec_yaml: YAML.stringify(state.run.spec),
           in_process: control.runners.has(id),

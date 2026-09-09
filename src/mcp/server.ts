@@ -14,7 +14,7 @@ import YAML from "yaml";
 import { RunStore, nowIso, type GrenEvent, type RunState } from "../engine/state.js";
 import { analyze, formatAnalysis } from "../spec/analyze.js";
 import { loadGraph, parseSpecText, SpecError } from "../spec/load.js";
-import { computeMetrics, formatMetrics } from "../metrics/metrics.js";
+import { computeMetricsDeep, formatMetrics } from "../metrics/metrics.js";
 import { validateAgainst } from "../engine/validate.js";
 import { createRunControl, listGraphs } from "../server/server.js";
 import { SHAPES, scaffold } from "../cli/shapes.js";
@@ -262,7 +262,7 @@ export async function startMcpServer(o: McpOptions) {
   });
   server.registerTool("gren_metrics", { description: "Graph-shaped metrics: critical path, parallel speedup, width, failure/retry rate, verifier kill rate, fan-out efficiency, compression, human intervention, cost by model, hints.", inputSchema: { run_id: z.string(), format: z.enum(["text", "json"]).optional() } }, async ({ run_id, format }) => {
     const st = store.load(run_id);
-    const m = computeMetrics(st, store.readEvents(run_id));
+    const m = computeMetricsDeep(store, run_id);
     return format === "json" ? jsonOut(m) : text(formatMetrics(m));
   });
   server.registerTool("gren_events", { description: "Event log of a run (after a sequence number).", inputSchema: { run_id: z.string(), after: z.number().int().optional(), limit: z.number().int().optional() } }, async ({ run_id, after, limit }) => {

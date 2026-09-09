@@ -21,6 +21,21 @@ export default async function gitWorktree(input, args, ctx) {
   if (exists) git("worktree", "add", dir, branch);
   else git("worktree", "add", "-b", branch, dir, base);
   const baseCommit = git("rev-parse", base);
-  ctx.log(`worktree ${dir} on branch ${branch} from ${baseCommit.slice(0, 8)}`);
-  return { worktree: dir.replace(/\\/g, "/"), branch, base_commit: baseCommit, reused: false };
+  // Share heavy, untracked dependency folders with the main checkout so tests/builds run in the worktree.
+  const links = Array.isArray(args.link) ? args.link.map(String) : ["node_modules"];
+  const linked = [];
+  for (const rel of links) {
+    const target = path.join(root, rel);
+    const link = path.join(dir, rel);
+    if (fs.existsSync(target) && !fs.existsSync(link)) {
+      try {
+        fs.symlinkSync(target, link, process.platform === "win32" ? "junction" : "dir");
+        linked.push(rel);
+      } catch (e) {
+        ctx.log(`could not link ${rel}: ${e.message}`);
+      }
+    }
+  }
+  ctx.log(`worktree ${dir} on branch ${branch} from ${baseCommit.slice(0, 8)}${linked.length ? ` (linked ${linked.join(", ")})` : ""}`);
+  return { worktree: dir.replace(/\\/g, "/"), branch, base_commit: baseCommit, reused: false, linked };
 }

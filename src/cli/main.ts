@@ -31,7 +31,7 @@ import { GraphRunner } from "../engine/scheduler.js";
 import { RunStore, nowIso, type GrenEvent, type RunState } from "../engine/state.js";
 import { validateAgainst } from "../engine/validate.js";
 import { BridgeRegistry, defaultBridgeName } from "../bridges/registry.js";
-import { computeMetrics, formatMetrics } from "../metrics/metrics.js";
+import { computeMetricsDeep, formatMetrics } from "../metrics/metrics.js";
 import { builtinReducers } from "../reducers/builtin.js";
 import { FROZEN_CONSTRAINTS } from "../spec/schema.js";
 import { SHAPES, scaffold } from "./shapes.js";
@@ -269,13 +269,13 @@ async function cmdRun(positional: string[], flags: Flags, resume: boolean | "for
   if (!quiet) console.log(`run ${runner.id} started (runs dir ${store.root})`);
   const state = await runner.run();
   if (flags.json) {
-    console.log(JSON.stringify({ run: { ...state.run, spec: undefined }, nodes: state.nodes, metrics: computeMetrics(state, store.readEvents(state.run.id)) }, null, 2));
+    console.log(JSON.stringify({ run: { ...state.run, spec: undefined }, nodes: state.nodes, metrics: computeMetricsDeep(store, state.run.id) }, null, 2));
   } else {
     console.log("");
     printStatus(state, store);
     if (state.run.status === "completed") {
       console.log("");
-      console.log(formatMetrics(computeMetrics(state, store.readEvents(state.run.id))));
+      console.log(formatMetrics(computeMetricsDeep(store, state.run.id)));
       console.log("");
       console.log("Output:");
       console.log(JSON.stringify(state.run.output, null, 2).slice(0, 6000));
@@ -429,7 +429,7 @@ async function main() {
     case "metrics": {
       const store = new RunStore(runsDir(flags));
       const id = positional[0] ?? fail("usage: gren metrics <run_id> [--json]");
-      const m = computeMetrics(store.load(id), store.readEvents(id));
+      const m = computeMetricsDeep(store, id);
       console.log(flags.json ? JSON.stringify(m, null, 2) : formatMetrics(m));
       return;
     }

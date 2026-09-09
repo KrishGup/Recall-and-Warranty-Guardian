@@ -11,7 +11,7 @@
  *   width                     peak / average concurrent agent calls vs the width budget
  */
 import { analyze } from "../spec/analyze.js";
-import type { GrenEvent, NodeRecord, RunState } from "../engine/state.js";
+import type { GrenEvent, NodeRecord, RunState, RunStore } from "../engine/state.js";
 
 export interface NodeMetric {
   id: string;
@@ -36,6 +36,9 @@ export interface RunMetrics {
   graph: string;
   status: string;
   wall_ms: number;
+  human_wait_ms: number;
+  active_ms: number;
+  nested_runs: number;
   cost_usd: number;
   agent_calls: number;
   tokens: { input: number; output: number; cache_read: number };
@@ -60,10 +63,36 @@ function ms(a?: string, b?: string): number {
   return Math.max(0, new Date(b).getTime() - new Date(a).getTime());
 }
 
-export function computeMetrics(state: RunState, events: GrenEvent[] = []): RunMetrics {
+/** Metrics for a run including everything that happened inside its nested runs (loop rounds, mapped subgraphs). */
+export function computeMetricsDeep(store: RunStore, runId: string): RunMetrics {
+  const state = store.load(runId);
+  const nestedIds = store.nestedRunIds(runId);
+  const children = nestedIds.map((id) => {
+    try {
+      return store.load(id);
+    } catch {
+      return undefined;
+    }
+  }).filter((s): s is RunState => Boolean(s));
+  return computeMetrics(state, store.readEventsDeep(runId), children);
+}
+
+export function computeMetrics(state: RunState, events: GrenEvent[] = [], nested: RunState[] = []): RunMetrics {
   const spec = state.run.spec;
   const a = analyze(spec);
   const nodes = Object.values(state.nodes);
+  // human wait: time between run.paused and the following run.resumed
+  let humanWait = 0;
+  let pausedAt: number | undefined;
+  for (const e of events) {
+    if (e.run_id !== state.run.id) continue;
+    if (e.type === "run.paused") pausedAt = new Date(e.ts).getTime();
+    else if (e.type === "run.resumed" && pausedAt !== undefined) {
+      humanWait += new Date(e.ts).getTime() - pausedAt;
+      pausedAt = undefined;
+    }
+  }
+  if (pausedAt !== undefined && state.run.status === "paused") humanWait += Date.now() - pausedAt;
 
   // ---- actual critical path (longest path over deps using actual durations, skipped nodes = 0) ----
   const dur = new Map<string, number>();
@@ -183,6 +212,26 @@ export function computeMetrics(state: RunState, events: GrenEvent[] = []): RunMe
     }
     nodeMetrics.push(m);
   }
+  // ---- fold in nested runs (their verifiers, fan-outs, attempts and models are part of THIS graph's behaviour) ----
+  for (const child of nested) {
+    for (const n of Object.values(child.nodes)) {
+      const fa = n.attempts.filter((t) => t.status !== "ok" && t.status !== "cancelled").length;
+      attempts += n.attempts.length;
+      failedAttempts += fa;
+      retries += n.retries;
+      agentCalls += n.agent_calls;
+      for (const t of n.attempts) if (t.model) costByModel[t.model] = (costByModel[t.model] ?? 0) + (t.cost_usd ?? 0);
+      if (n.verify) {
+        candidates += n.verify.total;
+        killed += n.verify.killed.length;
+        verifiers.push({ id: `${child.run.parent?.node_id ?? "nested"}/${n.id}`, candidates: n.verify.total, killed: n.verify.killed.length, kill_rate: n.verify.kill_rate, repair_rounds: n.verify.repair_round });
+      }
+      if (n.items && n.kind !== "verify") {
+        workers += n.items.length;
+        failedWorkers += n.items.filter((i) => i.status === "failed").length;
+      }
+    }
+  }
 
   // Overall compression: peak raw material entering any reducer vs what left the LAST reducer (topological order).
   if (compression.length) {
@@ -204,8 +253,10 @@ export function computeMetrics(state: RunState, events: GrenEvent[] = []): RunMe
   const costUnknownCalls = nodes.reduce((s, n) => s + n.attempts.filter((t) => t.status === "ok" && (t.cost_usd ?? 0) === 0 && t.bridge !== "code" && t.bridge !== "subgraph").length, 0);
 
   const wall = state.run.totals.wall_ms || ms(state.run.started_at, state.run.ended_at ?? state.run.updated_at);
+  const active = Math.max(0, wall - humanWait);
   const killRate = candidates ? killed / candidates : 0;
   const hints: string[] = [];
+  if (humanWait > 0) hints.push(`${(humanWait / 1000 / 60).toFixed(1)} min of the wall clock was spent waiting for a human at a gate (active time ${(active / 1000).toFixed(0)}s).`);
   if (candidates > 0 && killRate === 0) hints.push("Verifier kill rate is 0%: the verifier may be decoration. Make its objective adversarial or tighten the threshold.");
   if (candidates > 0 && killRate >= 0.8) hints.push(`Verifier kill rate is ${(killRate * 100).toFixed(0)}%: workers may be poorly scoped or the verifier too strict.`);
   if (agentCalls && retries / agentCalls > 0.5) hints.push(`Retry rate ${(retries / Math.max(1, agentCalls) * 100).toFixed(0)}%: a graph that succeeds after many retries is not healthy - check the failing node's prompt/tool.`);
@@ -222,6 +273,9 @@ export function computeMetrics(state: RunState, events: GrenEvent[] = []): RunMe
     graph: state.run.graph,
     status: state.run.status,
     wall_ms: wall,
+    human_wait_ms: humanWait,
+    active_ms: active,
+    nested_runs: nested.length,
     cost_usd: Number(state.run.totals.cost_usd.toFixed(5)),
     agent_calls: agentCalls,
     tokens: {
@@ -249,7 +303,7 @@ export function computeMetrics(state: RunState, events: GrenEvent[] = []): RunMe
 export function formatMetrics(m: RunMetrics): string {
   const L: string[] = [];
   L.push(`Run ${m.run_id} (${m.graph}) - ${m.status}`);
-  L.push(`Wall ${(m.wall_ms / 1000).toFixed(1)}s | cost $${m.cost_usd} | agent calls ${m.agent_calls} | tokens in ${m.tokens.input} out ${m.tokens.output}`);
+  L.push(`Wall ${(m.wall_ms / 1000).toFixed(1)}s${m.human_wait_ms ? ` (${(m.human_wait_ms / 1000).toFixed(0)}s waiting on humans, ${(m.active_ms / 1000).toFixed(0)}s active)` : ""} | cost $${m.cost_usd} | agent calls ${m.agent_calls}${m.nested_runs ? ` | nested runs ${m.nested_runs}` : ""} | tokens in ${m.tokens.input} out ${m.tokens.output}`);
   L.push(`Critical path ${(m.critical_path.ms / 1000).toFixed(1)}s: ${m.critical_path.nodes.join(" -> ")}`);
   L.push(`Sum of node time ${(m.sum_of_node_ms / 1000).toFixed(1)}s => parallel speedup ${m.parallel_speedup}x | peak width ${m.width.peak}${m.width.budget ? `/${m.width.budget}` : ""}`);
   L.push(`Node failure rate ${(m.node_failure_rate * 100).toFixed(0)}% | retry rate ${(m.retry_rate * 100).toFixed(0)}%`);
