@@ -156,6 +156,22 @@ function printStatus(state: RunState, store: RunStore) {
       console.log(`    gren approve ${r.id} ${g.id} [--reject] [--comment "..."]`);
     }
   }
+  const nested = store.nestedRunIds(r.id);
+  if (nested.length) {
+    console.log("");
+    console.log(`  nested runs (${nested.length}):`);
+    for (const id of nested.slice(-12)) {
+      try {
+        const s = store.load(id);
+        const done = Object.values(s.nodes).filter((n) => n.status === "completed").length;
+        const running = Object.values(s.nodes).filter((n) => n.status === "running").map((n) => n.id);
+        console.log(`    ${id.split("/nested/").slice(1).join(" > ").padEnd(34)} ${s.run.status.padEnd(10)} ${done}/${Object.keys(s.nodes).length} done  $${s.run.totals.cost_usd.toFixed(4)}${running.length ? `  running: ${running.join(", ")}` : ""}`);
+      } catch {
+        /* torn */
+      }
+    }
+    if (nested.length > 12) console.log(`    … ${nested.length - 12} more (gren list --all)`);
+  }
   const tasks = store.listTasksDeep(r.id);
   if (tasks.length) {
     console.log("");

@@ -191,6 +191,7 @@ export class GraphRunner {
     }
     if (state.run.status !== "completed" || reset.length) state.run.status = "created";
     state.run.error = undefined;
+    state.run.warnings = undefined;
     o.store.save(state);
     const runner = new GraphRunner(o, state);
     runner.emit("run.resumed", {});
