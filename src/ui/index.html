@@ -1,0 +1,489 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>gren · Graph Engineering Runtime</title>
+<style>
+  :root {
+    --bg: #0f1115; --panel: #171a21; --panel2: #1e222b; --border: #2a2f3a; --text: #e6e8ee; --muted: #8b93a7;
+    --accent: #6ea8fe; --ok: #3fb950; --warn: #d29922; --bad: #f85149; --run: #58a6ff; --skip: #6e7681; --wait: #e3b341; --purple: #bc8cff;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; --sans: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 13px/1.45 var(--sans); height: 100vh; display: grid; grid-template-rows: 44px 1fr; }
+  header { display: flex; align-items: center; gap: 14px; padding: 0 14px; border-bottom: 1px solid var(--border); background: var(--panel); }
+  header h1 { font-size: 15px; margin: 0; letter-spacing: .3px; }
+  header h1 span { color: var(--muted); font-weight: 400; }
+  header .spacer { flex: 1; }
+  .pill { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 11px; border: 1px solid var(--border); color: var(--muted); }
+  .pill.ok { color: var(--ok); border-color: var(--ok); } .pill.bad { color: var(--bad); border-color: var(--bad); } .pill.warn { color: var(--warn); border-color: var(--warn); }
+  button { background: var(--panel2); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 5px 10px; cursor: pointer; font: inherit; }
+  button:hover { border-color: var(--accent); } button.primary { background: var(--accent); color: #0b1020; border-color: var(--accent); font-weight: 600; }
+  button.danger { border-color: var(--bad); color: var(--bad); } button:disabled { opacity: .5; cursor: default; }
+  main { display: grid; grid-template-columns: 300px 1fr 380px; min-height: 0; }
+  aside, section, .inspector { min-height: 0; overflow: auto; }
+  aside { border-right: 1px solid var(--border); background: var(--panel); }
+  .inspector { border-left: 1px solid var(--border); background: var(--panel); padding: 12px; }
+  .runs-head { display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; border-bottom: 1px solid var(--border); position: sticky; top: 0; background: var(--panel); z-index: 2; }
+  .run { padding: 8px 12px; border-bottom: 1px solid var(--border); cursor: pointer; }
+  .run:hover { background: var(--panel2); } .run.active { background: #22304a; }
+  .run .id { font-family: var(--mono); font-size: 11px; color: var(--muted); word-break: break-all; }
+  .run .meta { display: flex; gap: 8px; align-items: center; margin-top: 3px; font-size: 12px; }
+  .run.nested { padding-left: 26px; font-size: 12px; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+  .st-completed { background: var(--ok); } .st-running { background: var(--run); animation: pulse 1.2s infinite; } .st-failed { background: var(--bad); } .st-paused, .st-waiting_approval, .st-waiting_task { background: var(--wait); } .st-skipped { background: var(--skip); } .st-pending, .st-created { background: #3a4150; } .st-cancelled { background: #8b5cf6; }
+  @keyframes pulse { 0%,100% { opacity: 1 } 50% { opacity: .35 } }
+  .tabs { display: flex; gap: 2px; padding: 8px 12px 0; border-bottom: 1px solid var(--border); background: var(--panel); position: sticky; top: 0; z-index: 2; }
+  .tabs button { border-radius: 6px 6px 0 0; border-bottom: none; background: transparent; color: var(--muted); }
+  .tabs button.active { background: var(--panel2); color: var(--text); }
+  .tabs .right { margin-left: auto; display: flex; gap: 6px; align-items: center; padding-bottom: 6px; }
+  .pane { padding: 12px; display: none; } .pane.active { display: block; }
+  .kv { display: grid; grid-template-columns: max-content 1fr; gap: 3px 12px; font-size: 12px; }
+  .kv div:nth-child(odd) { color: var(--muted); }
+  pre, code { font-family: var(--mono); font-size: 11.5px; }
+  pre { background: #0b0d12; border: 1px solid var(--border); border-radius: 6px; padding: 8px; overflow: auto; max-height: 360px; margin: 6px 0; white-space: pre-wrap; word-break: break-word; }
+  table { border-collapse: collapse; width: 100%; font-size: 12px; }
+  th, td { text-align: left; padding: 4px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { color: var(--muted); font-weight: 500; position: sticky; top: 0; background: var(--panel2); }
+  tr.clickable { cursor: pointer; } tr.clickable:hover { background: var(--panel2); }
+  .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 8px; margin-bottom: 12px; }
+  .card { background: var(--panel2); border: 1px solid var(--border); border-radius: 8px; padding: 10px; }
+  .card .label { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .4px; }
+  .card .value { font-size: 20px; font-weight: 600; margin-top: 2px; }
+  .card .sub { color: var(--muted); font-size: 11px; margin-top: 2px; }
+  .hint { border-left: 3px solid var(--warn); padding: 4px 10px; margin: 6px 0; background: #1f1c14; border-radius: 0 6px 6px 0; }
+  .finding { padding: 4px 8px; border-radius: 6px; margin: 4px 0; font-size: 12px; background: var(--panel2); }
+  .finding.error { border-left: 3px solid var(--bad); } .finding.warning { border-left: 3px solid var(--warn); } .finding.info { border-left: 3px solid var(--accent); }
+  .graph-scroll { overflow: auto; border: 1px solid var(--border); border-radius: 8px; background: #0b0d12; max-height: calc(100vh - 150px); }
+  svg { display: block; background: #0b0d12; }
+  .tabs { flex-wrap: wrap; }
+  .node rect { fill: var(--panel2); stroke: var(--border); stroke-width: 1.5; rx: 8; }
+  .node.status-running rect { stroke: var(--run); stroke-width: 2.5; } .node.status-completed rect { stroke: var(--ok); } .node.status-failed rect { stroke: var(--bad); stroke-width: 2.5; }
+  .node.status-waiting_approval rect, .node.status-waiting_task rect { stroke: var(--wait); stroke-width: 2.5; stroke-dasharray: 5 3; } .node.status-skipped rect { stroke: var(--skip); stroke-dasharray: 3 3; opacity: .6; }
+  .node.critical rect { filter: drop-shadow(0 0 4px rgba(110,168,254,.45)); }
+  .node.selected rect { stroke: #fff; stroke-width: 2.5; }
+  .node text { fill: var(--text); font-family: var(--sans); font-size: 12px; pointer-events: none; }
+  .node text.sub { fill: var(--muted); font-size: 10.5px; } .node text.badge { fill: var(--text); font-size: 10.5px; font-family: var(--mono); }
+  .node { cursor: pointer; }
+  .edge { fill: none; stroke: #3d4451; stroke-width: 1.5; } .edge.gate { stroke: var(--wait); stroke-dasharray: 6 3; } .edge.repair { stroke: var(--bad); stroke-dasharray: 4 3; } .edge.route { stroke: var(--purple); } .edge.order { stroke-dasharray: 2 4; } .edge.status { stroke: var(--warn); stroke-dasharray: 2 3; }
+  .edge.critical { stroke: var(--accent); stroke-width: 2.5; }
+  .edge.active { stroke: var(--ok); }
+  .legend { display: flex; gap: 14px; flex-wrap: wrap; color: var(--muted); font-size: 11px; margin: 6px 0; align-items: center; }
+  .legend i { display: inline-block; width: 22px; border-top: 2px solid #3d4451; vertical-align: middle; margin-right: 4px; }
+  .events { font-family: var(--mono); font-size: 11.5px; } .events div { padding: 2px 4px; border-bottom: 1px solid #1c2028; white-space: pre-wrap; word-break: break-word; }
+  .events .t { color: var(--muted); } .events .type { color: var(--accent); } .events .node { color: var(--purple); }
+  .events .bad { color: var(--bad); } .events .good { color: var(--ok); } .events .warn { color: var(--wait); }
+  .modal-bg { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: none; align-items: center; justify-content: center; z-index: 10; }
+  .modal-bg.open { display: flex; }
+  .modal { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; width: 760px; max-width: 95vw; max-height: 90vh; overflow: auto; padding: 16px; }
+  .modal h2 { margin: 0 0 10px; font-size: 15px; }
+  label { display: block; color: var(--muted); font-size: 11px; margin: 8px 0 3px; }
+  input, select, textarea { width: 100%; background: #0b0d12; color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; font: inherit; }
+  textarea { font-family: var(--mono); font-size: 11.5px; min-height: 90px; }
+  .row { display: flex; gap: 10px; } .row > * { flex: 1; }
+  .gatebox { border: 1px solid var(--wait); background: #2a2410; border-radius: 8px; padding: 10px; margin: 8px 0; }
+  .taskbox { border: 1px solid var(--border); background: var(--panel2); border-radius: 8px; padding: 10px; margin: 8px 0; }
+  .muted { color: var(--muted); } .mono { font-family: var(--mono); font-size: 11.5px; }
+  .empty { color: var(--muted); padding: 30px; text-align: center; }
+  details summary { cursor: pointer; color: var(--muted); font-size: 12px; margin: 6px 0; }
+  .toast { position: fixed; bottom: 14px; right: 14px; background: var(--panel2); border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; z-index: 20; display: none; }
+</style>
+</head>
+<body>
+<header>
+  <h1>gren <span>· Graph Engineering Runtime</span></h1>
+  <span id="sse" class="pill">connecting…</span>
+  <span id="bridges" class="pill">bridges…</span>
+  <div class="spacer"></div>
+  <label style="margin:0;display:flex;align-items:center;gap:4px"><input type="checkbox" id="showNested" style="width:auto"> nested</label>
+  <button id="newRun" class="primary">＋ New run</button>
+</header>
+<main>
+  <aside>
+    <div class="runs-head"><strong>Runs</strong><span id="runCount" class="muted"></span></div>
+    <div id="runs"></div>
+  </aside>
+  <section>
+    <div class="tabs" id="tabs">
+      <button data-tab="graph" class="active">Graph</button>
+      <button data-tab="nodes">Nodes</button>
+      <button data-tab="events">Events</button>
+      <button data-tab="metrics">Metrics</button>
+      <button data-tab="decisions">Decisions</button>
+      <button data-tab="tasks">Tasks <span id="taskBadge"></span></button>
+      <button data-tab="analysis">Analysis</button>
+      <button data-tab="spec">Spec</button>
+      <button data-tab="output">Output</button>
+      <div class="right" id="runActions"></div>
+    </div>
+    <div id="pane-graph" class="pane active"><div class="empty">Select a run or start one.</div></div>
+    <div id="pane-nodes" class="pane"></div>
+    <div id="pane-events" class="pane"><div class="events" id="events"></div></div>
+    <div id="pane-metrics" class="pane"></div>
+    <div id="pane-decisions" class="pane"></div>
+    <div id="pane-tasks" class="pane"></div>
+    <div id="pane-analysis" class="pane"></div>
+    <div id="pane-spec" class="pane"><pre id="specText"></pre></div>
+    <div id="pane-output" class="pane"><pre id="outputText"></pre></div>
+  </section>
+  <div class="inspector" id="inspector"><div class="empty">Click a node to inspect it.</div></div>
+</main>
+
+<div class="modal-bg" id="modal">
+  <div class="modal">
+    <h2>New run</h2>
+    <label>Graph</label>
+    <select id="graphSelect"></select>
+    <div id="graphInfo" class="muted" style="margin:4px 0 0"></div>
+    <div class="row">
+      <div><label>Bridge</label><select id="bridgeSelect"><option value="">(default)</option><option value="claude-code">claude-code (subscription)</option><option value="api">api (ANTHROPIC_API_KEY)</option><option value="inbox">inbox (orchestrator / human worker)</option><option value="mock">mock (no tokens)</option></select></div>
+      <div><label>Options</label><label style="margin:6px 0;display:flex;gap:6px;align-items:center;color:var(--text)"><input type="checkbox" id="autoApprove" style="width:auto"> auto-approve gates (demo only)</label></div>
+    </div>
+    <label>Input (JSON)</label>
+    <textarea id="inputJson">{}</textarea>
+    <div id="newRunError" style="color:var(--bad);margin:6px 0"></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:10px"><button id="cancelNew">Cancel</button><button id="startNew" class="primary">Start run</button></div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+(() => {
+  const $ = (s, el = document) => el.querySelector(s);
+  const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const fmtMs = (ms) => ms === undefined || ms === null ? "–" : ms < 1000 ? `${Math.round(ms)}ms` : ms < 60000 ? `${(ms / 1000).toFixed(1)}s` : `${Math.floor(ms / 60000)}m${Math.round((ms % 60000) / 1000)}s`;
+  const fmtUsd = (v) => `$${Number(v ?? 0).toFixed(4)}`;
+  const api = async (path, body) => {
+    const r = await fetch(path, body ? { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) } : undefined);
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.error ? `${j.error}${j.details ? ": " + j.details.join("; ") : ""}` : r.statusText);
+    return j;
+  };
+  const toast = (msg, bad) => { const t = $("#toast"); t.textContent = msg; t.style.display = "block"; t.style.borderColor = bad ? "var(--bad)" : "var(--ok)"; clearTimeout(t._t); t._t = setTimeout(() => (t.style.display = "none"), 3500); };
+
+  let runs = [], current = null, data = null, selectedNode = null, eventsSeq = 0, graphs = [], refreshTimer = null, tab = "graph";
+
+  // ---------- runs list ----------
+  async function loadRuns() {
+    runs = await api(`/api/runs?all=${$("#showNested").checked ? 1 : 0}`);
+    $("#runCount").textContent = `${runs.length}`;
+    const el = $("#runs");
+    el.innerHTML = runs.map((r) => `
+      <div class="run ${r.parent ? "nested" : ""} ${current === r.id ? "active" : ""}" data-id="${esc(r.id)}">
+        <div><span class="dot st-${r.status}"></span> <strong>${esc(r.graph)}</strong> ${r.in_process ? '<span class="pill">live</span>' : ""}</div>
+        <div class="id">${esc(r.parent ? r.id.split("/nested/").slice(1).join("/") : r.id)}</div>
+        <div class="meta"><span class="pill">${r.status}</span><span class="muted">${r.nodes.completed}/${r.nodes.total}</span><span class="muted">${fmtUsd(r.cost_usd)}</span>${r.nodes.waiting ? `<span class="pill warn">${r.nodes.waiting} waiting</span>` : ""}</div>
+      </div>`).join("") || '<div class="empty">No runs yet.</div>';
+    el.querySelectorAll(".run").forEach((d) => d.addEventListener("click", () => selectRun(d.dataset.id)));
+  }
+
+  async function selectRun(id) {
+    current = id; selectedNode = null; eventsSeq = 0; $("#events").innerHTML = "";
+    await refresh(true);
+    loadRuns();
+  }
+
+  async function refresh(full = false) {
+    if (!current) return;
+    try { data = await api(`/api/run?id=${encodeURIComponent(current)}`); } catch (e) { toast(e.message, true); return; }
+    renderActions(); renderGraph(); renderNodes(); renderMetrics(); renderDecisions(); renderTasks(); renderAnalysis();
+    $("#specText").textContent = data.spec_yaml; $("#outputText").textContent = JSON.stringify(data.run.output ?? null, null, 2);
+    if (full) { const evs = await api(`/api/run/events?id=${encodeURIComponent(current)}&after=0`); evs.forEach(appendEvent); }
+    if (selectedNode) renderInspector(selectedNode); else renderRunInspector();
+  }
+  const scheduleRefresh = () => { clearTimeout(refreshTimer); refreshTimer = setTimeout(() => refresh(false), 250); };
+
+  function renderActions() {
+    const r = data.run;
+    const btns = [];
+    if (r.status === "running" && data.in_process) btns.push(`<button class="danger" data-act="cancel">Cancel</button>`);
+    if ((r.status === "paused" || r.status === "failed" || r.status === "cancelled" || r.status === "created") && !data.in_process) btns.push(`<button data-act="resume">Resume here</button>`);
+    if (!data.in_process && r.status !== "running") btns.push(`<button class="danger" data-act="delete">Delete</button>`);
+    btns.push(`<span class="pill">${r.status}</span><span class="pill">${fmtUsd(r.totals.cost_usd)}</span><span class="pill">${fmtMs(r.totals.wall_ms)}</span>`);
+    $("#runActions").innerHTML = btns.join("");
+    $("#runActions").querySelectorAll("button").forEach((b) => b.addEventListener("click", async () => {
+      try {
+        if (b.dataset.act === "cancel") await api("/api/run/cancel", { id: current });
+        if (b.dataset.act === "resume") await api("/api/run/resume", { id: current });
+        if (b.dataset.act === "delete") { if (!confirm(`Delete run ${current}?`)) return; await api("/api/run/delete", { id: current }); current = null; data = null; $("#pane-graph").innerHTML = '<div class="empty">Select a run.</div>'; }
+        toast("ok"); loadRuns(); scheduleRefresh();
+      } catch (e) { toast(e.message, true); }
+    }));
+  }
+
+  // ---------- graph ----------
+  function layout() {
+    const a = data.analysis, nodes = data.nodes;
+    const levels = a.levels.length ? a.levels : [Object.keys(nodes)];
+    const W = 178, H = 62, GX = 70, GY = 22;
+    const pos = {};
+    let maxRows = Math.max(...levels.map((l) => l.length));
+    levels.forEach((ids, li) => {
+      const totalH = ids.length * H + (ids.length - 1) * GY;
+      const offset = (maxRows * (H + GY) - totalH) / 2;
+      ids.forEach((id, ri) => { pos[id] = { x: 20 + li * (W + GX), y: 20 + offset + ri * (H + GY), w: W, h: H }; });
+    });
+    const width = 40 + levels.length * (W + GX) - GX, height = 40 + maxRows * (H + GY) - GY;
+    return { pos, width, height };
+  }
+
+  function renderGraph() {
+    const pane = $("#pane-graph");
+    if (!data) return;
+    const { pos, width, height } = layout();
+    const cp = new Set(data.metrics.critical_path.nodes.length > 1 ? data.metrics.critical_path.nodes : data.analysis.critical_path.nodes);
+    const edges = data.analysis.edges.map((e) => {
+      const f = pos[e.from], t = pos[e.to]; if (!f || !t) return "";
+      const x1 = f.x + f.w, y1 = f.y + f.h / 2, x2 = t.x, y2 = t.y + t.h / 2;
+      const back = e.kind === "repair";
+      const path = back ? `M${f.x + f.w / 2},${f.y} C${f.x + f.w / 2},${f.y - 40} ${t.x + t.w / 2},${t.y - 40} ${t.x + t.w / 2},${t.y}` : `M${x1},${y1} C${x1 + 35},${y1} ${x2 - 35},${y2} ${x2},${y2}`;
+      const active = data.nodes[e.from]?.status === "completed" && ["completed", "running", "waiting_approval"].includes(data.nodes[e.to]?.status);
+      const crit = cp.has(e.from) && cp.has(e.to) && !back;
+      return `<path class="edge ${e.kind} ${crit ? "critical" : ""} ${active && !crit ? "active" : ""}" d="${path}" marker-end="url(#arrow${crit ? "c" : e.kind === "gate" ? "g" : e.kind === "repair" ? "r" : ""})"><title>${esc(e.from)} → ${esc(e.to)} [${e.kind}]\n${esc(e.data.join("\n"))}</title></path>`;
+    }).join("");
+    const nodesSvg = Object.entries(pos).map(([id, p]) => {
+      const n = data.nodes[id] || { status: "pending" }, spec = data.run.spec.nodes.find((s) => s.id === id) || {}, an = data.analysis.nodes[id] || {};
+      let badge = "";
+      if (n.items) badge = `${n.items.filter((i) => i.status === "completed").length}/${n.items.length}`;
+      if (n.verify) badge += ` kill ${(n.verify.kill_rate * 100).toFixed(0)}%`;
+      if (n.route) badge = `→ ${n.route}`;
+      if (n.gate?.decision) badge = n.gate.decision;
+      if (n.loop) badge = `${n.loop.rounds} rounds · ${n.loop.collected}`;
+      if (n.status === "waiting_approval") badge = "⏸ awaiting approval";
+      if (n.status === "waiting_task") badge = "inbox task";
+      const sub = [spec.kind, an.model ? an.model.replace("claude-", "") : null, spec.map ? "map" : null, spec.side_effect ? "side-effect" : null].filter(Boolean).join(" · ");
+      const right = n.status === "completed" || n.status === "failed" ? `${fmtMs(n.duration_ms)}${n.cost_usd ? " " + fmtUsd(n.cost_usd) : ""}` : "";
+      return `<g class="node status-${n.status} ${cp.has(id) ? "critical" : ""} ${selectedNode === id ? "selected" : ""}" data-id="${esc(id)}" transform="translate(${p.x},${p.y})">
+        <rect width="${p.w}" height="${p.h}"></rect>
+        <circle cx="12" cy="14" r="4" class="st-${n.status}" fill="${{ completed: "#3fb950", running: "#58a6ff", failed: "#f85149", skipped: "#6e7681", waiting_approval: "#e3b341", waiting_task: "#e3b341", pending: "#3a4150" }[n.status] || "#3a4150"}"></circle>
+        <text x="22" y="18" font-weight="600">${esc(id)}</text>
+        <text x="10" y="35" class="sub">${esc(sub)}</text>
+        <text x="10" y="52" class="badge">${esc(badge)}</text>
+        <text x="${p.w - 8}" y="52" class="sub" text-anchor="end">${esc(right)}</text>
+        <title>${esc(id)} (${n.status})${spec.description ? "\n" + esc(spec.description) : ""}${n.error ? "\nERROR: " + esc(n.error) : ""}${n.skip_reason ? "\n" + esc(n.skip_reason) : ""}</title>
+      </g>`;
+    }).join("");
+    pane.innerHTML = `
+      <div class="legend"><span><i style="border-color:var(--accent);border-width:3px"></i>critical path</span><span><i></i>data</span><span><i style="border-color:var(--wait);border-style:dashed"></i>gate</span><span><i style="border-color:var(--bad);border-style:dashed"></i>repair (bounded)</span><span><i style="border-color:var(--purple)"></i>route</span><span><i style="border-style:dotted"></i>ordering-only</span><span class="muted">hover an edge to see what data crosses it</span></div>
+      <div class="graph-scroll"><svg viewBox="0 0 ${width} ${height}" width="${Math.max(width, 600)}" height="${Math.max(height, 160)}">
+        <defs>
+          <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#3d4451"/></marker>
+          <marker id="arrowc" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#6ea8fe"/></marker>
+          <marker id="arrowg" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#e3b341"/></marker>
+          <marker id="arrowr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#f85149"/></marker>
+        </defs>${edges}${nodesSvg}</svg></div>`;
+    pane.querySelectorAll(".node").forEach((g) => g.addEventListener("click", () => { selectedNode = g.dataset.id; renderGraph(); renderInspector(selectedNode); }));
+  }
+
+  // ---------- nodes table ----------
+  function renderNodes() {
+    const rows = Object.values(data.nodes).map((n) => {
+      const an = data.analysis.nodes[n.id] || {};
+      const detail = [n.items ? `items ${n.items.filter((i) => i.status === "completed").length}/${n.items.length}` : "", n.verify ? `kill ${(n.verify.kill_rate * 100).toFixed(0)}% (${n.verify.killed.length}/${n.verify.total})` : "", n.route ? `route=${n.route}` : "", n.gate?.decision ? `${n.gate.decision} by ${n.gate.by}` : "", n.loop ? `${n.loop.rounds} rounds · ${n.loop.stop_reason}` : "", n.retries ? `retries ${n.retries}` : "", n.repairs ? `repairs ${n.repairs}` : "", n.error ? `<span style="color:var(--bad)">${esc(n.error.slice(0, 120))}</span>` : "", n.skip_reason ? `<span class="muted">${esc(n.skip_reason)}</span>` : ""].filter(Boolean).join(" · ");
+      return `<tr class="clickable" data-id="${esc(n.id)}"><td><span class="dot st-${n.status}"></span> ${esc(n.id)}</td><td>${n.kind}</td><td>${an.model ? esc(an.model.replace("claude-", "")) : ""}</td><td>${n.status}</td><td>${fmtMs(n.duration_ms)}</td><td>${fmtUsd(n.cost_usd)}</td><td>${n.attempts.length}</td><td>${detail}</td></tr>`;
+    }).join("");
+    $("#pane-nodes").innerHTML = `<table><thead><tr><th>node</th><th>kind</th><th>model</th><th>status</th><th>dur</th><th>cost</th><th>att</th><th>detail</th></tr></thead><tbody>${rows}</tbody></table>`;
+    $("#pane-nodes").querySelectorAll("tr.clickable").forEach((tr) => tr.addEventListener("click", () => { selectedNode = tr.dataset.id; renderGraph(); renderInspector(selectedNode); }));
+  }
+
+  // ---------- metrics ----------
+  function renderMetrics() {
+    const m = data.metrics;
+    const card = (label, value, sub) => `<div class="card"><div class="label">${label}</div><div class="value">${value}</div>${sub ? `<div class="sub">${sub}</div>` : ""}</div>`;
+    const cards = [
+      card("wall clock", fmtMs(m.wall_ms), `critical path ${fmtMs(m.critical_path.ms)}`),
+      card("parallel speedup", `${m.parallel_speedup}×`, `sum of work ${fmtMs(m.sum_of_node_ms)}`),
+      card("cost", fmtUsd(m.cost_usd), `${m.agent_calls} agent calls`),
+      card("peak width", `${m.width.peak}${m.width.budget ? " / " + m.width.budget : ""}`, `${m.width.agent_seconds}s agent time`),
+      card("node failure rate", `${(m.node_failure_rate * 100).toFixed(0)}%`, `retry rate ${(m.retry_rate * 100).toFixed(0)}%`),
+      card("verifier kill rate", `${(m.verifier.kill_rate * 100).toFixed(0)}%`, `${m.verifier.killed}/${m.verifier.candidates} killed`),
+      card("fan-out", `${m.fan_out.workers} workers`, `${m.fan_out.failed_workers} failed${m.fan_out.unique_per_worker !== null ? " · " + m.fan_out.unique_per_worker + " unique/worker" : ""}`),
+      card("compression", `${(m.compression.ratio * 100).toFixed(0)}% kept`, `${m.compression.records_in} → ${m.compression.records_out}`),
+      card("human", `${m.human.gates} gates`, `${m.human.approved} ok · ${m.human.rejected} rejected · ${m.human.auto} auto · ${m.human.manual_tasks} manual tasks`),
+      card("tokens", `${(m.tokens.input / 1000).toFixed(1)}k in`, `${(m.tokens.output / 1000).toFixed(1)}k out · ${(m.tokens.cache_read / 1000).toFixed(1)}k cached`),
+    ].join("");
+    const byModel = Object.entries(m.cost_by_model).map(([k, v]) => `<span class="pill">${esc(k)} ${fmtUsd(v)}</span>`).join(" ");
+    const rows = m.nodes.map((n) => `<tr><td>${n.on_critical_path ? "★ " : ""}${esc(n.id)}</td><td>${n.kind}</td><td>${n.status}</td><td>${fmtMs(n.duration_ms)}</td><td>${fmtUsd(n.cost_usd)}</td><td>${n.attempts}${n.failed_attempts ? ` <span style="color:var(--bad)">(${n.failed_attempts} failed)</span>` : ""}</td><td>${n.retries}</td><td>${n.items ? `${n.items.completed}/${n.items.total}` : ""}</td><td>${n.kill_rate !== undefined ? (n.kill_rate * 100).toFixed(0) + "%" : ""}</td><td>${n.compression ? `${n.compression.in}→${n.compression.out}` : ""}</td></tr>`).join("");
+    $("#pane-metrics").innerHTML = `<div class="cards">${cards}</div><div style="margin:6px 0">${byModel}</div>${m.hints.map((h) => `<div class="hint">${esc(h)}</div>`).join("")}
+      <div class="muted" style="margin:10px 0 4px">critical path: ${m.critical_path.nodes.map(esc).join(" → ")}</div>
+      <table><thead><tr><th>node</th><th>kind</th><th>status</th><th>dur</th><th>cost</th><th>attempts</th><th>retries</th><th>items</th><th>kill</th><th>compress</th></tr></thead><tbody>${rows}</tbody></table>`;
+  }
+
+  function renderDecisions() {
+    const rows = data.run.decisions.map((d) => `<tr><td class="mono">${esc(d.at.slice(11, 23))}</td><td>${esc(d.node)}</td><td><span class="pill">${d.kind}</span></td><td>${esc(d.detail)}${d.state ? `<details><summary>state</summary><pre>${esc(JSON.stringify(d.state, null, 2))}</pre></details>` : ""}</td></tr>`).join("");
+    $("#pane-decisions").innerHTML = rows ? `<table><thead><tr><th>at</th><th>node</th><th>kind</th><th>decision (with the state that produced it)</th></tr></thead><tbody>${rows}</tbody></table>` : '<div class="empty">No decisions recorded yet.</div>';
+  }
+
+  function renderAnalysis() {
+    const a = data.analysis;
+    $("#pane-analysis").innerHTML = `
+      <div class="cards">${[["est. critical path", fmtMs(a.critical_path.est_ms)], ["sum of work", fmtMs(a.sum_of_work_ms)], ["est. speedup", a.parallel_speedup + "×"], ["max width", a.max_width], ["est. cost", `${fmtUsd(a.est_cost_usd.min)} – ${fmtUsd(a.est_cost_usd.max)}`]].map(([l, v]) => `<div class="card"><div class="label">${l}</div><div class="value" style="font-size:16px">${v}</div></div>`).join("")}</div>
+      <div class="muted">frozen: ${a.frozen.join(", ")}</div>
+      <h4 style="margin:10px 0 4px">Findings</h4>${a.findings.length ? a.findings.map((f) => `<div class="finding ${f.level}"><strong>${f.level}</strong> ${esc(f.code)}${f.node ? ` <span class="mono">(${esc(f.node)})</span>` : ""}: ${esc(f.message)}</div>`).join("") : '<div class="muted">none</div>'}
+      <h4 style="margin:10px 0 4px">Checklist</h4>${a.checklist.map((c) => `<div>${c.ok === true ? "✅" : c.ok === false ? "❌" : "▫️"} ${esc(c.item)}${c.note ? ` <span class="muted">— ${esc(c.note)}</span>` : ""}</div>`).join("")}
+      <h4 style="margin:10px 0 4px">Edges — what crosses</h4><table><thead><tr><th>from</th><th>to</th><th>kind</th><th>data</th></tr></thead><tbody>${a.edges.map((e) => `<tr><td>${esc(e.from)}</td><td>${esc(e.to)}</td><td>${e.kind}</td><td class="mono">${e.data.map(esc).join("<br>")}</td></tr>`).join("")}</tbody></table>`;
+  }
+
+  // ---------- tasks (inbox) ----------
+  function renderTasks() {
+    const tasks = data.tasks || [];
+    $("#taskBadge").innerHTML = tasks.length ? `<span class="pill warn">${tasks.length}</span>` : "";
+    if (!tasks.length) { $("#pane-tasks").innerHTML = `<div class="empty">No pending inbox tasks.${data.run.bridge === "inbox" ? "" : " (This run uses the " + esc(data.run.bridge) + " bridge.)"}</div>`; return; }
+    $("#pane-tasks").innerHTML = `<div class="muted" style="margin-bottom:8px">These tasks are waiting for a worker. A Claude Code session with the gren MCP server (gren_tasks / gren_complete_task), the CLI (<code>gren tasks --json</code> / <code>gren complete</code>), or you can execute them.</div>` + tasks.map((t) => `
+      <div class="taskbox" data-task="${esc(t.task_id)}" data-run="${esc(t.run_id)}">
+        <div><strong>${esc(t.node_id)}${t.item_index !== undefined ? "#" + t.item_index : ""}</strong> <span class="pill">${esc(t.model)}${t.effort ? " · " + t.effort : ""}</span> <span class="pill">${t.role}</span> <span class="pill">${t.status}</span> <span class="muted mono">${esc(t.task_id)}</span></div>
+        <details><summary>system prompt</summary><pre>${esc(t.system)}</pre></details>
+        <details open><summary>prompt</summary><pre>${esc(t.prompt)}</pre></details>
+        <details><summary>output schema</summary><pre>${esc(JSON.stringify(t.output_schema, null, 2))}</pre></details>
+        <label>result (JSON)</label><textarea class="taskOut" placeholder='{"..."}'></textarea>
+        <div class="row" style="margin-top:6px"><input class="taskCost" placeholder="cost usd (optional)"><input class="taskWorker" placeholder="worker name (optional)"><button class="primary submitTask">Submit result</button><button class="failTask">Report failure</button></div>
+        <div class="taskErr" style="color:var(--bad)"></div>
+      </div>`).join("");
+    $("#pane-tasks").querySelectorAll(".taskbox").forEach((box) => {
+      const submit = async (asError) => {
+        const err = box.querySelector(".taskErr"); err.textContent = "";
+        try {
+          let output;
+          if (!asError) { try { output = JSON.parse(box.querySelector(".taskOut").value); } catch (e) { err.textContent = "result is not valid JSON"; return; } }
+          await api("/api/run/task", { id: box.dataset.run, task_id: box.dataset.task, output, error: asError ? (box.querySelector(".taskOut").value || "worker reported failure") : undefined, cost_usd: box.querySelector(".taskCost").value ? Number(box.querySelector(".taskCost").value) : undefined, worker: box.querySelector(".taskWorker").value || "dashboard", source: "human" });
+          toast("submitted"); scheduleRefresh();
+        } catch (e) { err.textContent = e.message; }
+      };
+      box.querySelector(".submitTask").addEventListener("click", () => submit(false));
+      box.querySelector(".failTask").addEventListener("click", () => submit(true));
+    });
+  }
+
+  // ---------- inspector ----------
+  function renderRunInspector() {
+    const r = data.run;
+    $("#inspector").innerHTML = `<h3 style="margin:0 0 8px">${esc(r.graph)}</h3><div class="kv">
+      <div>run</div><div class="mono">${esc(r.id)}</div><div>status</div><div><span class="pill">${r.status}</span></div><div>bridge</div><div>${esc(r.bridge)}</div>
+      <div>cost</div><div>${fmtUsd(r.totals.cost_usd)}</div><div>calls</div><div>${r.totals.agent_calls}</div><div>retries</div><div>${r.totals.retries}</div><div>wall</div><div>${fmtMs(r.totals.wall_ms)}</div>
+      <div>budget</div><div class="mono">${esc(JSON.stringify(r.budget))}</div><div>frozen</div><div class="mono" style="font-size:10.5px">${r.frozen.join(", ")}</div>
+      ${r.parent ? `<div>parent</div><div><a href="#" data-run="${esc(r.parent.run_id)}" class="mono parentLink">${esc(r.parent.run_id)}</a> · ${esc(r.parent.node_id)}${r.parent.round ? " round " + r.parent.round : ""}</div>` : ""}
+      </div>${r.error ? `<pre style="border-color:var(--bad)">${esc(r.error)}</pre>` : ""}${(r.warnings || []).map((w) => `<div class="hint">${esc(w)}</div>`).join("")}
+      <details open><summary>input</summary><pre>${esc(JSON.stringify(r.input, null, 2))}</pre></details>`;
+    $("#inspector").querySelectorAll(".parentLink").forEach((a) => a.addEventListener("click", (e) => { e.preventDefault(); selectRun(a.dataset.run); }));
+  }
+
+  async function renderInspector(id) {
+    const n = data.nodes[id]; const spec = data.run.spec.nodes.find((s) => s.id === id) || {}; const an = data.analysis.nodes[id] || {};
+    if (!n) return;
+    let gate = "";
+    if (n.status === "waiting_approval") {
+      const art = n.artifact ? await api(`/api/run/artifact?id=${encodeURIComponent(current)}&path=${encodeURIComponent(n.artifact)}`) : null;
+      gate = `<div class="gatebox"><strong>⏸ ${esc(spec.title || id)}</strong><div class="muted" style="margin:4px 0">${esc(art?.prompt || spec.prompt || "")}</div>${art?.show !== undefined ? `<details open><summary>what you are approving</summary><pre>${esc(JSON.stringify(art.show, null, 2))}</pre></details>` : ""}
+        <label>comment</label><input id="gateComment" placeholder="optional; on reject it is sent back as feedback"><div class="row" style="margin-top:6px"><button class="primary" id="gateApprove">Approve</button><button class="danger" id="gateReject">Reject</button></div></div>`;
+    }
+    const attempts = n.attempts.length ? `<table><thead><tr><th>#</th><th>item</th><th>status</th><th>model</th><th>dur</th><th>cost</th><th>src</th></tr></thead><tbody>${n.attempts.map((a) => `<tr class="clickable" data-art="${esc(a.artifact || "")}"><td>${a.attempt}</td><td>${a.item ?? ""}</td><td>${a.status}${a.error ? ` <span style="color:var(--bad)">${esc(a.error.slice(0, 80))}</span>` : ""}</td><td>${esc((a.model || a.bridge || "").replace("claude-", ""))}</td><td>${fmtMs(a.duration_ms)}</td><td>${fmtUsd(a.cost_usd)}</td><td>${esc(a.source || "")}</td></tr>`).join("")}</tbody></table>` : "";
+    const items = n.items ? `<details><summary>items (${n.items.filter((i) => i.status === "completed").length}/${n.items.length})</summary><table><thead><tr><th>#</th><th>status</th><th>dur</th><th>error / output</th></tr></thead><tbody>${n.items.map((i) => `<tr><td>${i.index}</td><td>${i.status}</td><td>${fmtMs(i.duration_ms)}</td><td class="mono" style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(i.error || JSON.stringify(i.output || "").slice(0, 120))}</td></tr>`).join("")}</tbody></table></details>` : "";
+    const killed = n.verify?.killed?.length ? `<details open><summary>killed (${n.verify.killed.length}/${n.verify.total})</summary>${n.verify.killed.map((k) => `<div class="finding error"><strong>#${k.index}</strong> (${(k.confidence * 100).toFixed(0)}%) ${k.reasons.map(esc).join("; ")}<details><summary>item</summary><pre>${esc(JSON.stringify(k.item, null, 2))}</pre></details></div>`).join("")}</details>` : "";
+    const loop = n.loop && n.output?.per_round ? `<details open><summary>rounds</summary><table><thead><tr><th>round</th><th>found</th><th>new</th><th>cost</th><th>run</th></tr></thead><tbody>${n.output.per_round.map((r) => `<tr><td>${r.round}</td><td>${r.items}</td><td>${r.fresh}</td><td>${fmtUsd(r.cost_usd)}</td><td><a href="#" class="mono roundLink" data-run="${esc(r.run_id)}">open</a></td></tr>`).join("")}</tbody></table></details>` : "";
+    const nested = spec.kind === "subgraph" ? `<div><a href="#" class="roundLink" data-run="${esc(current + "/nested/" + id + "/" + n.attempts.length)}">open nested run</a></div>` : "";
+    $("#inspector").innerHTML = `<h3 style="margin:0 0 6px"><span class="dot st-${n.status}"></span> ${esc(id)} <span class="pill">${n.kind}</span></h3>
+      ${spec.description ? `<div class="muted" style="margin-bottom:6px">${esc(spec.description)}</div>` : ""}
+      ${gate}
+      <div class="kv"><div>status</div><div>${n.status}${n.skip_reason ? ` <span class="muted">${esc(n.skip_reason)}</span>` : ""}</div>${an.model ? `<div>model</div><div>${esc(an.model)}${spec.effort ? " · " + spec.effort : ""}</div>` : ""}<div>duration</div><div>${fmtMs(n.duration_ms)}</div><div>cost</div><div>${fmtUsd(n.cost_usd)} · ${n.agent_calls} calls · ${n.retries} retries · ${n.repairs} repairs</div>
+      <div>deps</div><div class="mono">${(an.deps || []).map(esc).join(", ") || "—"}</div><div>dependents</div><div class="mono">${(an.dependents || []).map(esc).join(", ") || "—"}</div>${n.route ? `<div>route</div><div>${esc(n.route)} <span class="muted">${esc(n.route_reason || "")}</span></div>` : ""}${n.gate?.decision ? `<div>gate</div><div>${n.gate.decision} by ${esc(n.gate.by || "")}${n.gate.comment ? ": " + esc(n.gate.comment) : ""}</div>` : ""}${n.loop ? `<div>loop</div><div>${n.loop.rounds} rounds · ${n.loop.converged ? "converged" : "not converged"} · ${esc(n.loop.stop_reason)}</div>` : ""}</div>
+      ${n.error ? `<pre style="border-color:var(--bad)">${esc(n.error)}</pre>` : ""}
+      ${n.repair ? `<details open><summary>repair feedback (round ${n.repair.round})</summary><pre>${esc(JSON.stringify(n.repair.feedback, null, 2))}</pre></details>` : ""}
+      ${killed}${loop}${nested}${items}
+      <details ${n.output !== undefined ? "open" : ""}><summary>output</summary><pre>${esc(JSON.stringify(n.output !== undefined ? n.output : n.outputs, null, 2))}</pre></details>
+      <details><summary>attempts (${n.attempts.length}) — click a row to see prompt & raw output</summary>${attempts}</details>
+      <div id="artifact"></div>
+      <details><summary>node spec</summary><pre>${esc(JSON.stringify(spec, null, 2))}</pre></details>`;
+    $("#inspector").querySelectorAll("tr.clickable[data-art]").forEach((tr) => tr.addEventListener("click", async () => {
+      if (!tr.dataset.art) return;
+      const art = await api(`/api/run/artifact?id=${encodeURIComponent(current)}&path=${encodeURIComponent(tr.dataset.art)}`);
+      $("#artifact").innerHTML = `<details open><summary>artifact ${esc(tr.dataset.art)}</summary>${art?.request ? `<div class="muted">prompt</div><pre>${esc(art.request.prompt)}</pre><div class="muted">system</div><pre>${esc(art.request.system || "")}</pre>` : ""}<div class="muted">response</div><pre>${esc(JSON.stringify(art?.response ?? art, null, 2))}</pre></details>`;
+    }));
+    $("#inspector").querySelectorAll(".roundLink").forEach((a) => a.addEventListener("click", (e) => { e.preventDefault(); $("#showNested").checked = true; selectRun(a.dataset.run); }));
+    const decide = async (decision) => { try { await api("/api/run/approve", { id: current, gate: id, decision, by: "dashboard", comment: $("#gateComment").value || undefined }); toast(`${decision}`); scheduleRefresh(); } catch (e) { toast(e.message, true); } };
+    $("#gateApprove")?.addEventListener("click", () => decide("approved"));
+    $("#gateReject")?.addEventListener("click", () => decide("rejected"));
+  }
+
+  // ---------- events ----------
+  function appendEvent(e) {
+    if (e.seq <= eventsSeq && e.run_id === current) return;
+    if (e.run_id === current) eventsSeq = Math.max(eventsSeq, e.seq);
+    const el = $("#events");
+    const d = e.data || {};
+    const cls = /failed|kill|invalid|cancel|budget|rejected/.test(e.type) ? "bad" : /completed|approved|finished/.test(e.type) ? "good" : /waiting|paused|retry|task\.created/.test(e.type) ? "warn" : "";
+    let detail = "";
+    if (e.type === "node.completed") detail = `${fmtMs(d.duration_ms)} ${fmtUsd(d.cost_usd)}${d.items ? ` items ${d.items.completed}/${d.items.total}` : ""}`;
+    else if (e.type === "call.finished") detail = d.ok ? `${fmtMs(d.duration_ms)} ${fmtUsd(d.cost_usd)} ${d.source || ""}` : `FAILED ${d.error}`;
+    else if (e.type === "call.started") detail = `${d.model} via ${d.bridge} attempt ${d.attempt} (${d.width_active} active)`;
+    else if (e.type === "verify.kill") detail = `KILL ${(d.confidence * 100).toFixed(0)}%: ${(d.reasons || [])[0] || ""}`;
+    else if (e.type === "route.selected") detail = `→ ${d.route} (${d.reason})`;
+    else if (e.type === "gate.waiting") detail = `WAITING: ${d.title}`;
+    else if (e.type === "repair.scheduled") detail = `round ${d.round} → ${d.producer}`;
+    else if (e.type === "run.completed") detail = `${fmtUsd(d.cost_usd)} in ${fmtMs(d.wall_ms)}${d.degraded ? " DEGRADED" : ""}`;
+    else if (e.type === "task.created") detail = `inbox task ${d.task_id} (${d.model})`;
+    else detail = Object.keys(d).length ? JSON.stringify(d).slice(0, 200) : "";
+    const div = document.createElement("div");
+    div.innerHTML = `<span class="t">${esc(e.ts.slice(11, 23))}</span> <span class="type ${cls}">${esc(e.type.padEnd(20))}</span> <span class="node">${esc(e.node || "")}${e.item !== undefined ? "#" + e.item : ""}</span> ${esc(detail)}`;
+    el.appendChild(div);
+    if (el.children.length > 2000) el.removeChild(el.firstChild);
+    if (tab === "events") el.parentElement.scrollTop = el.parentElement.scrollHeight;
+  }
+
+  // ---------- SSE ----------
+  function connect() {
+    const es = new EventSource("/api/events");
+    es.onopen = () => { $("#sse").textContent = "live"; $("#sse").className = "pill ok"; };
+    es.onerror = () => { $("#sse").textContent = "reconnecting…"; $("#sse").className = "pill bad"; };
+    es.onmessage = (m) => {
+      const e = JSON.parse(m.data);
+      if (e.type === "hello") return;
+      if (e.run_id === current) { appendEvent(e); scheduleRefresh(); }
+      if (/^run\./.test(e.type) || e.type === "gate.waiting" || e.type === "task.created") loadRuns();
+    };
+  }
+
+  // ---------- tabs ----------
+  $("#tabs").querySelectorAll("button[data-tab]").forEach((b) => b.addEventListener("click", () => {
+    tab = b.dataset.tab;
+    $("#tabs").querySelectorAll("button[data-tab]").forEach((x) => x.classList.toggle("active", x === b));
+    document.querySelectorAll(".pane").forEach((p) => p.classList.toggle("active", p.id === `pane-${tab}`));
+    if (tab === "events") { const el = $("#events"); el.parentElement.scrollTop = el.parentElement.scrollHeight; }
+  }));
+  $("#showNested").addEventListener("change", loadRuns);
+
+  // ---------- new run modal ----------
+  async function openModal() {
+    graphs = await api("/api/graphs");
+    $("#graphSelect").innerHTML = graphs.map((g) => `<option value="${esc(g.path)}" ${g.ok ? "" : "disabled"}>${esc(g.name)} — ${esc(g.path)}${g.ok ? "" : " (invalid)"}</option>`).join("");
+    const fill = () => {
+      const g = graphs.find((x) => x.path === $("#graphSelect").value);
+      if (!g) return;
+      $("#graphInfo").innerHTML = `${esc(g.description || "")}<br><span class="muted">${g.nodes} nodes · ${g.errors} errors · ${g.warnings} warnings · budget ${esc(JSON.stringify(g.budget || {}))}</span>`;
+      const props = g.input_schema?.properties || {};
+      const obj = {};
+      for (const [k, v] of Object.entries(props)) obj[k] = v.default !== undefined ? v.default : v.examples?.[0] !== undefined ? v.examples[0] : v.type === "array" ? [] : v.type === "integer" || v.type === "number" ? 0 : v.type === "boolean" ? false : `<${k}>`;
+      $("#inputJson").value = JSON.stringify(obj, null, 2);
+    };
+    $("#graphSelect").onchange = fill; fill();
+    $("#newRunError").textContent = "";
+    $("#modal").classList.add("open");
+  }
+  $("#newRun").addEventListener("click", openModal);
+  $("#cancelNew").addEventListener("click", () => $("#modal").classList.remove("open"));
+  $("#startNew").addEventListener("click", async () => {
+    try {
+      const input = JSON.parse($("#inputJson").value || "{}");
+      const r = await api("/api/runs", { graph: $("#graphSelect").value, input, bridge: $("#bridgeSelect").value || undefined, auto_approve: $("#autoApprove").checked });
+      $("#modal").classList.remove("open"); toast(`started ${r.run_id}`); await loadRuns(); selectRun(r.run_id);
+    } catch (e) { $("#newRunError").textContent = e.message; }
+  });
+
+  api("/api/bridges").then((b) => { $("#bridges").textContent = `default bridge: ${b.default} · ${b.bridges.filter((x) => x.ok).map((x) => x.name).join(", ")} available`; }).catch(() => {});
+  loadRuns().then(() => { const first = runs[0]; if (first) selectRun(first.id); });
+  connect();
+  setInterval(() => { if (data && (data.run.status === "running" || data.run.status === "paused")) scheduleRefresh(); }, 3000);
+})();
+</script>
+</body>
+</html>

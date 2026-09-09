@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "gren": {
+      "command": "node",
+      "args": ["bin/gren.js", "mcp"],
+      "env": { "GREN_RUNS": "runs" }
+    }
+  }
+}

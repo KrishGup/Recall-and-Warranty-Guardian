@@ -1,0 +1,93 @@
+# Escalation Ladder: regex (free) -> haiku -> sonnet -> human. Most cases stop early; only the uncertain ones
+# climb. Each rung is skipped structurally (when:) unless the rung below was unsure.
+name: escalation-ladder
+version: 1
+description: Support-ticket classification that spends more only when cheaper rungs are unsure.
+goal: A label with a confidence and an explainable trail of which rungs were consulted.
+
+input_schema:
+  type: object
+  required: [ticket]
+  properties:
+    ticket: { type: string, minLength: 5 }
+
+budget: { max_cost_usd: 0.5, max_wall_ms: 300000, max_width: 2 }
+defaults: { effort: low, failure: { retries: 1, timeout_ms: 120000 } }
+output: { from: decision }
+
+nodes:
+  - id: rung0
+    kind: code
+    description: Free rung - keyword rules.
+    fn: classify_regex
+    input: { text: $input.ticket }
+    args:
+      path: text
+      rules:
+        - { match: "refund|chargeback|invoice|double.?charged", label: billing }
+        - { match: "crash|stack ?trace|500 error|exception|cannot log ?in", label: technical }
+        - { match: "cancel my (plan|subscription)|downgrade", label: retention }
+      default: unknown
+
+  - id: route0
+    kind: router
+    routes:
+      - { when: { and: [{ neq: ["$nodes.rung0.output.label", unknown] }, { gte: ["$nodes.rung0.output.confidence", 0.85] }] }, route: done, reason: "keyword rule matched" }
+    default: escalate
+
+  - id: rung1
+    kind: agent
+    model: haiku
+    when: { eq: ["$nodes.route0.output.route", escalate] }
+    prompt: |
+      Classify this support ticket into exactly one of: billing, technical, retention, sales, other.
+      Give an honest confidence (0-1). If two labels are plausible, confidence must be below 0.7.
+      Ticket: {{ input.ticket }}
+    output_schema: &label_schema
+      type: object
+      required: [label, confidence, reason]
+      additionalProperties: false
+      properties:
+        label: { type: string, enum: [billing, technical, retention, sales, other] }
+        confidence: { type: number, minimum: 0, maximum: 1 }
+        reason: { type: string }
+
+  - id: route1
+    kind: router
+    when: { eq: ["$nodes.route0.output.route", escalate] }
+    routes:
+      - { when: { gte: ["$nodes.rung1.output.confidence", 0.75] }, route: done, reason: "haiku confident" }
+    default: escalate
+
+  - id: rung2
+    kind: agent
+    model: sonnet
+    effort: medium
+    when: { eq: ["$nodes.route1.output.route", escalate] }
+    input: { cheaper_guess: $nodes.rung1.output }
+    prompt: |
+      A cheaper model was unsure (see <input>). Classify carefully into billing, technical, retention, sales, other,
+      explain the deciding signal, and give an honest confidence.
+      Ticket: {{ input.ticket }}
+    output_schema: *label_schema
+
+  - id: human
+    kind: gate
+    title: Still uncertain - classify manually
+    when: { and: [{ eq: ["$nodes.route1.output.route", escalate] }, { lt: ["$nodes.rung2.output.confidence", 0.6] }] }
+    show: { ticket: $input.ticket, haiku: $nodes.rung1.output, sonnet: $nodes.rung2.output }
+    prompt: Approve to accept the sonnet label, or reject with the correct label as the comment.
+    on_reject: { fail_run: false }
+
+  - id: decision
+    kind: code
+    description: Explainable trail - which rungs ran and what each said.
+    fn: identity
+    optional: [rung1, route1, rung2, human]
+    input:
+      rung0: $nodes.rung0.output
+      route0: $nodes.route0.output.route
+      rung1: $nodes.rung1.output
+      route1: $nodes.route1.output.route
+      rung2: $nodes.rung2.output
+      human: $nodes.human.output
