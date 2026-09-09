@@ -41,6 +41,8 @@ export interface ServerOptions {
   /** Called for every event from in-process runs (in addition to SSE). */
   onEvent?: (e: GrenEvent) => void;
   quiet?: boolean;
+  /** Bearer token required on /api routes (defaults to GREN_API_TOKEN). */
+  token?: string;
 }
 
 export interface RunControl {
@@ -205,14 +207,22 @@ export async function startServer(o: ServerOptions): Promise<http.Server> {
   const here = path.dirname(fileURLToPath(import.meta.url));
   const uiDir = [path.join(here, "..", "ui"), path.join(here, "..", "..", "src", "ui")].find((d) => fs.existsSync(path.join(d, "index.html"))) ?? path.join(here, "..", "ui");
 
+  // Optional bearer token (GREN_API_TOKEN / opts.token). The server binds to 127.0.0.1 by default; set a token when
+  // exposing it beyond localhost. The dashboard page itself is always served; every /api route requires the token.
+  const token = o.token ?? process.env.GREN_API_TOKEN;
   const server = http.createServer(async (req, res) => {
     const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
     const p = url.pathname;
     const q = (k: string) => url.searchParams.get(k) ?? undefined;
     try {
       if (req.method === "OPTIONS") {
-        res.writeHead(204, { "access-control-allow-origin": "*", "access-control-allow-headers": "content-type", "access-control-allow-methods": "GET,POST,OPTIONS" });
+        res.writeHead(204, { "access-control-allow-origin": "*", "access-control-allow-headers": "content-type, authorization", "access-control-allow-methods": "GET,POST,OPTIONS" });
         return res.end();
+      }
+      if (token && p.startsWith("/api/")) {
+        const auth = req.headers.authorization ?? "";
+        const provided = auth.startsWith("Bearer ") ? auth.slice(7) : (q("token") ?? "");
+        if (provided !== token) return json(res, 401, { error: "unauthorized: set Authorization: Bearer <GREN_API_TOKEN>" });
       }
       if (p === "/" || p === "/index.html") {
         res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
@@ -338,7 +348,10 @@ export async function startServer(o: ServerOptions): Promise<http.Server> {
       if (p === "/api/graph") {
         const gp = q("path");
         if (!gp) return json(res, 400, { error: "path required" });
-        const file = path.isAbsolute(gp) ? gp : path.resolve(o.graphsDir, gp);
+        // Only files inside the graphs directory can be read through the API (audit finding: arbitrary file read).
+        const file = path.resolve(o.graphsDir, gp);
+        const rel = path.relative(path.resolve(o.graphsDir), file);
+        if (!rel || rel.startsWith("..") || path.isAbsolute(rel) || !/\.(ya?ml|json)$/.test(file)) return json(res, 400, { error: "path must be a .yaml/.json file inside the graphs directory" });
         const { spec } = loadGraph(file);
         return json(res, 200, { spec, analysis: analyze(spec), yaml: fs.readFileSync(file, "utf8") });
       }
@@ -381,6 +394,7 @@ export async function startServer(o: ServerOptions): Promise<http.Server> {
   });
 
   await new Promise<void>((resolve) => server.listen(o.port, o.host ?? "127.0.0.1", resolve));
-  if (!o.quiet) console.log(`gren dashboard: http://${o.host ?? "127.0.0.1"}:${o.port}  (runs: ${store.root}, graphs: ${o.graphsDir})`);
+  if (!o.quiet) console.log(`gren dashboard: http://${o.host ?? "127.0.0.1"}:${o.port}  (runs: ${store.root}, graphs: ${o.graphsDir}${token ? ", API token required" : ""})`);
+  if (!o.quiet && o.host && o.host !== "127.0.0.1" && o.host !== "localhost" && !token) console.error("[gren] WARNING: dashboard bound to a non-loopback address without GREN_API_TOKEN - anyone who can reach it can start runs and approve gates");
   return server;
 }

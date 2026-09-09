@@ -208,7 +208,7 @@ export function evalCond(c: Cond | undefined, scope: Scope): boolean {
   }
   if ("matches" in o) {
     const [a, re] = o.matches as [unknown, string];
-    return new RegExp(re).test(String(val(a, scope) ?? ""));
+    return safeMatch(String(re), String(val(a, scope) ?? ""));
   }
   if ("exists" in o) {
     const v = val(o.exists, scope);
@@ -233,6 +233,27 @@ export function evalCond(c: Cond | undefined, scope: Scope): boolean {
   if ("or" in o) return (o.or as Cond[]).some((x) => evalCond(x, scope));
   if ("not" in o) return !evalCond(o.not as Cond, scope);
   throw new Error(`unknown condition ${JSON.stringify(c)}`);
+}
+
+const MAX_REGEX_PATTERN = 512;
+const MAX_REGEX_INPUT = 20_000;
+const regexCache = new Map<string, RegExp>();
+
+/**
+ * Regex matching with ReDoS guards (audit finding): patterns are length-capped, nested quantifiers are refused,
+ * inputs are truncated, and compiled patterns are cached.
+ */
+export function safeMatch(pattern: string, input: string, flags = ""): boolean {
+  if (pattern.length > MAX_REGEX_PATTERN) throw new Error(`regex pattern longer than ${MAX_REGEX_PATTERN} chars`);
+  if (/(\([^)]*[+*][^)]*\)[+*{])|(\[[^\]]*\][+*]\)?[+*])/.test(pattern)) throw new Error(`regex pattern "${pattern.slice(0, 60)}" has nested quantifiers (catastrophic backtracking risk)`);
+  const key = `${flags}/${pattern}`;
+  let re = regexCache.get(key);
+  if (!re) {
+    re = new RegExp(pattern, flags);
+    if (regexCache.size > 500) regexCache.clear();
+    regexCache.set(key, re);
+  }
+  return re.test(input.length > MAX_REGEX_INPUT ? input.slice(0, MAX_REGEX_INPUT) : input);
 }
 
 function truthy(v: unknown): boolean {

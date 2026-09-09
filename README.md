@@ -93,6 +93,16 @@ Inputs for the batch example live in `graphs/inputs/`. Every tool-using node car
 
 See `skills/graph-engineering/SKILL.md` for the full loop and `docs/ARCHITECTURE.md` for how the pieces fit.
 
+## Security notes
+
+gren audited itself (`graphs/codebase-audit.yaml`, run `audit-gren-src-2`); the verified findings drove these rules:
+
+- The dashboard binds to `127.0.0.1`. To expose it, set `GREN_API_TOKEN` (every `/api` route then requires `Authorization: Bearer <token>`; open the page as `/?token=<token>` once). `/api/graph` only reads files inside the graphs directory.
+- Agent nodes get no tools unless the spec lists them. A node with `Bash`/`Edit` can do anything a Claude Code session can, inside its `cwd` (`permissionMode: dontAsk` on the SDK); treat `tools:` as a permission grant and keep file-modifying nodes in a worktree.
+- `GREN_BRIDGE=mock` is ignored unless `GREN_ALLOW_MOCK=1`, and every run reports where its default bridge came from.
+- Regex conditions (`matches`, `classify_regex`) are length-capped and refuse nested quantifiers.
+- `gren_approve` (MCP) records who approved; authorising an agent to act as an approver is an operator decision, not something the tool can verify.
+
 ## Layout
 
 ```

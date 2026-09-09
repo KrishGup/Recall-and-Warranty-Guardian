@@ -4,6 +4,8 @@
  * Each reducer is `(input, args, ctx) => output`. Input is the node's resolved `input` mapping.
  * Every reducer reports `_stats` so the compression ratio metric is real, not guessed.
  */
+import { safeMatch } from "../engine/expr.js";
+
 export interface ReducerCtx {
   runId: string;
   nodeId: string;
@@ -169,7 +171,7 @@ export const builtinReducers: Record<string, Reducer> = {
         case "in": return Array.isArray(value) && value.some((x) => normKey(x) === normKey(v));
         case "not_in": return !(Array.isArray(value) && value.some((x) => normKey(x) === normKey(v)));
         case "exists": return v !== undefined && v !== null && v !== "";
-        case "matches": return new RegExp(String(value)).test(String(v ?? ""));
+        case "matches": return safeMatch(String(value), String(v ?? ""));
         default: throw new Error(`filter: unknown op ${op}`);
       }
     };
@@ -253,7 +255,7 @@ export const builtinReducers: Record<string, Reducer> = {
   classify_regex(input, args) {
     const text = String(getPath(input, String(args.path ?? "text")) ?? "");
     const rules = (args.rules ?? []) as Array<{ match: string; label: string }>;
-    for (const r of rules) if (new RegExp(r.match, "i").test(text)) return { label: r.label, matched: r.match, confidence: 0.9 };
+    for (const r of rules) if (safeMatch(r.match, text, "i")) return { label: r.label, matched: r.match, confidence: 0.9 };
     return { label: String(args.default ?? "unknown"), matched: null, confidence: 0.3 };
   },
 

@@ -259,8 +259,12 @@
   const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
   const fmtMs = (ms) => ms === undefined || ms === null ? "–" : ms < 1000 ? `${Math.round(ms)}ms` : ms < 60000 ? `${(ms / 1000).toFixed(1)}s` : `${Math.floor(ms / 60000)}m${String(Math.round((ms % 60000) / 1000)).padStart(2, "0")}s`;
   const fmtUsd = (v) => `$${Number(v ?? 0).toFixed(v >= 1 ? 2 : 4)}`;
+  // Optional API token: ?token=... in the URL is remembered for the session and sent as a bearer header.
+  const tokenParam = new URLSearchParams(location.search).get("token"); if (tokenParam) { try { sessionStorage.setItem("gren.token", tokenParam); } catch {} history.replaceState(null, "", location.pathname); }
+  const apiToken = (() => { try { return sessionStorage.getItem("gren.token") || ""; } catch { return ""; } })();
   const api = async (path, body) => {
-    const r = await fetch(path, body ? { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) } : undefined);
+    const headers = { ...(body ? { "content-type": "application/json" } : {}), ...(apiToken ? { authorization: `Bearer ${apiToken}` } : {}) };
+    const r = await fetch(path, body ? { method: "POST", headers, body: JSON.stringify(body) } : { headers });
     const j = await r.json();
     if (!r.ok) throw new Error(j.error ? `${j.error}${j.details ? ": " + j.details.join("; ") : ""}` : r.statusText);
     return j;
@@ -684,7 +688,7 @@
 
   // ---------- SSE ----------
   function connect() {
-    const es = new EventSource("/api/events");
+    const es = new EventSource(apiToken ? `/api/events?token=${encodeURIComponent(apiToken)}` : "/api/events");
     es.onopen = () => { $("#sse").textContent = "live"; $("#sse").className = "chip ok"; };
     es.onerror = () => { $("#sse").textContent = "reconnecting…"; $("#sse").className = "chip bad"; };
     es.onmessage = (m) => {

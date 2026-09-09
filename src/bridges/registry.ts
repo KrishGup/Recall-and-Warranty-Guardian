@@ -65,8 +65,24 @@ export class BridgeRegistry {
 
 /** Pick a sensible default bridge: explicit > env > api key present > claude-code. */
 export function defaultBridgeName(explicit?: string): string {
-  if (explicit) return explicit;
-  if (process.env.GREN_BRIDGE) return process.env.GREN_BRIDGE;
-  if (process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN) return "api";
-  return "claude-code";
+  return defaultBridge(explicit).name;
+}
+
+/**
+ * Default bridge with its provenance, so callers can log it. Audit finding: an inherited GREN_BRIDGE=mock could
+ * silently turn a production run into a no-op - so `mock` is only honoured from the environment when
+ * GREN_ALLOW_MOCK=1 is also set, and the source is always reported in `run.started`.
+ */
+export function defaultBridge(explicit?: string): { name: string; source: "explicit" | "env" | "api-key" | "default"; warning?: string } {
+  if (explicit) return { name: explicit, source: "explicit" };
+  const env = process.env.GREN_BRIDGE;
+  if (env) {
+    if (env === "mock" && process.env.GREN_ALLOW_MOCK !== "1") {
+      return { name: process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN ? "api" : "claude-code", source: "default", warning: "GREN_BRIDGE=mock ignored (set GREN_ALLOW_MOCK=1 to allow the mock bridge from the environment)" };
+    }
+    if (!(BRIDGE_NAMES as readonly string[]).includes(env)) return { name: "claude-code", source: "default", warning: `GREN_BRIDGE="${env}" is not a known bridge; using claude-code` };
+    return { name: env, source: "env" };
+  }
+  if (process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN) return { name: "api", source: "api-key" };
+  return { name: "claude-code", source: "default" };
 }

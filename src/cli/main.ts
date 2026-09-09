@@ -30,7 +30,7 @@ import { analyze, formatAnalysis } from "../spec/analyze.js";
 import { GraphRunner } from "../engine/scheduler.js";
 import { RunStore, nowIso, type GrenEvent, type RunState } from "../engine/state.js";
 import { validateAgainst } from "../engine/validate.js";
-import { BridgeRegistry, defaultBridgeName } from "../bridges/registry.js";
+import { BridgeRegistry, defaultBridge, defaultBridgeName } from "../bridges/registry.js";
 import { computeMetricsDeep, formatMetrics } from "../metrics/metrics.js";
 import { builtinReducers } from "../reducers/builtin.js";
 import { FROZEN_CONSTRAINTS } from "../spec/schema.js";
@@ -245,6 +245,9 @@ async function cmdRun(positional: string[], flags: Flags, resume: boolean | "for
       fail(`graph has ${a.findings.filter((f) => f.level === "error").length} error(s); fix them before running`);
     }
     const input = parseInput(str(flags, "input"));
+    const db = defaultBridge(str(flags, "bridge"));
+    if (db.warning) console.error(`  | ${db.warning}`);
+    if (!quiet && !str(flags, "bridge")) console.error(`  | bridge: ${spec.defaults?.bridge ?? db.name} (${spec.defaults?.bridge ? "from the spec" : `from ${db.source}`})`);
     runner = GraphRunner.create({
       store,
       bridges,
