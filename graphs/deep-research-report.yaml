@@ -23,7 +23,7 @@ input_schema:
     lanes: { type: integer, minimum: 2, maximum: 6, default: 4 }
     max_sources: { type: integer, minimum: 4, maximum: 20, default: 10 }
 
-budget: { max_cost_usd: 8.0, max_wall_ms: 3600000, max_width: 5 }
+budget: { max_cost_usd: 12.0, max_wall_ms: 3600000, max_width: 5 }
 frozen: [verifier_can_kill, width_budget]
 defaults:
   model: haiku
@@ -81,11 +81,11 @@ nodes:
     input: { question: $nodes.scope.output.question, lanes: $nodes.scope.output.lanes, key_terms: $nodes.scope.output.key_terms }
     collect: $output.sources
     seen_key: url
-    until: { max_rounds: 3, no_new_for_rounds: 1, max_cost_usd: 2.5, max_wall_ms: 1200000 }
+    until: { max_rounds: 3, no_new_for_rounds: 1, max_cost_usd: 4.0, max_wall_ms: 1200000 }
     on_nonconvergence: accept
     body:
       name: discover-sources
-      budget: { max_cost_usd: 1.2, max_width: 4 }
+      budget: { max_cost_usd: 2.0, max_width: 4 }
       defaults: { model: haiku, effort: low, failure: { retries: 1, timeout_ms: 420000 } }
       output: { from: keep }
       nodes:
@@ -139,10 +139,16 @@ nodes:
           fn: filter
           input: { items: $nodes.dedupe.output.items, value: $input.seen }
           args: { path: url, op: not_in }
+        - id: cap
+          kind: code
+          description: Compress before you verify - at most 10 new candidates are opened per round (the vet fan-out is the cost lever).
+          fn: top_k
+          input: { items: $nodes.drop_seen.output.items }
+          args: { k: 10 }
         - id: vet
           kind: verify
           description: Open every candidate URL. Unreachable, irrelevant or low-quality pages are killed here, before any extraction cost.
-          target: $nodes.drop_seen.output.items
+          target: $nodes.cap.output.items
           tools: [WebFetch]
           max_turns: 12
           max_cost_usd: 0.25

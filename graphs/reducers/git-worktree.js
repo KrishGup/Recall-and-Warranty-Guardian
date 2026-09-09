@@ -40,7 +40,8 @@ export default async function gitWorktree(input, args, ctx) {
       }
     }
   }
-  if (linked.length) fs.writeFileSync(path.join(dir, "GREN-WORKTREE-README.txt"), `This worktree was created by gren run ${ctx.runId}.\nLinked from the main checkout (junction/symlink, NOT a copy): ${linked.join(", ")}\nDo NOT run "git worktree remove --force" here on Windows - it follows the junction and deletes the real folder.\nRemove with: node graphs/reducers/git-worktree-remove.js, or "rmdir <this dir>\\${linked[0]}" first, then git worktree remove.\n`, "utf8");
+  // The marker lives NEXT TO the worktree (never inside it) so it can never show up in the change's diff.
+  if (linked.length) fs.writeFileSync(`${dir}.GREN-README.txt`, `Worktree ${path.basename(dir)} was created by gren run ${ctx.runId}.\nLinked from the main checkout (junction/symlink, NOT a copy): ${linked.join(", ")}\nDo NOT run "git worktree remove --force" on it on Windows - it follows the junction and deletes the real folder.\nRemove with: node graphs/reducers/git-worktree-remove.js, or "rmdir <worktree>\\${linked[0]}" first, then git worktree remove.\n`, "utf8");
   ctx.log(`worktree ${dir} on branch ${branch} from ${baseCommit.slice(0, 8)}${linked.length ? ` (linked ${linked.join(", ")})` : ""}`);
   return { worktree: dir.replace(/\\/g, "/"), branch, base_commit: baseCommit, reused: false, linked };
 }
