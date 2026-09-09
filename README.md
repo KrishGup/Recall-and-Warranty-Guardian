@@ -82,6 +82,18 @@ When a human gate is reached the run pauses. Approve from the dashboard, `gren a
 
 Inputs for the batch example live in `graphs/inputs/`. Every tool-using node carries `max_turns` and `max_cost_usd`; the run's `budget.max_cost_usd` is passed down so a single session can never exceed what is left.
 
+Live results on the `claude-code` bridge (haiku for extraction and verification, sonnet for judgment; 2026-09-09):
+
+| run | outcome | cost | what the verifiers did |
+|---|---|---|---|
+| support-triage-batch (7 tickets) | 3 auto replies, 4 handed to humans; two gates | $0.23 | per-ticket escalation ladder, policy check, reply reviewer |
+| codebase-audit on gren `src/` | 74 reported → 24 capped → 6 verified issues (3 blockers) → 2 of 6 fix plans survived review; report in `out/` | $5.42 | verifiers opened the files; the surviving findings were fixed by hand (see Security notes) |
+| release-pipeline (stale `dist/` incident) | fix implemented in a worktree, tests green, reviewer passed on the second fork, commit on an isolated branch, PR and webhook recorded as dry runs; merged into main | $0.15 (fork) | the reviewer first killed a correct fix because a marker file from the worktree reducer leaked into the diff - a graph bug, caught |
+| competitive-landscape (LangGraph) | 3 discovery rounds, 13 competitors found, 4 profiled (12 parallel research lanes), tournament positioning, verified brief in `out/` | $1.88 | first attempt failed because a template reference without `$` was not a dependency (fixed in the analyzer); the checker caught the consequence |
+| deep-research-report | 3 discovery rounds, 10 sources opened, 45 findings extracted, 30 killed on re-verification, 6 sections, citation check + editor, report in `out/` | $8.04 | the editor rejected drafts for a wrong header stat and a URL-variant mismatch produced by the reducers - both fixed, then forked from the writers |
+
+Every one of those failures was a bug in the graph or its plumbing that a verifier surfaced; `gren fork` re-ran only the tail each time.
+
 ### Developer loop
 
 `gren fork <run> --from <node> [--spec edited.yaml]` re-runs from a node with upstream outputs reused (also in the dashboard's node inspector and as the `gren_fork` MCP tool). Iterate on the editor prompt without paying for the research again.
