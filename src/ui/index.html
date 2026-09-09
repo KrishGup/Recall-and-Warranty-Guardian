@@ -409,6 +409,39 @@
   });
   const dcanvas = makeCanvas("#dsvg", "#dviewport", "#dedgeTip", { onSelect: (id) => showDesignNode(id), selected: () => designSel, criticalPath: () => designAnalysis?.critical_path?.nodes || [], levels: () => designAnalysis?.levels || [], nodeStatus: () => "pending", nodeInfo: (id) => { const an = designAnalysis?.nodes[id] || {}; const spec = designSpec?.nodes.find((s) => s.id === id) || {}; return { sub: [an.model ? an.model.replace("claude-", "") : spec.kind, spec.map ? "map" : null, spec.tools?.length ? spec.tools.join("/") : null, spec.side_effect ? "side-effect" : null].filter(Boolean).join(" · "), badge: an.on_critical_path ? `~${fmtMs(an.est_ms)} · est ${fmtUsd(an.est_cost_usd)}` : `est ${fmtUsd(an.est_cost_usd)}`, nested: spec.kind === "loop" || spec.kind === "subgraph" }; } });
   $("#fitBtn").addEventListener("click", () => canvas.fit()); $("#zoomIn").addEventListener("click", () => canvas.zoom(1.25)); $("#zoomOut").addEventListener("click", () => canvas.zoom(0.8)); $("#zoomReset").addEventListener("click", () => canvas.reset());
+  // keyboard: Esc clears the selection, F fits, +/- zoom (when not typing)
+  document.addEventListener("keydown", (e) => {
+    if (["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement?.tagName)) return;
+    const c = mode === "design" ? dcanvas : canvas;
+    if (e.key === "Escape") { if (mode === "design") { designSel = null; dcanvas.draw(true); } else { selectedNode = null; canvas.draw(true); if (data) renderRunInspector(); } }
+    else if (e.key === "f" || e.key === "F") c.fit();
+    else if (e.key === "+" || e.key === "=") c.zoom(1.25);
+    else if (e.key === "-") c.zoom(0.8);
+  });
+  // right-click context menu on nodes
+  const menu = document.createElement("div");
+  menu.style.cssText = "position:fixed;z-index:40;display:none;background:var(--surface);border:1px solid var(--border2);border-radius:10px;box-shadow:var(--shadow-lg);padding:6px;min-width:220px";
+  document.body.appendChild(menu);
+  const hideMenu = () => (menu.style.display = "none");
+  document.addEventListener("click", hideMenu); document.addEventListener("scroll", hideMenu, true);
+  $("#svg").addEventListener("contextmenu", async (e) => {
+    const g = e.target.closest(".node"); if (!g || !data) return;
+    e.preventDefault();
+    const id = g.dataset.id; const n = data.nodes[id]; const spec = data.run.spec.nodes.find((s) => s.id === id) || {};
+    const children = allRuns.filter((x) => x.parent?.run_id === current && x.parent?.node_id === id);
+    const items = [
+      { label: "Inspect", act: () => { selectedNode = id; canvas.draw(true); renderInspector(id); } },
+      { label: "Show only this path", act: () => { selectedNode = id; canvas.draw(true); } },
+      ...(children.length ? [{ label: `Open nested run (${children.length})`, act: () => { $("#showNested").checked = true; selectRun(children[0].id); } }] : []),
+      ...(n?.attempts?.some((a) => a.artifact) ? [{ label: "Copy last prompt", act: async () => { const a = [...n.attempts].reverse().find((x) => x.artifact); const art = await api(`/api/run/artifact?id=${encodeURIComponent(current)}&path=${encodeURIComponent(a.artifact)}`); await navigator.clipboard.writeText(art?.request?.prompt || ""); toast("prompt copied"); } }] : []),
+      { label: "Copy node spec (YAML-ish JSON)", act: async () => { await navigator.clipboard.writeText(JSON.stringify(spec, null, 2)); toast("spec copied"); } },
+      ...(n?.status === "waiting_approval" ? [{ label: "Approve gate", act: () => api("/api/run/approve", { id: current, gate: id, decision: "approved", by: "dashboard" }).then(() => { toast("approved"); scheduleRefresh(); }) }, { label: "Reject gate", act: () => api("/api/run/approve", { id: current, gate: id, decision: "rejected", by: "dashboard" }).then(() => { toast("rejected"); scheduleRefresh(); }) }] : []),
+      ...(!data.in_process && ["completed", "failed", "cancelled", "paused"].includes(data.run.status) && ["completed", "failed", "skipped"].includes(n?.status) ? [{ label: "⑂ Fork run from here", act: async () => { const r = await api("/api/run/fork", { id: current, from: [id] }); toast(`forked: ${r.run_id}`); await loadRuns(); selectRun(r.run_id); } }] : []),
+    ];
+    menu.innerHTML = `<div class="muted" style="padding:4px 10px;font-size:11px">${esc(id)} · ${esc(spec.kind)} · ${esc(n?.status || "")}</div>` + items.map((it, i) => `<div data-i="${i}" style="padding:7px 10px;border-radius:6px;cursor:pointer">${esc(it.label)}</div>`).join("");
+    menu.querySelectorAll("div[data-i]").forEach((d) => { d.addEventListener("mouseenter", () => (d.style.background = "var(--surface2)")); d.addEventListener("mouseleave", () => (d.style.background = "")); d.addEventListener("click", (ev) => { ev.stopPropagation(); hideMenu(); items[Number(d.dataset.i)].act(); }); });
+    menu.style.left = `${Math.min(e.clientX, window.innerWidth - 240)}px`; menu.style.top = `${Math.min(e.clientY, window.innerHeight - 40 * items.length - 40)}px`; menu.style.display = "block";
+  });
   $("#layoutBtn").addEventListener("click", () => canvas.autoLayout());
   $("#cpBtn").addEventListener("click", () => { showCritical = !showCritical; $("#cpBtn").classList.toggle("on", showCritical); canvas.draw(true); });
   $("#dfitBtn").addEventListener("click", () => dcanvas.fit()); $("#dzoomIn").addEventListener("click", () => dcanvas.zoom(1.25)); $("#dzoomOut").addEventListener("click", () => dcanvas.zoom(0.8));

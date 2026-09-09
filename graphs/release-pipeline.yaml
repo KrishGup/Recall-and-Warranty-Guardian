@@ -132,9 +132,9 @@ nodes:
 
   - id: tests
     kind: code
-    description: Run the tests in the worktree after the change.
+    description: Run the tests in the worktree AFTER the change. State on disk is invisible to the graph, so the edge carries the changed-file list - that is what makes "after" real.
     module: ./reducers/run-command.js
-    input: { cwd: $nodes.worktree.output.worktree, command: $input.test_command, args: $input.test_args }
+    input: { cwd: $nodes.worktree.output.worktree, command: $input.test_command, args: $input.test_args, changed_files: $nodes.implement.output.files_changed }
     args: { timeout_ms: 600000 }
 
   - id: review
