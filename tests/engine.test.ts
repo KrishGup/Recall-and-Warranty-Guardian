@@ -53,8 +53,8 @@ describe("expressions", () => {
     expect(evalCond({ empty: "$nodes.b.output" }, scope)).toBe(true);
   });
   it("collects node refs", () => {
-    const refs = collectNodeRefs({ prompt: "use {{ $nodes.a.output.items }} and $nodes.b.status", when: { eq: ["$nodes.c.route", "x"] } });
-    expect(refs.map((r) => `${r.node}${r.path}`).sort()).toEqual(["a.output.items", "b.status", "c.route"]);
+    const refs = collectNodeRefs({ prompt: "use {{ $nodes.a.output.items }} and $nodes.b.status and {{ nodes.d.output.markdown }} {{ json nodes.e.outputs }}", when: { eq: ["$nodes.c.route", "x"] } });
+    expect(refs.map((r) => `${r.node}${r.path}`).sort()).toEqual(["a.output.items", "b.status", "c.route", "d.output.markdown", "e.outputs"]);
   });
 });
 

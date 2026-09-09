@@ -272,6 +272,8 @@ function looseEq(a: unknown, b: unknown): boolean {
 // ---------- static scanning (dependency derivation) ----------
 
 const NODE_REF_RE = /\$nodes\.([a-zA-Z_][a-zA-Z0-9_\-]*)((?:\.[a-zA-Z0-9_\-]+|\[\d+\])*)/g;
+/** Template form without the `$`: {{ nodes.a.output.x }} / {{ json nodes.a.outputs }} - the same dependency. */
+const TEMPLATE_NODE_REF_RE = /\{\{\s*(?:json\s+)?nodes\.([a-zA-Z_][a-zA-Z0-9_\-]*)((?:\.[a-zA-Z0-9_\-]+|\[\d+\])*)\s*\}\}/g;
 
 export interface FoundRef {
   node: string;
@@ -289,6 +291,8 @@ export function collectNodeRefs(value: unknown, field = ""): FoundRef[] {
       let m: RegExpExecArray | null;
       const re = new RegExp(NODE_REF_RE.source, "g");
       while ((m = re.exec(v))) out.push({ node: m[1]!, path: m[2] ?? "", field: f });
+      const tre = new RegExp(TEMPLATE_NODE_REF_RE.source, "g");
+      while ((m = tre.exec(v))) out.push({ node: m[1]!, path: m[2] ?? "", field: f });
     } else if (Array.isArray(v)) v.forEach((x, i) => walk(x, `${f}[${i}]`));
     else if (v && typeof v === "object") for (const [k, x] of Object.entries(v)) walk(x, f ? `${f}.${k}` : k);
   };

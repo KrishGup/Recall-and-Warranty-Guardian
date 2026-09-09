@@ -107,8 +107,8 @@ nodes:
   - id: shortlist
     kind: code
     fn: top_k
-    input: { items: $nodes.discover.output.items }
-    args: { k: 4, by: relevance }
+    input: { items: $nodes.discover.output.items, k: $input.max_competitors }
+    args: { by: relevance }
 
   - id: profile
     kind: subgraph

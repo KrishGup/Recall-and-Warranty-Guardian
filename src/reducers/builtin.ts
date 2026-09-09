@@ -97,10 +97,10 @@ export const builtinReducers: Record<string, Reducer> = {
     return { items: src, _stats: { in: src.length, out: src.length } };
   },
 
-  /** Keep the top k. args: { k: 10, by?: "score" } */
+  /** Keep the top k. args: { k: 10, by?: "score" }; `k` may also come from input (e.g. k: $input.max_items). */
   top_k(input, args) {
     let src = [...items(input, args)];
-    const k = Number(args.k ?? 10);
+    const k = Number(input.k ?? args.k ?? 10);
     if (typeof args.by === "string") {
       const by = args.by;
       src.sort((a, b) => Number(getPath(b, by) ?? 0) - Number(getPath(a, by) ?? 0));
