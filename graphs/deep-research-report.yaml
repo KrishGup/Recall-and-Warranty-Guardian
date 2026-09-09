@@ -228,10 +228,17 @@ nodes:
     input: { items: $nodes.flatten_findings.output.items }
     args: { key: [claim] }
 
+  - id: cap_findings
+    kind: code
+    description: Compress before you verify - keep the 30 highest-confidence findings; verification (opening every source) is the expensive step.
+    fn: top_k
+    input: { items: $nodes.dedupe_findings.output.items }
+    args: { k: 30, by: confidence }
+
   - id: verify_findings
     kind: verify
     description: Re-open the source and try to falsify each finding - the quote must exist and support the claim.
-    target: $nodes.dedupe_findings.output.items
+    target: $nodes.cap_findings.output.items
     tools: [WebFetch]
     max_turns: 12
     max_cost_usd: 0.25

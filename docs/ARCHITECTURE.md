@@ -42,6 +42,14 @@
 - Claude Code bridge: each node is an isolated headless session (`settingSources: []`, `strictMcpConfig`, `persistSession: false`, sanitized env), `tools` default to none (pure reasoning over the edge data), hard `maxTurns` and `maxBudgetUsd`, structured output enforced by the SDK.
 - MCP server: the operations any Claude agent needs to design (`gren_reference`, `gren_scaffold`, `gren_validate`, `gren_write_graph`), run (`gren_run`, `gren_wait`, `gren_tasks`, `gren_complete_task`, `gren_approve`), and observe (`gren_status`, `gren_metrics`, `gren_node`, `gren_decisions`, `gren_events`).
 
+## Operating it
+
+- **Fork** (`GraphRunner.fork`): copies a run, resets the named nodes plus everything downstream (via the new spec's dependency analysis), keeps upstream outputs and totals. This is the iteration loop; the dashboard exposes it per node.
+- **Resume**: in-flight nodes and blocking failures re-run; cascaded skips are re-evaluated; interrupted side effects are never re-run.
+- **Nested runs** (loop rounds, mapped subgraphs) are first-class runs under `runs/<id>/nested/…`; deep metrics fold their verifiers, fan-outs and costs into the parent's numbers, and `human_wait_ms` separates approval latency from execution time.
+- **Budget hierarchy**: graph `budget.max_cost_usd` (frozen) → loop `until.max_cost_usd` → body graph budget → node `max_cost_usd` per call → the bridge's own cap. Each layer only tightens.
+- **Dashboard** reads runs from disk (any process) and executes runs started from it in-process; the MCP server does the same for an agent. Both refuse to overwrite an existing task result and both write approvals as files, so any of CLI / dashboard / MCP can approve a gate for a run executing elsewhere.
+
 ## Extending
 
 - New reducer: add to `src/reducers/builtin.ts` (or ship a module and use `module:`).

@@ -48,6 +48,7 @@ Rules the validator enforces or flags (fix, do not argue with them):
 - a `verify` node's `survivors`/`killed` must be consumed downstream or drive `repair:` — otherwise it is decoration
 - `side_effect: true` requires `requires_gate:`; `budget.max_cost_usd` is mandatory; loops need `until.max_rounds` and a convergence rule
 - every tool-using node (WebSearch/WebFetch/Read/Grep/Edit/Bash) sets `max_turns` AND `max_cost_usd`; verifiers that must open a source declare `tools: [WebFetch]` or `[Read, Grep]`
+- put a `code` cap (`top_k` / `filter`) in front of EVERY verify fan-out: verification opens sources and is the most expensive step, and an uncapped fan-out is how a run hits its spend cap half-way (seen live: 74 issues, 45 findings, 20 URLs)
 - nodes that modify files run in an isolated worktree (`cwd:` from a `git-worktree` code node); commits, pushes, PRs and messages are separate `side_effect` nodes, each behind its own gate
 - state that lives OUTSIDE the graph (files on disk, a database, a branch) is invisible to the dependency test: a node that needs "the files after the change" must read a value the producer emitted (e.g. `changed_files: $nodes.implement.output.files_changed`), otherwise it may run first
 - routers are deterministic: `routes[].when` conditions over node outputs; downstream branches use `when: { eq: [$nodes.route.output.route, x] }`; joins list the branches under `optional:`
