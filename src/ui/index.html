@@ -169,8 +169,11 @@
 
 <div class="app" id="app">
   <aside id="sidebar">
-    <div class="side-head"><span>Runs</span><span><label style="display:inline-flex;gap:4px;align-items:center;margin:0;text-transform:none;font-weight:500"><input type="checkbox" id="showNested" style="width:auto"> nested</label> <span class="count" id="runCount"></span></span></div>
-    <div id="runs"></div>
+    <div id="runsSide">
+      <div class="side-head"><span>Runs</span><span><label style="display:inline-flex;gap:4px;align-items:center;margin:0;text-transform:none;font-weight:500"><input type="checkbox" id="showNested" style="width:auto"> nested</label> <span class="count" id="runCount"></span></span></div>
+      <div id="runs"></div>
+    </div>
+    <div id="designSide" style="display:none"></div>
   </aside>
 
   <div class="main" id="runsMain">
@@ -450,7 +453,7 @@
   // ---------- runs list ----------
   async function loadRuns() {
     allRuns = await api(`/api/runs?all=1`);
-    runs = $("#showNested").checked ? allRuns : allRuns.filter((r) => !r.parent);
+    runs = $("#showNested")?.checked ? allRuns : allRuns.filter((r) => !r.parent);
     $("#runCount").textContent = `${runs.length}`;
     const el = $("#runs");
     el.innerHTML = runs.map((r) => `
@@ -705,6 +708,7 @@
   async function setMode(m) {
     mode = m; $("#modeSeg").querySelectorAll("button").forEach((x) => x.classList.toggle("active", x.dataset.mode === m));
     $("#runsMain").style.display = m === "runs" ? "" : "none"; $("#designMain").style.display = m === "design" ? "" : "none";
+    $("#runsSide").style.display = m === "runs" ? "" : "none"; $("#designSide").style.display = m === "design" ? "" : "none";
     if (m === "design") { await renderGraphLibrary(); if (!$("#yamlEditor").value) await loadGraphIntoEditor(graphs[0]?.path); setTimeout(() => dcanvas.fit(), 50); }
     else { loadRuns(); if (data) { renderGraph(true); canvas.fit(); selectedNode ? renderInspector(selectedNode) : renderRunInspector(); } }
   }
@@ -713,8 +717,8 @@
   let designSpec = null, designAnalysis = null, designPath = "untitled.yaml", designSel = null;
   async function renderGraphLibrary() {
     graphs = await api("/api/graphs");
-    $("#sidebar").innerHTML = `<div class="side-head"><span>Graphs</span><button class="sm" id="newGraphBtn">＋ New</button></div>` + graphs.map((g) => `<div class="graph-item ${g.path === designPath ? "active" : ""}" data-path="${esc(g.path)}"><div class="name"><span class="dot ${g.ok ? "st-completed" : "st-failed"}"></span> ${esc(g.name)}</div><div class="desc">${esc(g.description || g.error || "")}</div><div class="muted" style="font-size:11px;margin-top:3px">${g.nodes} nodes · ${g.errors} errors · ${g.warnings} warnings</div></div>`).join("");
-    $("#sidebar").querySelectorAll(".graph-item").forEach((d) => d.addEventListener("click", () => loadGraphIntoEditor(d.dataset.path)));
+    $("#designSide").innerHTML = `<div class="side-head"><span>Graphs</span><button class="sm" id="newGraphBtn">＋ New</button></div>` + graphs.map((g) => `<div class="graph-item ${g.path === designPath ? "active" : ""}" data-path="${esc(g.path)}"><div class="name"><span class="dot ${g.ok ? "st-completed" : "st-failed"}"></span> ${esc(g.name)}</div><div class="desc">${esc(g.description || g.error || "")}</div><div class="muted" style="font-size:11px;margin-top:3px">${g.nodes} nodes · ${g.errors} errors · ${g.warnings} warnings</div></div>`).join("");
+    $("#designSide").querySelectorAll(".graph-item").forEach((d) => d.addEventListener("click", () => loadGraphIntoEditor(d.dataset.path)));
     $("#newGraphBtn").addEventListener("click", async () => {
       const shapes = await api("/api/shapes"); const pick = prompt(`Shape (${shapes.map((s) => s.id).join(" | ")}):`, shapes[0].id); if (!pick) return;
       const name = prompt("Graph name:", "my-graph"); if (!name) return;
@@ -723,7 +727,7 @@
   }
   async function loadGraphIntoEditor(p) {
     if (!p) return; const r = await api(`/api/graph?path=${encodeURIComponent(p)}`).catch((e) => ({ error: e.message }));
-    designPath = p; $("#designTitle").textContent = p; $("#yamlEditor").value = r.yaml ?? ""; $("#sidebar").querySelectorAll(".graph-item").forEach((d) => d.classList.toggle("active", d.dataset.path === p));
+    designPath = p; $("#designTitle").textContent = p; $("#yamlEditor").value = r.yaml ?? ""; $("#designSide").querySelectorAll(".graph-item").forEach((d) => d.classList.toggle("active", d.dataset.path === p));
     if (r.error) { $("#designStatus").textContent = r.error; $("#designAnalysis").innerHTML = `<div class="finding error">${esc(r.error)}</div>`; return; }
     designSpec = r.spec; designAnalysis = r.analysis; drawDesign();
   }
