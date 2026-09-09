@@ -219,6 +219,11 @@ export function analyze(spec: GraphSpec): Analysis {
     if (n.kind === "agent" || (n.kind === "verify" && (n.mode ?? "agent") === "agent")) {
       const promptChars = (n.prompt?.length ?? 0) + (n.system?.length ?? 0) + JSON.stringify(n.input ?? {}).length + 800;
       c = estimateCallCostUsd(nodeModel(spec, n)!, promptChars);
+      if (n.tools?.length) c *= 4; // tool turns re-send context; a rough multiplier for search/read nodes
+    } else if (n.kind === "subgraph") {
+      c = analyze(n.graph as GraphSpec).est_cost_usd.max;
+    } else if (n.kind === "loop") {
+      c = analyze(n.body).est_cost_usd.max * Math.min(n.until.max_rounds, 3);
     }
     cost.set(n.id, c);
   }
@@ -337,8 +342,17 @@ export function analyze(spec: GraphSpec): Analysis {
           findings.push({ level: "error", code: "bad_repair_target", node: n.id, message: `repair.node "${n.repair.node}" must be an agent/code/subgraph node` });
         }
         const targetRefs = collectNodeRefs(n.target);
-        if (tgt && !targetRefs.some((r) => r.node === tgt.id)) {
-          findings.push({ level: "warning", code: "repair_target_mismatch", node: n.id, message: `verify "${n.id}" repairs "${n.repair.node}" but its target does not read that node's output.` });
+        // the repair target must be an ancestor of what the verifier attacks (directly or through reducers)
+        const ancestors = new Set<string>();
+        const stack = targetRefs.map((r) => r.node);
+        while (stack.length) {
+          const cur = stack.pop()!;
+          if (ancestors.has(cur)) continue;
+          ancestors.add(cur);
+          for (const d of deps.get(cur) ?? []) stack.push(d);
+        }
+        if (tgt && !ancestors.has(tgt.id)) {
+          findings.push({ level: "warning", code: "repair_target_mismatch", node: n.id, message: `verify "${n.id}" repairs "${n.repair.node}" but its target does not derive from that node's output.` });
         }
       }
     }

@@ -29,6 +29,8 @@ export interface AgentRequest {
   max_output_tokens?: number;
   timeout_ms: number;
   cwd?: string;
+  /** Remaining run budget (USD) - bridges that can enforce a per-call cap must not exceed it. */
+  max_cost_usd?: number;
   /** Validation errors from the previous attempt (repair loop). */
   repair_errors?: string[];
 }

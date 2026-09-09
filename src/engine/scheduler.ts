@@ -558,11 +558,11 @@ export class GraphRunner {
       system,
       prompt,
       output_schema: schema,
-      tools: node.kind === "agent" ? node.tools : undefined,
-      max_turns: node.kind === "agent" ? node.max_turns : undefined,
+      tools: node.tools,
+      max_turns: node.max_turns,
       max_output_tokens: node.kind === "agent" ? node.max_output_tokens : undefined,
       timeout_ms: f.timeout_ms,
-      cwd: this.opts.cwd,
+      cwd: node.cwd ? path.resolve(this.opts.cwd ?? process.cwd(), String(resolveValue(node.cwd, scope))) : this.opts.cwd,
     };
     const maxAttempts = 1 + f.retries;
     let lastErr: unknown;
@@ -588,7 +588,10 @@ export class GraphRunner {
       const t0 = Date.now();
       this.emit("call.started", { attempt, model, bridge: bridge.name, role, width_active: this.width.active }, node.id, itemIndex);
       try {
-        let req: AgentRequest = { ...base, model, attempt };
+        const cap = this.spec.budget?.max_cost_usd;
+        const remaining = cap !== undefined ? Math.max(0, cap - this.state.run.totals.cost_usd) : undefined;
+        const perCall = node.max_cost_usd !== undefined && remaining !== undefined ? Math.min(node.max_cost_usd, remaining) : (node.max_cost_usd ?? remaining);
+        let req: AgentRequest = { ...base, model, attempt, max_cost_usd: perCall };
         let res = await bridge.execute(req, ctx);
         this.account(rec, attemptRec, res);
         let v = validateAgainst(schema, res.output);
@@ -1044,16 +1047,41 @@ export class GraphRunner {
 
   private async runSubgraph(node: SubgraphNode, rec: NodeRecord) {
     const spec = node.graph as GraphSpec;
-    const input = resolveValue(node.input ?? {}, this.scope({ repair: rec.repair }));
-    const childId = `${this.id}/nested/${node.id}/${rec.attempts.length + 1}`;
-    rec.attempts.push({ attempt: rec.attempts.length + 1, started_at: nowIso(), status: "ok", bridge: "subgraph" });
-    this.emit("subgraph.started", { run_id: childId, graph: spec.name }, node.id);
-    const st = await this.runChild(spec, childId, input, node.id);
-    addUsage(rec, st.run.totals.usage, st.run.totals.cost_usd, st.run.totals.agent_calls);
-    addUsage(this.state.run.totals, st.run.totals.usage, st.run.totals.cost_usd, st.run.totals.agent_calls);
-    rec.output = st.run.output;
-    rec.attempts[rec.attempts.length - 1]!.ended_at = nowIso();
-    this.emit("subgraph.finished", { run_id: childId, cost_usd: st.run.totals.cost_usd }, node.id);
+    const runOne = async (scope: Scope, childId: string, index?: number) => {
+      const input = resolveValue(node.input ?? {}, scope);
+      const attempt: AttemptRecord = { attempt: rec.attempts.length + 1, item: index, started_at: nowIso(), status: "ok", bridge: "subgraph" };
+      rec.attempts.push(attempt);
+      this.emit("subgraph.started", { run_id: childId, graph: spec.name }, node.id, index);
+      try {
+        const st = await this.runChild(spec, childId, input, node.id, index);
+        addUsage(rec, st.run.totals.usage, st.run.totals.cost_usd, st.run.totals.agent_calls);
+        addUsage(this.state.run.totals, st.run.totals.usage, st.run.totals.cost_usd, st.run.totals.agent_calls);
+        attempt.ended_at = nowIso();
+        attempt.cost_usd = st.run.totals.cost_usd;
+        this.emit("subgraph.finished", { run_id: childId, cost_usd: st.run.totals.cost_usd }, node.id, index);
+        return st.run.output;
+      } catch (e) {
+        attempt.status = "error";
+        attempt.error = e instanceof Error ? e.message : String(e);
+        attempt.ended_at = nowIso();
+        throw e;
+      }
+    };
+    if (node.map) {
+      const arr = resolveRef(node.map, this.scope());
+      if (!Array.isArray(arr)) throw new Error(`map: ${node.map} did not resolve to an array`);
+      // one nested run per item, in parallel under the node's width budget; a failed item is a failed item, not a failed run
+      await this.fanOut(node, rec, arr, async (item, index) => {
+        try {
+          return await runOne(this.scope({ item, index, repair: rec.repair }), `${this.id}/nested/${node.id}/item-${index}`, index);
+        } catch (e) {
+          if (e instanceof RunCancelled || e instanceof BudgetExceeded) throw e;
+          throw new Error(e instanceof Error ? e.message : String(e));
+        }
+      });
+      return;
+    }
+    rec.output = await runOne(this.scope({ repair: rec.repair }), `${this.id}/nested/${node.id}/${rec.attempts.length + 1}`);
   }
 
   private async runLoop(node: LoopNode, rec: NodeRecord) {

@@ -93,6 +93,10 @@ export class ClaudeCodeBridge implements Bridge {
     const tools = [...new Set([...(this.opts.defaultTools ?? []), ...(req.tools ?? [])])];
     const stderr: string[] = [];
     let result: Record<string, unknown> | undefined;
+    // Tool-using nodes need room for search/read turns; pure reasoning nodes do not. The USD cap is the
+    // smaller of the bridge default and what is left of the run's spend cap.
+    const maxTurns = req.max_turns ?? (tools.length ? 30 : 3);
+    const maxBudgetUsd = Math.max(0.02, Math.min(this.opts.maxBudgetUsd ?? 2.0, req.max_cost_usd ?? Infinity));
     try {
       const q = sdk.query({
         prompt: req.prompt,
@@ -104,8 +108,8 @@ export class ClaudeCodeBridge implements Bridge {
           tools,
           allowedTools: tools,
           permissionMode: "dontAsk",
-          maxTurns: req.max_turns ?? (tools.length ? 12 : 2),
-          maxBudgetUsd: this.opts.maxBudgetUsd ?? 1.0,
+          maxTurns,
+          maxBudgetUsd,
           cwd: req.cwd ?? this.opts.cwd ?? process.cwd(),
           env: sanitizedEnv(),
           settingSources: [],
@@ -127,7 +131,8 @@ export class ClaudeCodeBridge implements Bridge {
       if (abort.signal.aborted) throw new BridgeError(`claude-code call timed out after ${req.timeout_ms}ms`, "timeout", true);
       const msg = (e as Error).message ?? String(e);
       const tail = stderr.slice(-5).join("").trim();
-      throw new BridgeError(`claude-code failed: ${msg}${tail ? ` | ${tail.slice(0, 400)}` : ""}`, /auth|login|credential/i.test(msg + tail) ? "auth" : "transport", true);
+      const kind = /auth|login|credential|oauth/i.test(msg + tail) ? "auth" : /maximum number of turns|max_turns/i.test(msg) ? "timeout" : "transport";
+      throw new BridgeError(`claude-code failed: ${msg}${/maximum number of turns/i.test(msg) ? ` (max_turns=${maxTurns}; raise max_turns on the node or narrow the task)` : ""}${tail ? ` | ${tail.slice(0, 400)}` : ""}`, kind, kind !== "auth");
     }
     clearTimeout(timer);
     ctx.signal.removeEventListener("abort", onAbort);

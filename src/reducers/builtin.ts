@@ -152,12 +152,12 @@ export const builtinReducers: Record<string, Reducer> = {
     return { items: out, _stats: { in: src.length, out: out.length } };
   },
 
-  /** Filter by a simple predicate. args: { path: "confidence", op: ">=", value: 0.6 } */
+  /** Filter by a simple predicate. args: { path: "confidence", op: ">=", value: 0.6 }; `value` may also come from input.value (e.g. a seen-list). */
   filter(input, args) {
     const src = items(input, args);
     const path = String(args.path ?? "");
     const op = String(args.op ?? "==");
-    const value = args.value;
+    const value = args.value !== undefined ? args.value : input.value;
     const test = (v: unknown): boolean => {
       switch (op) {
         case "==": return v == value; // eslint-disable-line eqeqeq
@@ -166,7 +166,8 @@ export const builtinReducers: Record<string, Reducer> = {
         case ">=": return Number(v) >= Number(value);
         case "<": return Number(v) < Number(value);
         case "<=": return Number(v) <= Number(value);
-        case "in": return Array.isArray(value) && value.includes(v);
+        case "in": return Array.isArray(value) && value.some((x) => normKey(x) === normKey(v));
+        case "not_in": return !(Array.isArray(value) && value.some((x) => normKey(x) === normKey(v)));
         case "exists": return v !== undefined && v !== null && v !== "";
         case "matches": return new RegExp(String(value)).test(String(v ?? ""));
         default: throw new Error(`filter: unknown op ${op}`);

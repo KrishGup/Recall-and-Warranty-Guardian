@@ -150,6 +150,10 @@ export const AgentNodeZ = NodeBaseZ.extend({
   tools: z.array(z.string()).optional(),
   max_turns: z.number().int().positive().optional(),
   max_output_tokens: z.number().int().positive().optional(),
+  /** Working directory for tool-using nodes (template/ref allowed, e.g. "$input.repo_path"). */
+  cwd: z.string().optional(),
+  /** Hard USD cap for ONE call of this node (tool-using nodes can otherwise burn turns). Bridges that can enforce it do. */
+  max_cost_usd: z.number().positive().optional(),
 });
 export type AgentNode = z.infer<typeof AgentNodeZ>;
 
@@ -176,6 +180,11 @@ export const VerifyNodeZ = NodeBaseZ.extend({
   system: z.string().optional(),
   /** Adversarial prompt: "find the reason this should be rejected". `{{ $item }}` is the candidate. */
   prompt: z.string().optional(),
+  /** Claude Code bridge: tools the verifier may use - e.g. [WebFetch] so it must actually open the source. */
+  tools: z.array(z.string()).optional(),
+  max_turns: z.number().int().positive().optional(),
+  cwd: z.string().optional(),
+  max_cost_usd: z.number().positive().optional(),
   fn: z.string().optional(),
   module: z.string().optional(),
   args: z.record(z.string(), z.unknown()).optional(),

@@ -1,0 +1,303 @@
+# Competitive landscape - bounded discovery loop, per-competitor subgraph fan-out, a reused tournament graph, and a
+# verified synthesis behind a human gate. Composition of every shape in one purpose-built workflow.
+#
+#   discover: loop { search (haiku+WebSearch) -> dedupe/drop-seen (code) -> vet each URL (haiku+WebFetch, kill) } until no new
+#   -> shortlist (code) -> profile: subgraph x N { pricing | product | news lanes in parallel (haiku+WebSearch) -> consolidate }
+#   -> matrix (code) -> positioning: subgraph ./tournament.yaml (candidates -> judges -> votes counted by code)
+#   -> synthesize (sonnet) -> check (sonnet verifier, repair -> synthesize) -> report (code) -> [GATE] -> publish
+name: competitive-landscape
+version: 1
+description: Discover, profile and compare competitors with real web research, then position against them - every step bounded and verified.
+goal: A landscape brief with a comparison matrix, per-competitor takeaways with sources, and a judged positioning line.
+
+input_schema:
+  type: object
+  required: [company, market]
+  properties:
+    company: { type: string }
+    market: { type: string }
+    max_competitors: { type: integer, minimum: 2, maximum: 6, default: 4 }
+    styles: { type: array, items: { type: string }, default: ["plain and specific", "contrarian", "customer outcome"] }
+    judges: { type: array, items: { type: string }, default: ["a skeptical CTO", "a head of marketing", "a first-time buyer"] }
+
+budget: { max_cost_usd: 10.0, max_wall_ms: 3600000, max_width: 4 }
+frozen: [verifier_can_kill, width_budget]
+defaults: { model: haiku, effort: low, failure: { retries: 1, timeout_ms: 600000, repair_attempts: 1 } }
+
+output:
+  file: $nodes.publish.output.file
+  report_markdown: $nodes.report.output.markdown
+  competitors: $nodes.shortlist.output.items
+  profiles: $nodes.profile.outputs
+  positioning: $nodes.positioning.output
+  discovery: $nodes.discover.output.per_round
+
+nodes:
+  - id: discover
+    kind: loop
+    description: Find competitors until a round adds nothing new (max 3 rounds, capped spend); every candidate is vetted by opening its site.
+    input: { company: $input.company, market: $input.market }
+    collect: $output.competitors
+    seen_key: name
+    until: { max_rounds: 3, no_new_for_rounds: 1, max_cost_usd: 2.0, max_wall_ms: 900000 }
+    body:
+      name: discover-competitors
+      budget: { max_cost_usd: 1.0, max_width: 3 }
+      defaults: { model: haiku, effort: low, failure: { retries: 1, timeout_ms: 420000 } }
+      output: { from: keep }
+      nodes:
+        - id: search
+          kind: agent
+          tools: [WebSearch]
+          max_turns: 10
+          max_cost_usd: 0.35
+          input: { already_seen: $input.seen, round: $input.round }
+          prompt: |
+            Round {{ input.round }}. Find direct competitors of "{{ input.company }}" in the market "{{ input.market }}".
+            Use 2-3 web searches (vary the angle each round: "alternatives to", "vs", "best tools for", analyst lists).
+            Return up to 6 candidates NOT in already_seen (see <input>): company/product name, homepage URL, one line on why
+            it competes, and relevance 1-5. Do not include "{{ input.company }}" itself. Empty list if nothing new.
+          output_schema:
+            type: object
+            required: [candidates]
+            additionalProperties: false
+            properties:
+              candidates:
+                type: array
+                maxItems: 6
+                items:
+                  type: object
+                  required: [name, url, why, relevance]
+                  additionalProperties: false
+                  properties:
+                    name: { type: string, minLength: 2 }
+                    url: { type: string, minLength: 8 }
+                    why: { type: string }
+                    relevance: { type: integer, minimum: 1, maximum: 5 }
+        - id: dedupe
+          kind: code
+          fn: dedupe
+          input: { items: $nodes.search.output.candidates }
+          args: { key: [name] }
+        - id: drop_seen
+          kind: code
+          fn: filter
+          input: { items: $nodes.dedupe.output.items, value: $input.seen }
+          args: { path: name, op: not_in }
+        - id: vet
+          kind: verify
+          description: Open the homepage; kill anything that is not a real product competing in this market.
+          target: $nodes.drop_seen.output.items
+          tools: [WebFetch]
+          max_turns: 5
+          max_cost_usd: 0.2
+          max_width: 3
+          kill_threshold: 0.6
+          input: { company: $input.company, market: $input.market }
+          prompt: |
+            Candidate competitor: {{ json item }}
+            Fetch the URL. Kill it if the page is unreachable, the product is not actually in the market in <input>, it is the
+            same company as {{ input.company }}, or it is a directory/listicle rather than a vendor. Pass with a one-line
+            description of what the product does.
+        - id: keep
+          kind: code
+          fn: identity
+          input: { competitors: $nodes.vet.survivors, rejected: $nodes.vet.killed }
+
+  - id: shortlist
+    kind: code
+    fn: top_k
+    input: { items: $nodes.discover.output.items }
+    args: { k: 4, by: relevance }
+
+  - id: profile
+    kind: subgraph
+    description: One profiling pipeline per competitor - three research lanes in parallel, degraded visibly when a lane fails.
+    map: $nodes.shortlist.output.items
+    max_width: 2
+    failure: { quorum: 0.5, on_failure: block }
+    input: { competitor: $item, market: $input.market, company: $input.company }
+    graph:
+      name: profile-competitor
+      budget: { max_cost_usd: 1.5, max_width: 3 }
+      defaults: { model: haiku, effort: low, failure: { retries: 1, timeout_ms: 420000, on_failure: continue } }
+      output: { from: consolidate }
+      nodes:
+        - id: pricing
+          kind: agent
+          tools: [WebSearch, WebFetch]
+          max_turns: 10
+          max_cost_usd: 0.4
+          prompt: |
+            Research the pricing of {{ input.competitor.name }} ({{ input.competitor.url }}) in {{ input.market }}.
+            Use at most 3 searches/fetches. Return the pricing model, concrete price points you actually saw (with plan names),
+            whether a free tier exists, and the URLs you got this from. Say "unknown" rather than guessing.
+          output_schema:
+            type: object
+            required: [pricing_model, price_points, free_tier, source_urls]
+            additionalProperties: false
+            properties:
+              pricing_model: { type: string }
+              price_points: { type: array, items: { type: string } }
+              free_tier: { type: string, enum: [yes, no, unknown] }
+              source_urls: { type: array, items: { type: string } }
+        - id: product
+          kind: agent
+          tools: [WebSearch, WebFetch]
+          max_turns: 10
+          max_cost_usd: 0.4
+          prompt: |
+            Research the product of {{ input.competitor.name }} ({{ input.competitor.url }}) in {{ input.market }}.
+            Use at most 3 searches/fetches. Return the target segment, 3-6 key features, the main differentiator they claim,
+            and the URLs you read. Say "unknown" rather than guessing.
+          output_schema:
+            type: object
+            required: [target_segment, key_features, claimed_differentiator, source_urls]
+            additionalProperties: false
+            properties:
+              target_segment: { type: string }
+              key_features: { type: array, items: { type: string } }
+              claimed_differentiator: { type: string }
+              source_urls: { type: array, items: { type: string } }
+        - id: news
+          kind: agent
+          tools: [WebSearch]
+          max_turns: 8
+          max_cost_usd: 0.3
+          prompt: |
+            Find up to 3 recent, dated news items (funding, launches, pricing changes, incidents) about {{ input.competitor.name }}.
+            Use at most 2 searches. Only include items with a date and a URL from the results. Empty list is fine.
+          output_schema:
+            type: object
+            required: [recent_news]
+            additionalProperties: false
+            properties:
+              recent_news:
+                type: array
+                maxItems: 3
+                items:
+                  type: object
+                  required: [date, headline, url]
+                  additionalProperties: false
+                  properties:
+                    date: { type: string }
+                    headline: { type: string }
+                    url: { type: string }
+        - id: consolidate
+          kind: code
+          description: Degrade visibly - a failed lane shows up as status "failed", not as silence.
+          fn: identity
+          optional: [pricing, product, news]
+          input:
+            name: $input.competitor.name
+            url: $input.competitor.url
+            why: $input.competitor.why
+            pricing: $nodes.pricing.output
+            product: $nodes.product.output
+            news: $nodes.news.output
+            lanes: { pricing: $nodes.pricing.status, product: $nodes.product.status, news: $nodes.news.status }
+
+  - id: matrix_rows
+    kind: code
+    description: Flatten profiles into table rows (code, not a model).
+    fn: identity
+    input: { items: $nodes.profile.outputs }
+
+  - id: matrix
+    kind: code
+    module: ./reducers/markdown-table.js
+    input: { items: $nodes.profile.outputs }
+    args: { fields: [name, url, pricing, product, lanes] }
+
+  - id: positioning
+    kind: subgraph
+    description: Reuse the tournament graph as a component - candidates judged independently, votes counted by code.
+    graph: ./tournament.yaml
+    input:
+      brief: "Write a positioning headline for {{ input.company }} in the market '{{ input.market }}'. Competitors and what they claim:\n{{ nodes.matrix.output.markdown }}"
+      styles: $input.styles
+      judges: $input.judges
+      criteria: ["specific, no hype", "under 12 words", "clearly different from every competitor's claimed differentiator"]
+
+  - id: synthesize
+    kind: agent
+    model: sonnet
+    effort: medium
+    description: The landscape brief, written only from the profiles and the matrix.
+    input:
+      company: $input.company
+      market: $input.market
+      profiles: $nodes.profile.outputs
+      profile_coverage: $nodes.profile.count
+      discovery_rounds: $nodes.discover.output.per_round
+      positioning: $nodes.positioning.output
+    prompt: |
+      Write the competitive landscape brief for {{ input.company }} in {{ input.market }} from <input> ONLY.
+      For each profiled competitor: a 2-3 sentence takeaway (pricing, segment, differentiator, notable news) citing the
+      source URLs from its profile. Then a recommended positioning for {{ input.company }} (use the tournament winner as
+      the headline, justify it against the competitors' claimed differentiators), 3-5 risks, and caveats that name any
+      competitor whose lanes failed (lanes.* != completed) or whose data is "unknown".
+    output_schema:
+      type: object
+      required: [title, summary, competitor_takeaways, recommended_positioning, risks, caveats]
+      additionalProperties: false
+      properties:
+        title: { type: string }
+        summary: { type: string, minLength: 80 }
+        competitor_takeaways:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required: [name, takeaway, sources]
+            additionalProperties: false
+            properties:
+              name: { type: string }
+              takeaway: { type: string, minLength: 40 }
+              sources: { type: array, items: { type: string } }
+        recommended_positioning: { type: string, minLength: 40 }
+        risks: { type: array, minItems: 1, items: { type: string } }
+        caveats: { type: array, items: { type: string } }
+
+  - id: check
+    kind: verify
+    model: sonnet
+    effort: medium
+    description: Every competitor statement must trace to its profile; failed lanes must be disclosed.
+    target: $nodes.synthesize.output
+    min_survivors: 1
+    kill_threshold: 0.6
+    repair: { node: synthesize, max_rounds: 1 }
+    input: { profiles: $nodes.profile.outputs, positioning: $nodes.positioning.output }
+    prompt: |
+      Brief under review: {{ json item }}
+      Profiles and the positioning tournament are in <input>. Kill the brief if any takeaway states something its profile
+      does not contain, if a cited source is not in that profile's source lists, if a competitor with a failed or unknown
+      lane is presented as fully known, or if the recommended positioning ignores a competitor's claimed differentiator.
+      List each violation as a separate reason.
+
+  - id: report
+    kind: code
+    module: ./reducers/landscape-report.js
+    input:
+      company: $input.company
+      market: $input.market
+      brief: $nodes.check.survivors[0]
+      matrix: $nodes.matrix.output.markdown
+      profiles: $nodes.profile.outputs
+      positioning: $nodes.positioning.output
+      discovery: $nodes.discover.output.per_round
+
+  - id: approve
+    kind: gate
+    title: Publish the landscape brief?
+    show: { report: $nodes.report.output.markdown, check: $nodes.check.output, profile_coverage: $nodes.profile.count }
+    on_reject: { route: synthesize }
+
+  - id: publish
+    kind: code
+    module: ./reducers/write-file.js
+    side_effect: true
+    requires_gate: approve
+    input: { markdown: $nodes.report.output.markdown }
+    args: { dir: out, name: competitive-landscape, ext: md }
