@@ -9,7 +9,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "ui": "tsx src/cli/main.ts ui",
     "mcp": "tsx src/cli/main.ts mcp",
-    "postbuild": "node -e \"require('fs').mkdirSync('dist/ui',{recursive:true});require('fs').copyFileSync('src/ui/index.html','dist/ui/index.html')\""
+    "postbuild": "node -e \"require('fs').mkdirSync('dist/ui',{recursive:true});require('fs').copyFileSync('src/ui/index.html','dist/ui/index.html')\"",
+    "kit": "node scripts/make-kit.mjs"
   },
   "keywords": [],
   "author": "",

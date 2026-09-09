@@ -79,7 +79,13 @@ export function generateFromSchema(schema: Record<string, unknown>, rand: () => 
       if (fmt === "date-time") return new Date(1_700_000_000_000 + Math.floor(rand() * 1e10)).toISOString();
       const words = ["evidence", "signal", "claim", "market", "latency", "graph", "reducer", "verifier", "budget", "topology"];
       const pick = () => words[Math.floor(rand() * words.length)];
-      return `mock ${key} from ${ctx.node}${ctx.item !== undefined ? `#${ctx.item}` : ""}: ${pick()} ${pick()} ${pick()}`;
+      let s = `mock ${key} from ${ctx.node}${ctx.item !== undefined ? `#${ctx.item}` : ""}: ${pick()} ${pick()} ${pick()}`;
+      const minLen = typeof schema.minLength === "number" ? schema.minLength : 0;
+      while (s.length < minLen) s += ` ${pick()} ${pick()}`;
+      const maxLen = typeof schema.maxLength === "number" ? schema.maxLength : Infinity;
+      if (s.length > maxLen) s = s.slice(0, maxLen);
+      if (typeof schema.pattern === "string" && schema.pattern === "^[a-z0-9-]+$") s = s.toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "");
+      return s;
     }
   }
 }

@@ -7,7 +7,7 @@ description: Design, validate, run and monitor multi-agent workflows as explicit
 
 You are about to turn a job into a **graph**, not a chain. The graph decides what runs in parallel, what data crosses each edge, what gets verified, what happens when a node fails, and where a human holds the key. The model stays fuzzy inside each box; the interface around the box is strict.
 
-gren is the runtime: `gren` CLI, `gren ui` dashboard, and the `gren` MCP server (tools prefixed `gren_`). Prefer the MCP tools when they are available in this session; fall back to the CLI (`npx tsx src/cli/main.ts …` from the gren checkout, or `gren …` when installed).
+gren is the runtime: `gren` CLI, `gren ui` dashboard, and the `gren` MCP server (tools prefixed `gren_`). Use the MCP tools when they are available in this session. If they are not, use the CLI: `npx gren <command>` in a project that installed gren, or `node bin/gren.js <command>` inside the gren repository.
 
 ## 0. Should this be a graph at all?
 

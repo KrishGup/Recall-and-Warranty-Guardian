@@ -1,0 +1,124 @@
+# Starter graph - the smallest graph that shows the whole idea.
+#
+#   plan (sonnet) -> 3 workers in parallel (haiku) -> dedupe (code) -> verify each finding (haiku, kill authority)
+#   -> answer (sonnet) -> [HUMAN GATE] -> record (side effect placeholder)
+#
+# Try it:
+#   gren validate graphs/starter-fork-join.yaml
+#   gren run graphs/starter-fork-join.yaml --bridge mock --auto-approve --input '{"task":"..."}'
+#   gren run graphs/starter-fork-join.yaml --input '{"task":"Should a small team adopt graph-based agent orchestration?"}'
+name: starter-fork-join
+version: 1
+description: Plan, fan out, reduce, verify, synthesize, approve - the fork/join shape with a verifier and a gate.
+goal: A short answer built only from findings that survived an adversarial check.
+
+input_schema:
+  type: object
+  required: [task]
+  properties:
+    task: { type: string, minLength: 10 }
+
+budget: { max_cost_usd: 1.0, max_wall_ms: 600000, max_width: 3 }
+defaults: { model: haiku, effort: low, failure: { retries: 1, timeout_ms: 180000 } }
+output: { from: answer }
+
+nodes:
+  - id: plan
+    kind: agent
+    model: sonnet
+    description: Split the task into three independent angles.
+    prompt: |
+      Task: {{ input.task }}
+      Split it into exactly 3 sub-questions that can be researched independently (different angles, no overlap).
+    output_schema:
+      type: object
+      required: [subtasks]
+      additionalProperties: false
+      properties:
+        subtasks:
+          type: array
+          minItems: 3
+          maxItems: 3
+          items: { type: object, required: [name, question], additionalProperties: false, properties: { name: { type: string }, question: { type: string } } }
+
+  - id: work
+    kind: agent
+    description: One worker per sub-question, in parallel, each in its own context.
+    map: $nodes.plan.output.subtasks
+    max_width: 3
+    failure: { retries: 1, quorum: 0.67 }
+    prompt: |
+      Sub-question "{{ item.name }}": {{ item.question }}
+      Give 2-4 findings. Each: a specific claim, the evidence or reasoning behind it, and an honest confidence 0-1.
+      Say what you do not know instead of guessing.
+    output_schema:
+      type: object
+      required: [findings]
+      additionalProperties: false
+      properties:
+        findings:
+          type: array
+          minItems: 1
+          maxItems: 4
+          items: { type: object, required: [claim, evidence, confidence], additionalProperties: false, properties: { claim: { type: string }, evidence: { type: string }, confidence: { type: number, minimum: 0, maximum: 1 } } }
+
+  - id: flatten
+    kind: code
+    fn: flatten
+    input: { items: $nodes.work.outputs }
+    args: { path: findings }
+
+  - id: dedupe
+    kind: code
+    fn: dedupe
+    input: { items: $nodes.flatten.output.items }
+    args: { key: [claim] }
+
+  - id: verify
+    kind: verify
+    description: Adversarial check of each finding; killed findings never reach the answer.
+    target: $nodes.dedupe.output.items
+    kill_threshold: 0.6
+    min_survivors: 2
+    prompt: |
+      Finding: {{ json item }}
+      Try to reject it: is the claim specific and falsifiable, does the evidence actually support it, is the confidence honest?
+      Kill it if not. Give concrete reasons.
+
+  - id: answer
+    kind: agent
+    model: sonnet
+    effort: medium
+    description: Synthesis from surviving findings only, with visible coverage.
+    input:
+      task: $input.task
+      findings: $nodes.verify.survivors
+      killed: $nodes.verify.output.kill_rate
+      workers: $nodes.work.count
+    prompt: |
+      Answer the task using ONLY the findings in <input>. Cite each finding you use by its claim text in `used_claims`.
+      State what remains uncertain. Mention how many workers completed and the share of findings the verifier killed.
+    output_schema:
+      type: object
+      required: [answer, used_claims, uncertainties]
+      additionalProperties: false
+      properties:
+        answer: { type: string, minLength: 80 }
+        used_claims: { type: array, items: { type: string } }
+        uncertainties: { type: array, items: { type: string } }
+
+  - id: approve
+    kind: gate
+    title: Record this answer?
+    prompt: Read the answer. Then approve or reject.
+    approve_effect: The system records the answer (placeholder side effect).
+    reject_effect: The system records nothing. The run stops.
+    show: { answer: $nodes.answer.output, killed_findings: $nodes.verify.killed }
+
+  - id: record
+    kind: code
+    fn: record
+    side_effect: true
+    requires_gate: approve
+    input: { answer: $nodes.answer.output }
+    args: { note: "replace with module: ./reducers/write-file.js or post-webhook.js" }

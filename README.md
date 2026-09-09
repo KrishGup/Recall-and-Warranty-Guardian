@@ -23,6 +23,10 @@ It is built Claude-first and runs on three bridges:
 
 The engine owns the graph in every mode: dependencies, width, validation, retries, fallbacks, quorum, budgets, gates, resume. The bridge only answers one prompt.
 
+## Use it in a new project (starter kit)
+
+Copy the `kit/` folder into a new project folder and run `npm install`. It contains the packed runtime, the `gren` MCP server config, the `graph-engineering` skill, project notes, a starter graph and the example graphs. `kit/README.md` has the setup steps, sample prompts for a fresh Claude Code session, and two step-by-step guides (by hand, and with Claude). Rebuild the kit after changes with `npm run kit`.
+
 ## Quick start
 
 ```bash

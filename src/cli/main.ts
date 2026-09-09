@@ -24,6 +24,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import readline from "node:readline";
+import { fileURLToPath } from "node:url";
 import YAML from "yaml";
 import { loadGraph, SpecError } from "../spec/load.js";
 import { analyze, formatAnalysis } from "../spec/analyze.js";
@@ -83,6 +84,15 @@ function parseInput(raw: string | undefined): unknown {
   } catch {
     return YAML.parse(raw);
   }
+}
+
+/** The installed package root (dist/cli/main.js -> ../.. ; src/cli/main.ts -> ../..). */
+function findPackageRoot(): string {
+  const here = path.dirname(fileURLToPath(import.meta.url));
+  for (const up of [path.resolve(here, "..", ".."), path.resolve(here, "..", "..", "..")]) {
+    if (fs.existsSync(path.join(up, "package.json")) && fs.existsSync(path.join(up, "skills"))) return up;
+  }
+  return path.resolve(here, "..", "..");
 }
 
 function fail(msg: string, code = 1): never {
@@ -507,6 +517,54 @@ async function main() {
       await startMcpServer({ store: new RunStore(runsDir(flags)), graphsDir: path.resolve(str(flags, "graphs") ?? "graphs") });
       return;
     }
+    case "init": {
+      // Scaffold a project so a fresh Claude Code session can use gren: MCP config, skill, starter graphs, notes.
+      const target = path.resolve(positional[0] ?? ".");
+      const pkgRoot = findPackageRoot();
+      const copied: string[] = [];
+      const copyDir = (from: string, to: string) => {
+        if (!fs.existsSync(from)) return;
+        fs.mkdirSync(to, { recursive: true });
+        for (const e of fs.readdirSync(from, { withFileTypes: true })) {
+          const f = path.join(from, e.name);
+          const t = path.join(to, e.name);
+          if (e.isDirectory()) copyDir(f, t);
+          else if (!fs.existsSync(t) || flags.force) {
+            fs.copyFileSync(f, t);
+            copied.push(path.relative(target, t));
+          }
+        }
+      };
+      copyDir(path.join(pkgRoot, "skills", "graph-engineering"), path.join(target, ".claude", "skills", "graph-engineering"));
+      copyDir(path.join(pkgRoot, "graphs", "reducers"), path.join(target, "graphs", "reducers"));
+      copyDir(path.join(pkgRoot, "graphs", "inputs"), path.join(target, "graphs", "inputs"));
+      for (const g of ["starter-fork-join.yaml", "research-brief.yaml", "code-review-router.yaml", "escalation-ladder.yaml", "tournament.yaml", "discovery-loop.yaml", "failure-domains.yaml", "deep-research-report.yaml", "codebase-audit.yaml", "support-triage-batch.yaml", "competitive-landscape.yaml", "release-pipeline.yaml"]) {
+        const from = path.join(pkgRoot, "graphs", g);
+        const to = path.join(target, "graphs", g);
+        if (fs.existsSync(from) && (!fs.existsSync(to) || flags.force)) {
+          fs.mkdirSync(path.dirname(to), { recursive: true });
+          fs.copyFileSync(from, to);
+          copied.push(path.relative(target, to));
+        }
+      }
+      const writeIfMissing = (rel: string, content: string) => {
+        const t = path.join(target, rel);
+        if (fs.existsSync(t) && !flags.force) return;
+        fs.mkdirSync(path.dirname(t), { recursive: true });
+        fs.writeFileSync(t, content, "utf8");
+        copied.push(rel);
+      };
+      const inRepo = fs.existsSync(path.join(target, "src", "cli", "main.ts"));
+      const cliCmd = inRepo ? "node bin/gren.js" : "node node_modules/gren/bin/gren.js";
+      writeIfMissing(".mcp.json", JSON.stringify({ mcpServers: { gren: { command: "node", args: [inRepo ? "bin/gren.js" : "node_modules/gren/bin/gren.js", "mcp"], env: { GREN_RUNS: "runs" } } } }, null, 2) + "\n");
+      writeIfMissing("CLAUDE.md", `# gren project notes\n\n- gren = Graph Engineering Runtime. Design multi-agent workflows as graphs (graphs/*.yaml), run them, monitor them.\n- CLI: \`${cliCmd} <command>\` (validate | analyze | run | resume | fork | status | metrics | approve | tasks | complete | ui | mcp). \`npx gren\` also works once installed.\n- MCP: .mcp.json registers the \`gren\` server (tools gren_*). Skill: .claude/skills/graph-engineering - load it (/graph-engineering) before designing a graph.\n- Bridges: claude-code (Claude Code login, default) | api (ANTHROPIC_API_KEY) | inbox (this session executes nodes with subagents) | mock (no tokens).\n- Runs are checkpointed under runs/ (gitignored). Dashboard: \`${cliCmd} ui\` -> http://127.0.0.1:4545\n- Reference: node_modules/gren/docs/SPEC.md (or gren_reference). Start from graphs/starter-fork-join.yaml.\n`);
+      writeIfMissing(".gitignore", "node_modules/\nruns/\nout/\n.worktrees/\n*.log\n");
+      console.log(`gren init: ${copied.length} file(s) written under ${target}`);
+      for (const c of copied.slice(0, 12)) console.log(`  + ${c}`);
+      if (copied.length > 12) console.log(`  … ${copied.length - 12} more`);
+      console.log(`\nNext: start a Claude Code session in ${target} (approve the "gren" MCP server when asked) and load /graph-engineering, or run: ${cliCmd} validate graphs/starter-fork-join.yaml`);
+      return;
+    }
     case "help":
     default:
       console.log(`gren - Graph Engineering Runtime for Claude multi-agent systems
@@ -524,6 +582,7 @@ async function main() {
   gren ui [--port 4545]                   dashboard + live monitoring + approvals
   gren mcp                                MCP server (stdio) exposing the same operations as tools
   gren bridges | reducers | frozen | shapes | new <shape> <name>
+  gren init [dir]                         scaffold a project: .mcp.json, CLAUDE.md, skill, starter graphs
 
 Runs live in ./runs (override: --runs DIR or GREN_RUNS). Mock knobs: --mock-fail-rate --mock-invalid-rate --mock-kill-rate --mock-fail-nodes a,b --seed`);
   }
