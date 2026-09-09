@@ -212,10 +212,41 @@ export function newRunId(prefix = "run"): string {
   return `${prefix}-${stamp}-${crypto.randomBytes(3).toString("hex")}`;
 }
 
+function sleepSync(ms: number) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+/** Write-then-rename. On Windows a rename over a file another process is reading fails with EPERM; retry, then fall back to an in-place write. */
 function atomicWrite(file: string, data: string) {
   const tmp = `${file}.${process.pid}.${crypto.randomBytes(2).toString("hex")}.tmp`;
   fs.writeFileSync(tmp, data, "utf8");
-  fs.renameSync(tmp, file);
+  for (let attempt = 0; attempt < 6; attempt++) {
+    try {
+      fs.renameSync(tmp, file);
+      return;
+    } catch (e) {
+      const code = (e as NodeJS.ErrnoException).code;
+      if (code !== "EPERM" && code !== "EBUSY" && code !== "EACCES") throw e;
+      sleepSync(15 * (attempt + 1));
+    }
+  }
+  fs.writeFileSync(file, data, "utf8");
+  fs.rmSync(tmp, { force: true });
+}
+
+/** Read + parse JSON, retrying briefly when a concurrent writer leaves a torn file. */
+function readJson<T>(file: string): T {
+  let lastErr: unknown;
+  for (let attempt = 0; attempt < 5; attempt++) {
+    try {
+      return JSON.parse(fs.readFileSync(file, "utf8")) as T;
+    } catch (e) {
+      lastErr = e;
+      if ((e as NodeJS.ErrnoException).code === "ENOENT") throw e;
+      sleepSync(10 * (attempt + 1));
+    }
+  }
+  throw lastErr;
 }
 
 export class RunStore {
@@ -282,9 +313,9 @@ export class RunStore {
     const dir = this.runDir(runId);
     const runFile = path.join(dir, "run.json");
     if (!fs.existsSync(runFile)) throw new Error(`run not found: ${runId}`);
-    const run = JSON.parse(fs.readFileSync(runFile, "utf8")) as RunRecord;
+    const run = readJson<RunRecord>(runFile);
     const stateFile = path.join(dir, "state.json");
-    const nodes = fs.existsSync(stateFile) ? (JSON.parse(fs.readFileSync(stateFile, "utf8")) as { nodes: Record<string, NodeRecord> }).nodes : {};
+    const nodes = fs.existsSync(stateFile) ? readJson<{ nodes: Record<string, NodeRecord> }>(stateFile).nodes : {};
     return { run, nodes };
   }
 

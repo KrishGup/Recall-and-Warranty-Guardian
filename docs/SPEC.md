@@ -60,8 +60,10 @@ Common fields: `id`, `description`, `input`, `when` (condition), `after` (orderi
   output_schema: { type: object, required: [...], properties: {...}, additionalProperties: false }
   map: $nodes.scope.output.lanes     # fan-out: one call per element, $item/$index in scope
   max_width: 5
-  tools: [Read, WebSearch]           # claude-code bridge only (default: no tools)
-  max_turns: 4
+  tools: [Read, WebSearch]           # claude-code bridge only (default: no tools => pure reasoning)
+  max_turns: 12                      # tool nodes default to 30, pure nodes to 3
+  max_cost_usd: 0.4                  # hard USD cap for ONE call of this node (tool nodes can burn turns)
+  cwd: $input.repo_path              # working directory for tool nodes (ref/template allowed)
   failure: { retries: 1, backoff_ms: 1500, timeout_ms: 300000, fallback: { model: sonnet }, on_failure: block, quorum: 0.6, repair_attempts: 1 }
 ```
 Output is validated against `output_schema`; invalid output triggers a repair call (the model sees the validation errors) up to `repair_attempts`, then counts as a failed attempt.
@@ -89,7 +91,8 @@ Built-ins: `flatten, filter_nulls, dedupe, sort, top_k, group_by, count_votes, n
   prompt: "Candidate: {{ json item }} ... try to falsify it"
   kill_threshold: 0.6                  # kill when verdict=kill AND confidence >= threshold
   min_survivors: 3                     # else the node fails
-  repair: { node: brief, max_rounds: 2 }   # controlled cycle: reset producer (+descendants) with feedback
+  tools: [WebFetch]                    # a verifier that must OPEN the source (claude-code bridge); cwd/max_turns/max_cost_usd as for agents
+  repair: { node: brief, max_rounds: 2 }   # controlled cycle: reset producer (+descendants) with feedback; the producer must be an ancestor of the target
 ```
 Fixed verifier output: `{ verdict: pass|kill, reasons: [], confidence: 0..1 }`. Results: `$nodes.verify.survivors`, `.killed`, `.kill_rate`, `.output.total`. A verification that did not execute is a kill (never mark passed unless it ran).
 
@@ -136,7 +139,9 @@ Output: `{ items, rounds, converged, stop_reason, per_round, seen }`. Each round
   kind: subgraph
   graph: ./other.yaml     # or inline spec
   input: { q: $input.q }
+  map: $input.tickets     # optional: one nested run per item ($item/$index in `input`), parallel under max_width, quorum applies
 ```
+A mapped subgraph is the "per-item pipeline" pattern: each item gets an isolated graph run (`<run>/nested/<node>/item-N`); `$nodes.child.outputs` / `.count` behave like any fan-out.
 
 ## Conditions
 `{ eq|neq|gt|gte|lt|lte: [a, b] }`, `{ in: [a, list] }`, `{ contains: [list_or_string, x] }`, `{ matches: [a, regex] }`, `{ exists: a }`, `{ empty: a }`, `{ truthy: a }`, `{ status: [nodeId, status] }`, `{ and: [...] }`, `{ or: [...] }`, `{ not: c }`, a bare `"$ref"` (truthy), `true/false`.
@@ -162,6 +167,9 @@ Default: `gate_before_side_effect`, `spend_cap`, `no_unbounded_loops`, `structur
 | `api` | Anthropic Messages API with structured outputs | `ANTHROPIC_API_KEY` / `ant auth login` |
 | `inbox` | writes a task; an external worker (a Claude Code session with the gren MCP tools, the CLI, or a human) executes it and posts a schema-valid result | none |
 | `mock` | schema-driven deterministic output with latency/failure injection | none |
+
+## Developer loop: fork
+`gren fork <run_id> --from <node[,node]> [--spec edited.yaml] [--input JSON]` (MCP: `gren_fork`, dashboard: "Fork run from here") copies the run, resets the named nodes and everything downstream, and re-executes only that part - upstream outputs (the expensive research fan-out, say) are reused. Iterate on a late prompt without paying for the whole graph.
 
 ## Run state (`runs/<id>/`)
 `run.json` (spec snapshot, input, status, totals, approvals, decisions), `state.json` (node checkpoint), `events.jsonl`, `artifacts/` (prompts + raw outputs per attempt), `inbox/` (tasks + results), `approvals/`, `nested/` (loop rounds, subgraphs). `gren resume <id>` continues from the checkpoint; side-effect nodes are never re-run.

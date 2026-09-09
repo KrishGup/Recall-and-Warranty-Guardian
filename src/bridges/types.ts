@@ -63,6 +63,9 @@ export interface Bridge {
 }
 
 export class BridgeError extends Error {
+  /** Cost/usage already incurred by the failed attempt (so budgets stay honest). */
+  cost_usd?: number;
+  usage?: Usage;
   constructor(
     message: string,
     public readonly kind: "transport" | "auth" | "timeout" | "invalid_output" | "cancelled" | "rate_limit" | "refusal" = "transport",

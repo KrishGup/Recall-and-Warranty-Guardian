@@ -49,12 +49,13 @@ nodes:
     description: Cheap look at the inventory - which modules matter, how risky, what to focus on.
     tools: [Read, Grep, Glob]
     cwd: $input.repo_path
-    max_turns: 16
+    max_turns: 40
+    max_cost_usd: 0.6
     input: { modules: $nodes.inventory.output.modules, largest_files: $nodes.inventory.output.largest_files, focus: $input.focus }
     prompt: |
       You are triaging a repository at {{ input.repo_path }} for an audit focused on {{ json input.focus }}.
-      <input> lists the modules (directories) with their files and sizes. Skim a few key files (entry points, largest files)
-      with Read/Grep to understand what the code does. For every module in the inventory, return: the module name (exactly as
+      <input> lists the modules (directories) with their files and sizes. Skim AT MOST 5 key files (entry points, largest
+      files) with Read/Grep - budget your tool calls, then answer. For every module in the inventory, return: the module name (exactly as
       given), a risk level, one sentence why, and a focus hint for its auditor. Also write a 3-sentence description of the system.
     output_schema:
       type: object
@@ -93,7 +94,8 @@ nodes:
     max_width: 3
     tools: [Read, Grep, Glob]
     cwd: $input.repo_path
-    max_turns: 30
+    max_turns: 60
+    max_cost_usd: 1.2
     failure: { retries: 1, quorum: 0.6, on_failure: block, fallback: { model: opus } }
     input: { system: $nodes.triage.output.system_description, focus: $input.focus }
     prompt: |
@@ -136,7 +138,8 @@ nodes:
     when: { eq: ["$nodes.route.output.route", single] }
     tools: [Read, Grep, Glob]
     cwd: $input.repo_path
-    max_turns: 30
+    max_turns: 60
+    max_cost_usd: 1.5
     input: { system: $nodes.triage.output.system_description, modules: $nodes.triage.output.modules, focus: $input.focus }
     prompt: |
       Audit this small repository (modules and files in <input>). Read the files - do not guess from names.
@@ -176,7 +179,8 @@ nodes:
     target: $nodes.normalize.output.items
     tools: [Read, Grep]
     cwd: $input.repo_path
-    max_turns: 8
+    max_turns: 14
+    max_cost_usd: 0.3
     max_width: 4
     kill_threshold: 0.6
     prompt: |
@@ -202,7 +206,8 @@ nodes:
     max_width: 3
     tools: [Read, Grep]
     cwd: $input.repo_path
-    max_turns: 12
+    max_turns: 24
+    max_cost_usd: 0.7
     failure: { retries: 1, quorum: 0.5, on_failure: block }
     prompt: |
       Verified issue #{{ item.rank }}:
@@ -230,7 +235,8 @@ nodes:
     target: $nodes.fix_plans.outputs
     tools: [Read]
     cwd: $input.repo_path
-    max_turns: 8
+    max_turns: 14
+    max_cost_usd: 0.4
     max_width: 3
     kill_threshold: 0.6
     repair: { node: fix_plans, max_rounds: 1 }

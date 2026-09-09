@@ -42,6 +42,8 @@ ANTHROPIC_API_KEY=... gren run graphs/research-brief.yaml --bridge api --input '
 gren run graphs/research-brief.yaml --bridge inbox --no-wait --input '{...}'              # then: gren tasks --json / gren complete ...
 ```
 
+The `claude-code` bridge needs a login the subprocess can use: run `claude auth login --claudeai` once (the desktop app's own session is not shared with child processes); `claude auth status` should report `loggedIn: true`.
+
 When a human gate is reached the run pauses. Approve from the dashboard, `gren approve <run> <gate> [--reject --comment "..."]`, or the MCP tool; `gren resume <run>` continues from the checkpoint.
 
 ## What the platform gives you
@@ -67,6 +69,21 @@ When a human gate is reached the run pauses. Approve from the dashboard, `gren a
 | `failure-domains.yaml` | fork/join | retries, fallback models, quorum joins, optional branches, blocking critical nodes — run with `--bridge mock --mock-fail-rate 0.35` |
 
 `gren new <fork-join|escalation|tournament|map-reduce-verify|discovery-loop> <name>` scaffolds a new spec.
+
+### Showcase graphs (real tools, real side effects)
+
+| graph | what it does | shapes composed |
+|---|---|---|
+| `deep-research-report.yaml` | question → lanes → **bounded source-discovery loop** (search, then open and vet every URL) → per-source extraction with verbatim quotes → per-finding verification by re-opening the source → outline → parallel section writers that each see only their evidence → code citation check → adversarial editor → gate → writes `out/research-report-*.md` | loop, map-reduce-verify, fork/join, controlled cycle, gate |
+| `codebase-audit.yaml` | deterministic inventory → triage with Read/Grep → **router** (single vs parallel) → one sonnet auditor per module in its own context → dedupe/normalize → verifier that must open the file and find the evidence → prioritise → fix plans with diffs → adversarial fix review → report → gate → writes `out/codebase-audit-*.md`. Run it on gren itself: `--input '{"repo_path":".","include":["src"]}'` | router, diamond, verify+repair, gate |
+| `support-triage-batch.yaml` | a per-ticket **subgraph** (regex → haiku → sonnet escalation ladder, legal/security router, drafted reply, deterministic policy check, adversarial reply reviewer) fanned out over a batch with a quorum, then auto/human queues and two gates in front of the only irreversible action | mapped subgraph, escalation ladder, router, gates |
+| `competitive-landscape.yaml` | **discovery loop** for competitors (vetted by opening their sites) → per-competitor **subgraph** with three parallel research lanes that degrade visibly → comparison matrix (code) → **reused `tournament.yaml`** for positioning → synthesis → verifier → report → gate → file | loop, mapped subgraph, graph reuse, tournament, verify+repair, gate |
+
+Inputs for the batch example live in `graphs/inputs/`. Every tool-using node carries `max_turns` and `max_cost_usd`; the run's `budget.max_cost_usd` is passed down so a single session can never exceed what is left.
+
+### Developer loop
+
+`gren fork <run> --from <node> [--spec edited.yaml]` re-runs from a node with upstream outputs reused (also in the dashboard's node inspector and as the `gren_fork` MCP tool). Iterate on the editor prompt without paying for the research again.
 
 ## Orchestrator mode (Claude Code runs the nodes)
 

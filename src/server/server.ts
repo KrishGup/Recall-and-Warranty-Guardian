@@ -314,6 +314,15 @@ export async function startServer(o: ServerOptions): Promise<http.Server> {
         const b = await readBody(req);
         return json(res, 200, await control.resume(String(b.id ?? ""), typeof b.bridge === "string" ? b.bridge : undefined));
       }
+      if (p === "/api/run/fork" && req.method === "POST") {
+        const b = await readBody(req);
+        const from = Array.isArray(b.from) ? (b.from as string[]) : String(b.from ?? "").split(",").map((s) => s.trim()).filter(Boolean);
+        if (!from.length) return json(res, 400, { error: "from (node ids) required" });
+        const runner = GraphRunner.fork({ store, bridges: new BridgeRegistry(o.bridgeOptions ?? {}), runId: String(b.id ?? ""), from, newRunId: typeof b.new_id === "string" ? b.new_id : undefined, bridge: typeof b.bridge === "string" && b.bridge ? b.bridge : undefined, defaultBridge: defaultBridgeName(), onEvent: broadcast, log, gateWait: "block" });
+        control.runners.set(runner.id, runner);
+        runner.run().catch((err) => log(`fork ${runner.id} crashed: ${(err as Error).message}`)).finally(() => control.runners.delete(runner.id));
+        return json(res, 200, { run_id: runner.id });
+      }
       if (p === "/api/run/cancel" && req.method === "POST") {
         const b = await readBody(req);
         return json(res, 200, { ok: control.cancel(String(b.id ?? "")) });

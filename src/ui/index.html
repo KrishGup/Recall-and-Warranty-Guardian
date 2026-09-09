@@ -393,7 +393,11 @@
       <details ${n.output !== undefined ? "open" : ""}><summary>output</summary><pre>${esc(JSON.stringify(n.output !== undefined ? n.output : n.outputs, null, 2))}</pre></details>
       <details><summary>attempts (${n.attempts.length}) — click a row to see prompt & raw output</summary>${attempts}</details>
       <div id="artifact"></div>
-      <details><summary>node spec</summary><pre>${esc(JSON.stringify(spec, null, 2))}</pre></details>`;
+      <details><summary>node spec</summary><pre>${esc(JSON.stringify(spec, null, 2))}</pre></details>
+      ${!data.in_process && ["completed", "failed", "cancelled", "paused"].includes(data.run.status) && ["completed", "failed", "skipped"].includes(n.status) ? `<div style="margin-top:8px"><button id="forkFrom">Fork run from here (re-run ${esc(id)} + downstream)</button></div>` : ""}`;
+    $("#forkFrom")?.addEventListener("click", async () => {
+      try { const r = await api("/api/run/fork", { id: current, from: [id] }); toast(`forked: ${r.run_id}`); await loadRuns(); selectRun(r.run_id); } catch (e) { toast(e.message, true); }
+    });
     $("#inspector").querySelectorAll("tr.clickable[data-art]").forEach((tr) => tr.addEventListener("click", async () => {
       if (!tr.dataset.art) return;
       const art = await api(`/api/run/artifact?id=${encodeURIComponent(current)}&path=${encodeURIComponent(tr.dataset.art)}`);

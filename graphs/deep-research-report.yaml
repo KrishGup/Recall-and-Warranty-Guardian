@@ -95,6 +95,7 @@ nodes:
           max_width: 4
           tools: [WebSearch]
           max_turns: 14
+          max_cost_usd: 0.35
           failure: { retries: 1, quorum: 0.5, on_failure: block }
           input: { already_seen: $input.seen, round: $input.round }
           prompt: |
@@ -144,6 +145,7 @@ nodes:
           target: $nodes.drop_seen.output.items
           tools: [WebFetch]
           max_turns: 6
+          max_cost_usd: 0.2
           max_width: 4
           kill_threshold: 0.6
           input: { question: $input.question }
@@ -172,6 +174,7 @@ nodes:
     max_width: 4
     tools: [WebFetch]
     max_turns: 8
+    max_cost_usd: 0.3
     failure: { retries: 1, quorum: 0.6, on_failure: block }
     input: { question: $nodes.scope.output.question, criteria: $nodes.scope.output.criteria }
     prompt: |
@@ -225,6 +228,7 @@ nodes:
     target: $nodes.dedupe_findings.output.items
     tools: [WebFetch]
     max_turns: 6
+    max_cost_usd: 0.2
     max_width: 5
     kill_threshold: 0.6
     min_survivors: 4

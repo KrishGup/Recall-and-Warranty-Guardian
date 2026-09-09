@@ -142,7 +142,7 @@ nodes:
               escalate: { type: boolean }
         - id: policy
           kind: code
-          module: ../reducers/policy-check.js
+          module: ./reducers/policy-check.js
           input: { reply: $nodes.draft_reply.output, label: $nodes.label.output.label, tier: $input.ticket.tier, policies: $input.policies }
         - id: verify_reply
           kind: verify
@@ -158,7 +158,7 @@ nodes:
             Pass only a reply you would send yourself.
         - id: result
           kind: code
-          module: ../reducers/triage-result.js
+          module: ./reducers/triage-result.js
           optional: [rung1, route1, rung2, draft_reply, policy, verify_reply]
           input:
             ticket: $input.ticket

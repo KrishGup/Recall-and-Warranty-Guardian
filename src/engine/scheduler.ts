@@ -632,7 +632,14 @@ export class GraphRunner {
         attemptRec.duration_ms = Date.now() - t0;
         attemptRec.status = this.abort.signal.aborted ? "cancelled" : timedOut ? "timeout" : e instanceof BridgeError && e.kind === "invalid_output" ? "invalid_output" : "error";
         attemptRec.error = timedOut ? `timed out after ${f.timeout_ms}ms` : msg;
-        this.emit("call.finished", { attempt, ok: false, error: attemptRec.error, duration_ms: attemptRec.duration_ms, model }, node.id, itemIndex);
+        if (e instanceof BridgeError && (e.cost_usd || e.usage)) {
+          // a failed attempt still spent money - keep budgets honest
+          attemptRec.usage = sumUsage(attemptRec.usage, e.usage);
+          attemptRec.cost_usd = (attemptRec.cost_usd ?? 0) + (e.cost_usd ?? 0);
+          addUsage(rec, e.usage, e.cost_usd, 1);
+          addUsage(this.state.run.totals, e.usage, e.cost_usd, 1);
+        }
+        this.emit("call.finished", { attempt, ok: false, error: attemptRec.error, duration_ms: attemptRec.duration_ms, model, cost_usd: attemptRec.cost_usd }, node.id, itemIndex);
         lastErr = timedOut ? new BridgeError(attemptRec.error, "timeout", true) : e;
         if (this.abort.signal.aborted) throw new RunCancelled(this.stopReason ?? "cancelled");
         if (e instanceof BudgetExceeded) throw e;

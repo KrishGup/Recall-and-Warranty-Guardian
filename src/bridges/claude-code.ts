@@ -131,8 +131,15 @@ export class ClaudeCodeBridge implements Bridge {
       if (abort.signal.aborted) throw new BridgeError(`claude-code call timed out after ${req.timeout_ms}ms`, "timeout", true);
       const msg = (e as Error).message ?? String(e);
       const tail = stderr.slice(-5).join("").trim();
-      const kind = /auth|login|credential|oauth/i.test(msg + tail) ? "auth" : /maximum number of turns|max_turns/i.test(msg) ? "timeout" : "transport";
-      throw new BridgeError(`claude-code failed: ${msg}${/maximum number of turns/i.test(msg) ? ` (max_turns=${maxTurns}; raise max_turns on the node or narrow the task)` : ""}${tail ? ` | ${tail.slice(0, 400)}` : ""}`, kind, kind !== "auth");
+      const kind = /auth|login|credential|oauth/i.test(msg + tail) ? "auth" : /maximum number of turns|max_turns/i.test(msg) ? "timeout" : /budget/i.test(msg) ? "transport" : "transport";
+      const err = new BridgeError(`claude-code failed: ${msg}${/maximum number of turns/i.test(msg) ? ` (max_turns=${maxTurns}; raise max_turns on the node or narrow the task)` : ""}${tail ? ` | ${tail.slice(0, 400)}` : ""}`, kind, kind !== "auth");
+      // The CLI emitted an error result before exiting: keep what it spent.
+      if (result && typeof result.total_cost_usd === "number") {
+        err.cost_usd = result.total_cost_usd;
+        const u = (result.usage ?? {}) as Record<string, number>;
+        err.usage = { input_tokens: u.input_tokens ?? 0, output_tokens: u.output_tokens ?? 0, cache_read_input_tokens: u.cache_read_input_tokens ?? 0, cache_creation_input_tokens: u.cache_creation_input_tokens ?? 0 };
+      }
+      throw err;
     }
     clearTimeout(timer);
     ctx.signal.removeEventListener("abort", onAbort);
@@ -142,8 +149,10 @@ export class ClaudeCodeBridge implements Bridge {
     const isError = Boolean(result.is_error);
     const text = typeof result.result === "string" ? result.result : "";
     if (isError || subtype !== "success") {
-      const kind = /authenticate|oauth|login/i.test(text) ? "auth" : subtype === "error_max_budget_usd" ? "transport" : "transport";
-      throw new BridgeError(`claude-code ${subtype || "error"}: ${text.slice(0, 500)}`, kind, kind !== "auth");
+      const kind = /authenticate|oauth|login/i.test(text) ? "auth" : subtype === "error_max_turns" ? "timeout" : "transport";
+      const err = new BridgeError(`claude-code ${subtype || "error"}: ${text.slice(0, 500)}${subtype === "error_max_turns" ? ` (max_turns=${maxTurns})` : subtype === "error_max_budget_usd" ? ` (per-call cap $${maxBudgetUsd.toFixed(2)})` : ""}`, kind, kind !== "auth");
+      if (typeof result.total_cost_usd === "number") err.cost_usd = result.total_cost_usd;
+      throw err;
     }
     const output = result.structured_output !== undefined ? result.structured_output : extractJson(text);
     const u = (result.usage ?? {}) as Record<string, number>;

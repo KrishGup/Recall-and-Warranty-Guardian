@@ -240,6 +240,20 @@ export async function startMcpServer(o: McpOptions) {
 
   server.registerTool("gren_resume", { description: "Resume a checkpointed run (paused/failed/interrupted) inside this process.", inputSchema: { run_id: z.string(), bridge: z.string().optional() } }, async ({ run_id, bridge }) => jsonOut(await control.resume(run_id, bridge)));
   server.registerTool("gren_cancel", { description: "Cancel an in-process run.", inputSchema: { run_id: z.string() } }, async ({ run_id }) => jsonOut({ cancelled: control.cancel(run_id) }));
+  server.registerTool(
+    "gren_fork",
+    { description: "Fork a finished/paused run and re-execute from the given nodes (they and everything downstream re-run; upstream outputs are reused). Optionally supply an edited spec (YAML) - the developer loop for iterating on late nodes without paying for the whole graph again.", inputSchema: { run_id: z.string(), from: z.array(z.string()).min(1), spec_yaml: z.string().optional(), input: z.record(z.string(), z.unknown()).optional(), bridge: z.string().optional(), new_run_id: z.string().optional() } },
+    async ({ run_id, from, spec_yaml, input, bridge, new_run_id }) => {
+      const { GraphRunner } = await import("../engine/scheduler.js");
+      const { BridgeRegistry, defaultBridgeName } = await import("../bridges/registry.js");
+      const spec = spec_yaml ? parseSpecText(spec_yaml) : undefined;
+      const runner = GraphRunner.fork({ store, bridges: new BridgeRegistry({}), runId: run_id, from, newRunId: new_run_id, spec, input, bridge: bridge ?? process.env.GREN_BRIDGE ?? "inbox", defaultBridge: defaultBridgeName(), onEvent: (e) => recent.push(e), log, gateWait: "block" });
+      control.runners.set(runner.id, runner);
+      runner.run().catch((err) => log(`fork ${runner.id} crashed: ${(err as Error).message}`)).finally(() => control.runners.delete(runner.id));
+      await new Promise((r) => setTimeout(r, 300));
+      return jsonOut({ ...statusSummary(store, store.load(runner.id)), forked_from: run_id });
+    },
+  );
   server.registerTool("gren_list_runs", { description: "List runs (newest first).", inputSchema: { include_nested: z.boolean().optional() } }, async ({ include_nested }) => jsonOut(store.list().filter((r) => include_nested || !r.parent)));
   server.registerTool("gren_output", { description: "Final output of a completed run.", inputSchema: { run_id: z.string() } }, async ({ run_id }) => {
     const st = store.load(run_id);
