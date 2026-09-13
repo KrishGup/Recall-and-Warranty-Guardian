@@ -20,7 +20,7 @@ input_schema:
     full_scan: { type: boolean, default: false }
     trigger: { type: string, default: scheduled }
 
-budget: { max_cost_usd: 1.50, max_wall_ms: 900000, max_width: 4 }
+budget: { max_cost_usd: 3.00, max_wall_ms: 1200000, max_width: 4 }
 frozen: [verifier_can_kill, width_budget]
 defaults: { model: opus, effort: medium, failure: { retries: 1, timeout_ms: 300000, repair_attempts: 1 } }
 

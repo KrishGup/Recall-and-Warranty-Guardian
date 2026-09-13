@@ -24,13 +24,19 @@ def reduce(input, args, ctx):
     approved = {str(a.get("decision_id")): a for a in approved_list if a.get("decision_id")}
     by_item = {str(a.get("item_id")): a for a in approved_list if a.get("item_id")}
     # `actions` are the remedy node's per-item records ({index, status, output}); index i drafted approved_list[i].
-    # The index is the reliable link; the ids the model echoes back are the fallback.
+    # The index is the reliable link; the ids the model echoes back are the fallback. A run created from an older
+    # spec snapshot passes plain outputs instead of records (a paused run keeps the spec it started with), so both
+    # shapes are accepted.
     actions = []
-    for rec in input.get("actions") or []:
-        if not isinstance(rec, dict) or rec.get("status") != "completed" or not isinstance(rec.get("output"), dict):
+    for pos, rec in enumerate(input.get("actions") or []):
+        if not isinstance(rec, dict):
             continue
-        out = dict(rec["output"])
-        i = rec.get("index")
+        if "status" in rec and "output" in rec:
+            if rec.get("status") != "completed" or not isinstance(rec.get("output"), dict):
+                continue
+            out, i = dict(rec["output"]), rec.get("index")
+        else:
+            out, i = dict(rec), pos
         if isinstance(i, int) and 0 <= i < len(approved_list):
             ans = approved_list[i]
             if ans.get("decision_id") and store.decision(str(ans["decision_id"])) is not None:
