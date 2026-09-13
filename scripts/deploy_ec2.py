@@ -103,6 +103,7 @@ def runtime_env(host: str, token: str) -> str:
         ("GUARDIAN_RUNS", "/var/lib/guardian/runs"),
         ("GUARDIAN_FEEDS", e.get("GUARDIAN_DEPLOY_FEEDS", "live")),
         ("GREN_BRIDGE", e.get("GUARDIAN_DEPLOY_BRIDGE", "bedrock")),
+        ("ANTHROPIC_API_KEY", e.get("ANTHROPIC_API_KEY", "")),  # only used when GUARDIAN_DEPLOY_BRIDGE=anthropic
         ("AWS_REGION", region()),
         ("AWS_DEFAULT_REGION", region()),
         ("GREN_BEDROCK_HAIKU", e.get("GREN_BEDROCK_HAIKU", "")),
