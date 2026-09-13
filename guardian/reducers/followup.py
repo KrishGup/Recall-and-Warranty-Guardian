@@ -19,12 +19,27 @@ def business_days_from(start: date, n: int) -> date:
 def reduce(input, args, ctx):
     store = Store.default()
     notifier = Notifier(store)
-    actions = [a for a in (input.get("actions") or []) if isinstance(a, dict)]
     answers = input.get("answers") or {}
-    approved = {str(a.get("decision_id")): a for a in (answers.get("approved") or []) if a.get("decision_id")}
+    approved_list = [a for a in (answers.get("approved") or []) if isinstance(a, dict)]
+    approved = {str(a.get("decision_id")): a for a in approved_list if a.get("decision_id")}
+    by_item = {str(a.get("item_id")): a for a in approved_list if a.get("item_id")}
+    # `actions` are the remedy node's per-item records ({index, status, output}); index i drafted approved_list[i].
+    # The index is the reliable link; the ids the model echoes back are the fallback.
+    actions = []
+    for rec in input.get("actions") or []:
+        if not isinstance(rec, dict) or rec.get("status") != "completed" or not isinstance(rec.get("output"), dict):
+            continue
+        out = dict(rec["output"])
+        i = rec.get("index")
+        if isinstance(i, int) and 0 <= i < len(approved_list):
+            ans = approved_list[i]
+            if ans.get("decision_id") and store.decision(str(ans["decision_id"])) is not None:
+                out["decision_id"] = str(ans["decision_id"])
+            if ans.get("item_id") and store.item(str(ans["item_id"])) is not None:
+                out["item_id"] = str(ans["item_id"])
+        actions.append(out)
     sent, emails = 0, []
     today = date.today()
-    by_item = {str(a.get("item_id")): a for a in (answers.get("approved") or []) if a.get("item_id")}
     for a in actions:
         dec_id = str(a.get("decision_id") or "")
         decision = store.decision(dec_id)

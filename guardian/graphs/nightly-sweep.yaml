@@ -294,4 +294,4 @@ nodes:
     side_effect: true
     requires_gate: household_decision
     optional: [remedy]
-    input: { actions: $nodes.remedy.outputs, answers: $nodes.answers.output }
+    input: { actions: $nodes.remedy.items, answers: $nodes.answers.output }
