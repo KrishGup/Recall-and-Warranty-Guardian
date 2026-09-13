@@ -55,9 +55,15 @@ AWS_ACCOUNT_ID=123456789012
 
 Alternative if you already use IAM Identity Center: `aws configure sso` on your machine and put `AWS_PROFILE=<name>` in `.env` instead of the two keys (the code picks either up).
 
+### C. `aws login` (what this repo actually uses)
+
+AWS CLI v2's `aws login --profile guardian` signs in through the browser (12-hour credentials, renewable for 90 days without the browser) and needs no keys at all; `.env` then holds only `AWS_PROFILE=guardian` and `AWS_REGION`. boto3 needs the CRT extra to read those credentials: `pip install "botocore[crt]"` (already in the venv). The Agent Toolkit for AWS setup (`aws configure agent-toolkit`) installs the AWS skills and MCP server for Claude Code on top of the same profile.
+
 ## 3. Bedrock model access (you, 5 minutes)
 
-Console → **Amazon Bedrock** → **Model catalog** (or **Model access** in the left menu) → filter Anthropic → open **Claude Haiku 4.5**, **Claude Sonnet 5** and **Claude Opus 5**. If a model shows *Request access* / *Available to request*, submit the one-time use-case form (company: your name; use case: "household recall-monitoring agent, hackathon prototype, low volume"). Access is usually granted within minutes; some accounts get it automatically on first use.
+The old **Model access** page is retired: serverless models are enabled on first invocation. Anthropic models need one extra step per account: Console → **Amazon Bedrock** → **Model catalog** → the yellow banner "Anthropic requires first-time customers to submit use case details" → **Submit use case details** (company name, website, industry, intended users, a 500-character description of the use case). Until it is submitted, every call answers `ValidationException: Operation not allowed`, and `aws bedrock get-use-case-for-model-access` says the form has not been filled out. After it is accepted, the first invocation by a user with Marketplace permissions (root, or an admin user) creates the Marketplace agreement for the account; `aws bedrock get-foundation-model-availability --model-id anthropic.claude-haiku-4-5-20251001-v1:0` then shows `authorizationStatus: AUTHORIZED` and `agreementAvailability: AVAILABLE`.
+
+**Brand-new accounts.** Until AWS finishes activating the account (`aws account get-account-information` shows `PENDING_ACTIVATION`, the console redirects to "Complete your account setup"), Bedrock, S3, SES and SNS all refuse calls with "not signed up" or "subscription required" errors, and there is nothing to click beyond a valid payment method; it took a few hours on 2026-09-13. A freshly activated account also carries AgentCore quotas of **0** ("Total Agents per Account", "Endpoints per Agent", "Versions per Agent") that the Service Quotas console refuses to raise because they are below the defaults; only a Support case (Basic plan is enough, console only) lifts them. `agentcore deploy` fails with `maxAgents limit exceeded` until then.
 
 Model ids the code uses (cross-region inference profiles; none of these models allow in-region invocation):
 
