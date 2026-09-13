@@ -9,6 +9,7 @@ if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 os.environ.setdefault("GREN_ALLOW_MOCK", "1")
 os.environ["GUARDIAN_FEEDS"] = "fixtures"
+os.environ["GUARDIAN_ENV_FILE"] = ""  # never let a developer's .env (AWS keys, live feeds) leak into the tests
 
 from guardian.store import Store  # noqa: E402
 

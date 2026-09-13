@@ -93,6 +93,8 @@ guardian answer <decision_id> request_remedy
 guardian intake --file demo/receipt.txt # or: guardian intake "Amazon order ... Graco Modes Nest Stroller ... $379.99"
 ```
 
+AWS: `docs/AWS_SETUP.md` lists what to create (Bedrock access, an IAM key or Bedrock API key, SES identities, AgentCore) and what goes into `.env` (template: `.env.example`, loaded automatically); `python scripts/aws_check.py` verifies every piece.
+
 Environment: `GUARDIAN_DATA` (store dir, default `var/household`), `GUARDIAN_RUNS` (gren runs, default `var/runs`), `GUARDIAN_FEEDS=fixtures` (replay recorded feeds), `GREN_BRIDGE` (provider override), `OPENFDA_API_KEY` (optional), `GUARDIAN_SNS=1` and `GUARDIAN_SES_FROM` (real delivery, needs `pip install -e ".[aws]"`).
 
 Tests (no tokens):

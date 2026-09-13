@@ -35,12 +35,15 @@ class Notifier:
 
     def email(self, to: str | None, subject: str, body: str, attachments: list[str] | None = None, ref: dict[str, Any] | None = None) -> dict[str, Any]:
         sender = os.environ.get("GUARDIAN_SES_FROM")
-        if sender and to:
+        override = os.environ.get("GUARDIAN_SES_TO_OVERRIDE")  # demos and the SES sandbox: never email a real manufacturer from a test run
+        if sender and (to or override):
+            dest = override or to
+            text = body if not override else f"[Guardian demo: this would have gone to {to or 'the recall contact'}]\n\n{body}"
             try:
                 import boto3  # type: ignore
 
-                r = boto3.client("ses").send_email(Source=sender, Destination={"ToAddresses": [to]}, Message={"Subject": {"Data": subject}, "Body": {"Text": {"Data": body}}})
-                return {"channel": "email", "to": to, "delivered": True, "note": "sent via SES", "message_id": r.get("MessageId"), "attachments": attachments or [], "at": now_iso()}
+                r = boto3.client("ses").send_email(Source=sender, Destination={"ToAddresses": [dest]}, Message={"Subject": {"Data": subject}, "Body": {"Text": {"Data": text}}})
+                return {"channel": "email", "to": to, "delivered": True, "note": "sent via SES" + (f" (redirected to {dest})" if override else ""), "message_id": r.get("MessageId"), "attachments": attachments or [], "at": now_iso()}
             except Exception as e:  # noqa: BLE001
                 path = self.store.outbox_write("email", {"to": to, "subject": subject, "body": body, "attachments": attachments or [], "ref": ref or {}, "error": str(e)})
                 return {"channel": "email", "to": to, "delivered": False, "note": f"SES failed ({e.__class__.__name__}); written to outbox", "outbox": path, "at": now_iso()}

@@ -2,7 +2,7 @@
 
 Aliases keep specs stable (`model: haiku`). Each provider maps an alias to its own model id:
   anthropic / claude-code  -> claude-haiku-4-5 ...
-  bedrock                  -> global.anthropic.claude-haiku-4-5 ... (override with GREN_BEDROCK_<ALIAS>)
+  bedrock                  -> global.anthropic.claude-haiku-4-5-20251001-v1:0, global.anthropic.claude-sonnet-5 ... (override with GREN_BEDROCK_<ALIAS>)
 """
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ MODEL_ALIASES: dict[str, str] = {
 }
 
 BEDROCK_ALIASES: dict[str, str] = {
-    "haiku": os.environ.get("GREN_BEDROCK_HAIKU", "global.anthropic.claude-haiku-4-5"),
+    "haiku": os.environ.get("GREN_BEDROCK_HAIKU", "global.anthropic.claude-haiku-4-5-20251001-v1:0"),  # Bedrock's Haiku 4.5 profile carries the date suffix; the Claude 5 profiles do not
     "sonnet": os.environ.get("GREN_BEDROCK_SONNET", "global.anthropic.claude-sonnet-5"),
     "opus": os.environ.get("GREN_BEDROCK_OPUS", "global.anthropic.claude-opus-5"),
     "fable": os.environ.get("GREN_BEDROCK_FABLE", "global.anthropic.claude-fable-5-1"),

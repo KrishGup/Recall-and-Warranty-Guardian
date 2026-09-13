@@ -17,7 +17,7 @@ Model aliases map to cross-region inference profiles:
 
 | alias | Bedrock model id (default) | override |
 |---|---|---|
-| `haiku` | `global.anthropic.claude-haiku-4-5` | `GREN_BEDROCK_HAIKU` |
+| `haiku` | `global.anthropic.claude-haiku-4-5-20251001-v1:0` | `GREN_BEDROCK_HAIKU` |
 | `sonnet` | `global.anthropic.claude-sonnet-5` | `GREN_BEDROCK_SONNET` |
 | `opus` | `global.anthropic.claude-opus-5` | `GREN_BEDROCK_OPUS` |
 | `fable` | `global.anthropic.claude-fable-5-1` | `GREN_BEDROCK_FABLE` |
