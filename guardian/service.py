@@ -172,7 +172,11 @@ class Guardian:
             return
         if t == "run.started" and kind != "intake":
             if not run.get("forked_from"):
-                self.store.upsert_sweep(SweepRecord(run_id=rid, started_at=now_iso(), status="running", bridge=str(run.get("bridge") or "")))
+                existing = {s.run_id: s for s in self.store.sweeps()}.get(rid)
+                if existing is None:
+                    self.store.upsert_sweep(SweepRecord(run_id=rid, started_at=now_iso(), status="running", bridge=str(run.get("bridge") or "")))
+                else:
+                    self._sweep_update(rid, status="running")  # a resumed run emits run.started again; keep its first start
             self._emit_local("sweep.started", {"run_id": rid, "forked_from": run.get("forked_from")})
         elif t == "node.completed" and node:
             self._log_node(rid, str(node))
