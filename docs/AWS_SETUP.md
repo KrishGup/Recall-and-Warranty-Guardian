@@ -134,6 +134,20 @@ Copy `.env.example` to `.env` and fill the rows you have. Send the same values t
 guardian sweep --bridge bedrock --data var/bedrock-test --runs var/bedrock-test/runs   # one real sweep on Bedrock, isolated store
 ```
 
-## 9. After the hackathon
+## 9. Cost limits (what actually caps spend)
+
+AWS has no account-wide hard cap. What exists, from weakest to strongest:
+
+| Layer | What it does | Caps spend? |
+|---|---|---|
+| AWS Budgets (Billing → Budgets) | Emails when actual or forecasted spend crosses a threshold; the `$50 monthly` budget already exists | No, alerts only |
+| Budget **action** (Budgets → the budget → Actions) | When the threshold is crossed, attaches an IAM policy (for example the AWS managed `AWSDenyAll`) to an IAM user, group or role, or an SCP to an OU | Yes, for that IAM principal only. It cannot restrict the root user, so run the CLI as an IAM user if you want this to bite |
+| gren `budget.max_cost_usd` in `guardian/graphs/nightly-sweep.yaml` | The engine fails the run once its own model spend exceeds the cap (`$3.00`) | Yes, per run |
+| `GUARDIAN_DAILY_BUDGET_USD` in `.env` | `guardian serve`/`sweep`/`intake` refuse to start new model work once today's recorded run cost reaches it (`10` by default in the template; Home shows today's spend) | Yes, per day, for everything Guardian starts |
+| Bedrock service quotas (Service Quotas → Amazon Bedrock) | Tokens per minute and requests per minute per model; lowering them needs a support case | Throttles, does not cap dollars |
+
+Recommended for the hackathon: keep the budget alert, set `GUARDIAN_DAILY_BUDGET_USD` to what you are willing to spend in a day, and if you switch the CLI to an IAM user, add a budget action that attaches `AWSDenyAll` to it at, say, 90 % of the monthly budget.
+
+## 10. After the hackathon
 
 Delete the IAM user's access key and the Bedrock API key, the S3 bucket, the AgentCore runtime and ECR repository, and any App Runner service. Nothing else costs money at rest.

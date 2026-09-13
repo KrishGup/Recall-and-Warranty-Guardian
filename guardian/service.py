@@ -94,8 +94,36 @@ class Guardian:
             store.save_household(store.household())
         return g, gren_app
 
+    # ------------------------------------------------------------------ spend guard
+    def spend_today(self) -> float:
+        """Model spend recorded by every run created today (local date), from the gren run store."""
+        today = date.today().isoformat()
+        total = 0.0
+        for r in self.run_store.list():
+            if _local_date(str(r.get("created_at") or "")) == today:
+                total += float(r.get("cost_usd") or 0)
+        return round(total, 4)
+
+    def daily_budget(self) -> float | None:
+        raw = os.environ.get("GUARDIAN_DAILY_BUDGET_USD", "").strip()
+        try:
+            return float(raw) if raw else None
+        except ValueError:
+            return None
+
+    def check_budget(self, reserve: float = 0.0) -> None:
+        """Refuse to start model work once today's recorded spend reaches GUARDIAN_DAILY_BUDGET_USD. This is the
+        household's own hard stop: AWS Budgets alert but do not cap, and gren's per-run cap only bounds one run."""
+        cap = self.daily_budget()
+        if cap is None:
+            return
+        spent = self.spend_today()
+        if spent + reserve > cap:
+            raise ValueError(f"daily model budget reached: ${spent:.2f} of ${cap:.2f} spent today (GUARDIAN_DAILY_BUDGET_USD); no new runs until tomorrow")
+
     # ------------------------------------------------------------------ runs
     def start_sweep(self, window_days: int = 45, full_scan: bool = False, auto_approve: bool = False, trigger: str = "dashboard") -> str:
+        self.check_budget()
         rid = self.control.start(spec_path=SWEEP_GRAPH, input_={"window_days": window_days, "full_scan": full_scan, "trigger": trigger}, bridge=self.bridge, auto_approve=auto_approve, labels={"kind": "sweep", "trigger": trigger})
         self.store.upsert_sweep(SweepRecord(run_id=rid, started_at=now_iso(), status="running", bridge=self.bridge or default_bridge().name))
         return rid
@@ -113,6 +141,7 @@ class Guardian:
     def intake(self, text: str, source: str = "paste", timeout_s: float = 240) -> dict[str, Any]:
         t0 = time.time()
         try:
+            self.check_budget()
             rid = self.control.start(spec_path=INTAKE_GRAPH, input_={"text": text, "source": source}, bridge=self.bridge, labels={"kind": "intake"})
         except Exception as e:  # noqa: BLE001
             return {"run_id": None, "item": None, "fields_confident": 0, "fields_total": 0, "cost_usd": 0.0, "duration_ms": int((time.time() - t0) * 1000), "error": str(e)}
@@ -615,6 +644,7 @@ class Guardian:
             "recent_activity": recent,
             "ending_soon": [{"item_id": e["item_id"], "name": e["name"], "ends_on": e["ends_on"], "pct": e["pct"], "note": e["note"]} for e in warranty_policy.ending_soon(items, 60)[:4]],
             "provider": {"bridge": bridge, "live": bool(avail) and bridge != "mock", "label": {"claude-code": "Claude Code (local, headless)", "bedrock": "Amazon Bedrock", "anthropic": "Anthropic API", "mock": "mock provider (no tokens)", "inbox": "inbox (orchestrator)"}.get(bridge, bridge) + ("" if avail else f" · unavailable: {reason}")},
+            "spend": {"today_usd": self.spend_today(), "daily_budget_usd": self.daily_budget()},
         }
 
     def preferences(self) -> Preferences:
