@@ -31,7 +31,7 @@ def reduce(input, args, ctx):
     for pos, rec in enumerate(input.get("actions") or []):
         if not isinstance(rec, dict):
             continue
-        if "status" in rec and "output" in rec:
+        if "status" in rec and "subject" not in rec:  # a fan-out item record, not an ActionReport
             if rec.get("status") != "completed" or not isinstance(rec.get("output"), dict):
                 continue
             out, i = dict(rec["output"]), rec.get("index")
