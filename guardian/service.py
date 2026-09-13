@@ -543,7 +543,7 @@ class Guardian:
     def decisions(self) -> dict[str, Any]:
         self.resurface_snoozed()
         ds = sorted(self.store.decisions(), key=lambda d: d.created_at, reverse=True)
-        pending = [self.decision_view(d) for d in ds if d.state == "pending"]
+        pending = [self.decision_view(d) for d in sorted((d for d in ds if d.state == "pending"), key=lambda d: (d.severity != "critical", d.plan_index))]
         past = [self.decision_view(d) for d in ds if d.state != "pending"]
         return {"pending": pending, "past": past[:30]}
 

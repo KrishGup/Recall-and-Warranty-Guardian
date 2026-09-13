@@ -29,6 +29,8 @@ A background agent that builds a quiet inventory of what your household owns fro
 
 Not yet: AgentCore Runtime/Memory/Gateway deployment (the graph runs anywhere gren runs; see `gren/docs/AWS.md`), SNS/SES delivery (messages go to `var/household/outbox` unless `GUARDIAN_SNS=1` / `GUARDIAN_SES_FROM` are set with AWS credentials), Cognito, the mailroom (photos), grocery advisories and settlements from the plan's Expanded tier. `read_this_labubu.md` has the handoff.
 
+**A real first sweep (2026-09-13, live feeds, headless Claude Code provider):** 594 CPSC recalls, 3 NHTSA campaigns and 1,200 openFDA reports pulled for the 400-day first-run window; 7,143 item-recall pairs checked in code; 5 exact matches (two UPCs, three vehicle campaigns) and 3 ambiguous pairs adjudicated by the model (one yes at 0.95, two no at 0.97); triage surfaced three decisions, put the Outback campaigns in the digest and queued the Vitamix warranty question within budget; the verifier passed the plan; the run paused at the gate after 235 s and $0.41. Approving a decision from the dashboard drafted the refund request to the recall's real contact address and the follow-up was scheduled.
+
 The demo household in `demo/household.json` matches **real** recalls from the live feeds: TOMY's Boon NURSH bottle recall (CPSC 26530, exact UPC match, choking hazard), the Cade California Electronic finger-light recall (CPSC 26761, brand match adjudicated by the model, button-battery ingestion), the Hampton Bay Halwin ceiling fan (CPSC 26702, standard hazard → digest) and three NHTSA campaigns filed against 2019 Subaru Outbacks.
 
 ## Architecture
