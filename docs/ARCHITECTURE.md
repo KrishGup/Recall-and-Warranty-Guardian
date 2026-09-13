@@ -1,57 +1,67 @@
-# gren architecture
+# gren architecture (v2, on Strands Agents)
 
 ```
- spec (YAML)  ─►  zod schema  ─►  analyze (dependency test, cycles, critical path, frozen rules)
-                                      │
-                                      ▼
-                     GraphRunner (scheduler) ──► RunStore (runs/<id>: run.json, state.json, events.jsonl, artifacts, inbox, approvals, nested)
-                       │  readiness loop: all deps terminal → activation (skip cascade, when:, gates) → execute
-                       │  width semaphore (budget.max_width) + per-node max_width for fan-out
-                       │  failure domains: retries → fallback → structured failure → quorum → block/continue
-                       │  verify (kill) → bounded repair (reset producer + descendants with feedback)
-                       │  gates: waiting_approval → pause → approval file / in-process approve → resume
-                       │  router: deterministic route + state snapshot in decisions[]
-                       │  loop/subgraph: nested runs (own dirs, own budgets), dedupe against everything seen
-                       ▼
-                     Bridge.execute(AgentRequest) → AgentResponse   (one bounded structured call)
-                       ├─ api          @anthropic-ai/sdk  (output_config.format json_schema, adaptive thinking, effort)
-                       ├─ claude-code  @anthropic-ai/claude-agent-sdk query() (outputFormat json_schema, tools, maxTurns, maxBudgetUsd)
-                       ├─ inbox        task file → external worker (MCP tools / CLI / human) → result file
-                       └─ mock         schema-driven generator with latency/failure/kill injection
-                                      │
-   metrics (critical path actual, speedup, width, failure/retry, kill rate, fan-out, compression, human)
-                                      │
-   surfaces: CLI (src/cli) · dashboard (src/server + src/ui, REST + SSE) · MCP server (src/mcp)
+ spec (YAML) -> pydantic schema -> analyze (dependency test, cycles, critical path, frozen rules)
+                                      |
+                                      v
+                 compile: gren spec -> strands.multiagent.Graph
+                   - one GrenNode(MultiAgentBase) executor per gren node
+                   - one Strands edge per derived dependency, condition = "all deps of the target completed" (AND-join)
+                   - verify.repair / gate.on_reject.route -> conditional back-edge, reset_on_revisit, generation guard
+                   - gates -> BeforeNodeCallEvent hook raises an interrupt; the run pauses; resume = interruptResponse
+                   - budgets, retries, fallbacks, quorum, timeouts, replay, fork, cancel -> gren (inside the executors)
+                                      |
+                                      v
+                 RunStore (runs/<id>: run.json, state.json, events.jsonl, artifacts, inbox, approvals, nested)
+                                      |
+                                      v
+                 Strands Model providers                                  (every provider is a strands.models.Model)
+                   bedrock       BedrockModel      -> Agent(structured_output_model=..., tools=strands_tools)
+                   anthropic     AnthropicModel    -> Agent(structured_output_model=..., tools=strands_tools)
+                   claude-code   ClaudeCodeModel   -> one structured call (claude -p --json-schema)
+                   inbox         InboxModel        -> task file -> external worker -> result file
+                   mock          MockModel         -> schema-driven generator with latency/failure/kill injection
+                                      |
+   metrics (critical path actual, speedup, width, failure/retry, kill rate, fan-out, compression, human wait)
+                                      |
+   surfaces: CLI (gren/cli.py) - dashboard (gren/server + gren/server/ui, REST + SSE) - MCP server (gren/mcp)
 ```
 
-## Design decisions
+## What Strands owns, what gren owns
 
-- **Edges are derived, not declared.** A node's `input`, `prompt`, `when`, `map`, `target`, `show`, `routes` are scanned for `$nodes.<id>` references. That makes "what crosses this edge?" answerable by the tool, and makes fake edges visible (`status_only_edge`, `ordering_only_edge`).
-- **The model is fuzzy inside the box; the box is strict.** Every agent/verify call carries a JSON schema; outputs are validated by Ajv; invalid outputs go through a bounded repair loop with the validation errors before counting as a failed attempt.
-- **Verifiers have authority.** Their output contract is fixed (`verdict/reasons/confidence`); `survivors`/`killed` are first-class views; a verification that did not execute is a kill; `repair:` is the only sanctioned back-edge and it is bounded by `max_rounds`.
-- **Gates are edge conditions.** `requires_gate` blocks scheduling until an approval record (file) exists; side effects are validated to sit behind gates and are executed at most once (`side_effect_done`, never re-run on resume).
-- **Budgets are enforced by the engine.** Cost/wall/calls/tokens are checked before and after every call; exceeding the spend cap fails the run regardless of node policies.
-- **Durable by default.** State is checkpointed after every node and every fan-out item; `resume` resets in-flight nodes (except side effects) and continues. Nested runs (loops/subgraphs) are ordinary runs under `runs/<id>/nested/`.
-- **Observability is graph-shaped.** Events (`call.started/finished`, `item.*`, `verify.kill`, `route.selected`, `gate.*`, `repair.scheduled`, `loop.round.*`, `task.*`) feed the metrics; decisions carry the state that produced them.
-- **Bridges are dumb on purpose.** A bridge executes one prompt and returns JSON + usage. Retries, fallbacks, width, timeouts and validation live in the engine so all bridges behave identically — including a human completing an inbox task.
+| concern | owner | how |
+|---|---|---|
+| graph traversal, parallel batches, readiness | Strands `Graph` | `GraphBuilder` with one node per gren node; entry points = nodes without deps |
+| AND-joins | gren | Strands readiness is OR; every edge into `B` carries the condition "all of B's dependencies are in `completed_nodes`" |
+| agent loop, tools, streaming, hooks, telemetry | Strands `Agent` | `bedrock`/`anthropic` nodes run `Agent(model, tools, system_prompt, structured_output_model)` |
+| structured output | both | the spec's JSON schema becomes a Pydantic model (`json_schema_to_model`); the original schema is what providers send; gren validates the plain output against the JSON schema and runs its repair loop |
+| one-shot providers | gren | `OneShotModel` implements `Model.stream()` and `Model.structured_output()`; the runtime calls `structured_output()` directly to avoid Strands' forced second call |
+| retries, backoff, fallback model/provider, timeouts, quorum | gren | inside `GrenNode._call_model` / `_fan_out` |
+| verify kill + bounded repair | gren + Strands | the verifier schedules a repair (resets the producer and its descendants in gren state, sets a flag); the conditional back-edge fires once (the flag is consumed when the edge is evaluated); `reset_on_revisit` lets Strands re-execute; a generation guard (`required_gen` / `node_gen`) makes stale downstream nodes no-op until fresh inputs exist; `set_max_node_executions` is the hard stop |
+| human gates | Strands interrupt + gren files | `GateHooks.before_node` raises `event.interrupt(...)` for a gate without a decision; the run status becomes `paused`; the approval is a file (`approvals/<gate>.json`), written by CLI/dashboard/MCP; the run resumes by invoking the same Graph with the interrupt responses |
+| checkpoints, resume, fork | gren | every node writes to `state.json`; a resumed run compiles a fresh Strands graph and completed nodes replay instantly (memoised on gren state); `fork` copies a run and resets a subtree |
+| nested runs (loops, subgraphs) | gren | ordinary runs under `runs/<id>/nested/...` with their own budgets; deep metrics fold them in |
+| budgets | gren | checked before and after every call; `BudgetExceeded` fails the run regardless of node policies |
+| cancel | gren | a flag checked between calls and in the gate wait; `run.cancel()` is thread-safe |
 
-## Claude-specific choices
+## Design decisions kept from v1
 
-- Model aliases (`haiku → claude-haiku-4-5`, `sonnet → claude-sonnet-5`, `opus → claude-opus-5`, `fable → claude-fable-5-1`) with a pricing table for cost accounting; the `claude-code` bridge uses the SDK's own cost estimate when present.
-- API bridge: structured outputs via `output_config.format`, adaptive thinking on 4.6+ models, `effort` where supported, refusal stop reason surfaced as a non-retryable error, typed error classes mapped to retryable/non-retryable.
-- Claude Code bridge: each node is an isolated headless session (`settingSources: []`, `strictMcpConfig`, `persistSession: false`, sanitized env), `tools` default to none (pure reasoning over the edge data), hard `maxTurns` and `maxBudgetUsd`, structured output enforced by the SDK.
-- MCP server: the operations any Claude agent needs to design (`gren_reference`, `gren_scaffold`, `gren_validate`, `gren_write_graph`), run (`gren_run`, `gren_wait`, `gren_tasks`, `gren_complete_task`, `gren_approve`), and observe (`gren_status`, `gren_metrics`, `gren_node`, `gren_decisions`, `gren_events`).
+- **Edges are derived, not declared.** `input`, `prompt`, `when`, `map`, `target`, `show`, `routes` are scanned for `$nodes.<id>` (and `{{ nodes.<id> }}`) references. The analysis answers "what crosses this edge?" and flags fake edges.
+- **The model is fuzzy inside the box; the box is strict.** Every agent/verify call carries a JSON schema; outputs are validated; invalid outputs go through a bounded repair loop before counting as a failed attempt.
+- **Verifiers have authority.** Fixed output contract; `survivors`/`killed` are first-class views; a verification that did not execute is a kill; `repair:` is the only sanctioned back-edge and it is bounded.
+- **Gates are edge conditions.** `requires_gate` blocks scheduling until an approval record exists; side effects sit behind gates and execute at most once (`side_effect_done`, never re-run on resume).
+- **Budgets are enforced by the engine.** Not suggested to the model.
+- **Observability is graph-shaped.** Events feed the metrics; decisions carry the state that produced them.
+- **Providers are dumb on purpose.** A provider answers one prompt with JSON + usage. Retries, fallbacks, width, timeouts and validation live in the engine, so a human completing an inbox task behaves exactly like Bedrock.
 
-## Operating it
+## AWS-native choices
 
-- **Fork** (`GraphRunner.fork`): copies a run, resets the named nodes plus everything downstream (via the new spec's dependency analysis), keeps upstream outputs and totals. This is the iteration loop; the dashboard exposes it per node.
-- **Resume**: in-flight nodes and blocking failures re-run; cascaded skips are re-evaluated; interrupted side effects are never re-run.
-- **Nested runs** (loop rounds, mapped subgraphs) are first-class runs under `runs/<id>/nested/…`; deep metrics fold their verifiers, fan-outs and costs into the parent's numbers, and `human_wait_ms` separates approval latency from execution time.
-- **Budget hierarchy**: graph `budget.max_cost_usd` (frozen) → loop `until.max_cost_usd` → body graph budget → node `max_cost_usd` per call → the bridge's own cap. Each layer only tightens.
-- **Dashboard** reads runs from disk (any process) and executes runs started from it in-process; the MCP server does the same for an agent. Both refuse to overwrite an existing task result and both write approvals as files, so any of CLI / dashboard / MCP can approve a gate for a run executing elsewhere.
+- `bedrock` is the default provider when AWS credentials are present and no `ANTHROPIC_API_KEY` is set; model aliases map to cross-region inference profiles.
+- Tool names use the Claude Code vocabulary in specs (`Read`, `Grep`, `WebFetch`, `Bash`...). On `bedrock`/`anthropic` they map to `strands_tools` modules (`file_read`, `editor`, `http_request`, `shell`, `python_repl`, `use_aws`, `retrieve`); on `claude-code` they are passed to the CLI's `--tools` / `--allowedTools`.
+- The engine is a plain Python library with a FastAPI server, so it deploys anywhere Strands does: a container on ECS/Fargate, Lambda for short graphs, or Bedrock AgentCore Runtime (see `docs/AWS.md`).
 
 ## Extending
 
-- New reducer: add to `src/reducers/builtin.ts` (or ship a module and use `module:`).
-- New bridge: implement `Bridge` (`src/bridges/types.ts`) and register it in `BridgeRegistry`.
-- New node kind: extend the zod schema, `refCarryingFields` in `analyze.ts`, and add a `run<Kind>` method in the scheduler.
+- New reducer: add to `gren/reducers/builtin.py` (or ship a module and use `module:`).
+- New provider: subclass `OneShotModel` (one structured call) or return any `strands.models.Model` from `ModelRegistry.create`.
+- New node kind: extend the pydantic schema, `REF_FIELDS` in `gren/spec/analyze.py`, and add a `_run_<kind>` method on `GrenNode`.

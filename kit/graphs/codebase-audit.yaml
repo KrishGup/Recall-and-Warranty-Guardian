@@ -17,7 +17,7 @@ input_schema:
   required: [repo_path]
   properties:
     repo_path: { type: string }
-    include: { type: array, items: { type: string }, default: ["src"] }
+    include: { type: array, items: { type: string }, default: ["gren"] }
     focus: { type: array, items: { type: string }, default: [correctness, security, reliability, maintainability] }
     max_issues: { type: integer, minimum: 3, maximum: 30, default: 10 }
 
@@ -40,7 +40,7 @@ nodes:
   - id: inventory
     kind: code
     description: Deterministic file inventory grouped into modules - no model needed to list files.
-    module: ./reducers/inventory.js
+    module: ./reducers/inventory.py
     input: { repo_path: $input.repo_path, include: $input.include }
     args: { max_files: 300, module_depth: 2 }
 
@@ -176,7 +176,7 @@ nodes:
   - id: cap
     kind: code
     description: Compress before you verify - rank by severity and category, keep the top slice; verification is the expensive step.
-    module: ./reducers/prioritize.js
+    module: ./reducers/prioritize.py
     input: { items: $nodes.normalize.output.items }
     args: { k: 24 }
 
@@ -200,7 +200,7 @@ nodes:
 
   - id: prioritize
     kind: code
-    module: ./reducers/prioritize.js
+    module: ./reducers/prioritize.py
     input: { items: $nodes.verify_issues.survivors }
     args: { k: 10 }
 
@@ -257,7 +257,7 @@ nodes:
 
   - id: report
     kind: code
-    module: ./reducers/audit-report.js
+    module: ./reducers/audit-report.py
     input:
       repo: $input.repo_path
       inventory: $nodes.inventory.output
@@ -278,7 +278,7 @@ nodes:
 
   - id: write_report
     kind: code
-    module: ./reducers/write-file.js
+    module: ./reducers/write-file.py
     side_effect: true
     requires_gate: approve
     input: { markdown: $nodes.report.output.markdown }

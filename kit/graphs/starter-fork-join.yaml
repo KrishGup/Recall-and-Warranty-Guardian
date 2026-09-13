@@ -124,4 +124,4 @@ nodes:
     side_effect: true
     requires_gate: approve
     input: { answer: $nodes.answer.output }
-    args: { note: "replace with module: ./reducers/write-file.js or post-webhook.js" }
+    args: { note: "replace with module: ./reducers/write-file.py or post-webhook.py" }

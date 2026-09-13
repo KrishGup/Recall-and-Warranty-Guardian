@@ -230,4 +230,4 @@ nodes:
     side_effect: true
     requires_gate: approve
     input: { brief: $nodes.brief.output, approval: $nodes.approve.output, coverage: $nodes.coverage.output }
-    args: { note: "publish placeholder - swap `fn: record` for `module: ./reducers/publish.js` in production" }
+    args: { note: "publish placeholder - swap `fn: record` for `module: ./reducers/publish.py` in production" }

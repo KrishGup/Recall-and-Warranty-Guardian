@@ -39,7 +39,7 @@ Worker: "find the strongest answer." Verifier: "find the reason this should be r
 - Loop rounds, mapped subgraphs and verify fan-outs are where budgets blow: cap the fan-out with code before the expensive step, and set `max_cost_usd` on every tool node.
 
 ## 8. Design failure domains before the graph runs
-Per node: `failure: { retries, fallback: {model|bridge}, timeout_ms, on_failure: block|continue, quorum }`. A fan-out with 9/10 workers done still produces output — and the output knows it is 9/10 (`$nodes.x.count`). Never hide missing work; degrade visibly. Block only when the node is critical.
+Per node: `failure: { retries, fallback: {model|bridge}, timeout_ms, on_failure: block|continue, quorum }` (a fallback `bridge` can move the last attempt from Bedrock to the Anthropic API or Claude Code). A fan-out with 9/10 workers done still produces output — and the output knows it is 9/10 (`$nodes.x.count`). Never hide missing work; degrade visibly. Block only when the node is critical.
 
 ## 9. Human approval is an edge type
 `gate` nodes + `requires_gate` make the downstream node structurally unreachable until an approval record exists. Not "the model was told to ask first." Mandatory for `side_effect: true` (frozen constraint). Rejection can route feedback back to the producer.

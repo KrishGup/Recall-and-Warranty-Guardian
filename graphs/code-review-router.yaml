@@ -159,4 +159,4 @@ nodes:
     side_effect: true
     requires_gate: post_gate
     input: { verdict: $nodes.verdict.output, approval: $nodes.post_gate.output }
-    args: { note: "placeholder: replace with module: ./reducers/post-review.js" }
+    args: { note: "placeholder: replace with module: ./reducers/post-review.py" }

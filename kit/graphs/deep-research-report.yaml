@@ -301,7 +301,7 @@ nodes:
   - id: materialize
     kind: code
     description: Deterministic join - each section gets exactly its findings, nothing else.
-    module: ./reducers/sections-with-findings.js
+    module: ./reducers/sections-with-findings.py
     input: { sections: $nodes.outline.output.sections, findings: $nodes.rank.output.items }
 
   - id: write_sections
@@ -349,14 +349,14 @@ nodes:
     kind: verify
     description: Code verifier - a section citing a non-verified source is killed and sent back to its writer.
     mode: code
-    module: ./reducers/citation-check.js
+    module: ./reducers/citation-check.py
     target: $nodes.write_sections.outputs
     input: { allowed: $nodes.allowed_sources.output.items }
     repair: { node: write_sections, max_rounds: 2 }
 
   - id: assemble
     kind: code
-    module: ./reducers/assemble-report.js
+    module: ./reducers/assemble-report.py
     input:
       title: $nodes.outline.output.title
       summary: $nodes.outline.output.summary_plan
@@ -399,7 +399,7 @@ nodes:
   - id: publish
     kind: code
     description: Irreversible in spirit (a file others will read) - unreachable without the gate, runs at most once.
-    module: ./reducers/write-file.js
+    module: ./reducers/write-file.py
     side_effect: true
     requires_gate: approve
     input: { markdown: $nodes.assemble.output.markdown, approval: $nodes.approve.output }

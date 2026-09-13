@@ -1,0 +1,162 @@
+# The Router + Diamond: classify risk deterministically, then spend only what the change earns.
+#
+#   triage (haiku) -> route (deterministic) -> low:  quick review (haiku)
+#                                             -> high: parallel specialist audit (sonnet x3) -> merge (code) -> verify (haiku)
+#                                             -> default: human gate
+#   -> verdict (code, tolerates whichever branch ran) -> [gate before any irreversible action] -> post
+#
+# The classifier is probabilistic. The allowed routes are deterministic and logged with the state that chose them.
+name: code-review-router
+version: 1
+description: Risk-routed code review - quick path for small changes, full parallel audit for risky ones, human for the rest.
+goal: A review verdict whose depth matches the risk of the change, with every route decision explainable.
+
+input_schema:
+  type: object
+  required: [diff]
+  properties:
+    diff: { type: string, minLength: 10 }
+    repo: { type: string, default: "example/repo" }
+    pr_title: { type: string, default: "untitled change" }
+
+budget: { max_cost_usd: 2.0, max_wall_ms: 900000, max_width: 4 }
+defaults: { model: haiku, effort: low, failure: { retries: 1, timeout_ms: 240000 } }
+frozen: [verifier_can_kill]
+output: { from: verdict }
+
+nodes:
+  - id: triage
+    kind: agent
+    description: Cheap first look - what does this change touch, how risky is it?
+    prompt: |
+      PR "{{ input.pr_title }}" in {{ input.repo }}. Classify the risk of this diff.
+      high = touches auth/permissions, payments, migrations, crypto, secrets, deletion, concurrency, or >300 changed lines
+      low  = docs, tests only, comments, small pure refactors, config tweaks with no behaviour change
+      medium = everything else
+      Diff:
+      {{ input.diff }}
+    output_schema:
+      type: object
+      required: [risk, confidence, areas, changed_lines_estimate, reason]
+      additionalProperties: false
+      properties:
+        risk: { type: string, enum: [low, medium, high] }
+        confidence: { type: number, minimum: 0, maximum: 1 }
+        areas: { type: array, items: { type: string } }
+        changed_lines_estimate: { type: integer, minimum: 0 }
+        reason: { type: string }
+
+  - id: route
+    kind: router
+    description: The model judges; the graph decides what that judgment may trigger.
+    routes:
+      - { when: { and: [{ eq: ["$nodes.triage.output.risk", low] }, { gte: ["$nodes.triage.output.confidence", 0.7] }] }, route: quick, reason: "low risk, confident" }
+      - { when: { or: [{ eq: ["$nodes.triage.output.risk", high] }, { gte: ["$nodes.triage.output.changed_lines_estimate", 300] }] }, route: audit, reason: "high risk or large change" }
+    default: human
+
+  # ---- quick path ----
+  - id: quick_review
+    kind: agent
+    when: { eq: ["$nodes.route.output.route", quick] }
+    prompt: |
+      Quick review of a low-risk change. List concrete issues (file/line if visible) or say it is fine.
+      Diff:
+      {{ input.diff }}
+    output_schema: &review_schema
+      type: object
+      required: [verdict, issues, summary]
+      additionalProperties: false
+      properties:
+        verdict: { type: string, enum: [approve, request_changes] }
+        issues:
+          type: array
+          items:
+            type: object
+            required: [severity, location, description]
+            additionalProperties: false
+            properties:
+              severity: { type: string, enum: [blocker, major, minor, nit] }
+              location: { type: string }
+              description: { type: string }
+              suggestion: { type: string }
+        summary: { type: string }
+
+  # ---- full audit path: three specialists in parallel, separate contexts ----
+  - id: audit
+    kind: agent
+    model: sonnet
+    effort: medium
+    when: { eq: ["$nodes.route.output.route", audit] }
+    map: $input.specialists
+    max_width: 3
+    failure: { retries: 1, quorum: 0.67, fallback: { model: opus } }
+    input: { triage: $nodes.triage.output }
+    prompt: |
+      You are the {{ item }} specialist reviewing PR "{{ input.pr_title }}". Review ONLY from your specialty's perspective.
+      Report every concrete issue with severity and location. Do not pad; an empty issues list is a valid answer.
+      Diff:
+      {{ input.diff }}
+    output_schema: *review_schema
+
+  - id: merge_audit
+    kind: code
+    description: Deterministic merge - flatten specialist issues, dedupe by location+description.
+    fn: flatten
+    input: { items: $nodes.audit.outputs }
+    args: { path: issues }
+
+  - id: dedupe_issues
+    kind: code
+    fn: dedupe
+    input: { items: $nodes.merge_audit.output.items }
+    args: { key: [location, description] }
+
+  - id: verify_issues
+    kind: verify
+    description: Attack each reported issue - is it real, in the diff, and correctly rated?
+    target: $nodes.dedupe_issues.output.items
+    kill_threshold: 0.6
+    input: { diff: $input.diff }
+    prompt: |
+      Reported issue: {{ json item }}
+      Using the diff in <input>, try to show this issue is NOT real: the code is not in the diff, the concern does not apply,
+      the severity is inflated, or it duplicates a style preference. Kill it if it does not hold up.
+
+  # ---- human path ----
+  - id: human_review
+    kind: gate
+    title: Medium-risk change needs a human reviewer
+    when: { eq: ["$nodes.route.output.route", human] }
+    show: { triage: $nodes.triage.output, title: $input.pr_title }
+    prompt: Triage was unsure. Approve to accept the change, reject (with a comment) to request changes.
+    on_reject: { fail_run: false }
+
+  # ---- join: tolerate whichever branch did not run ----
+  - id: verdict
+    kind: code
+    fn: identity
+    optional: [quick_review, audit, merge_audit, dedupe_issues, verify_issues, human_review]
+    input:
+      route: $nodes.route.output.route
+      route_reason: $nodes.route.output.reason
+      triage: $nodes.triage.output
+      quick: $nodes.quick_review.output
+      audit_specialists_completed: $nodes.audit.count
+      verified_issues: $nodes.verify_issues.survivors
+      dismissed_issues: $nodes.verify_issues.killed
+      human: $nodes.human_review.output
+
+  - id: post_gate
+    kind: gate
+    title: Post this review to the PR?
+    show: { verdict: $nodes.verdict.output }
+    auto_approve_when: { eq: ["$nodes.route.output.route", quick] }
+
+  - id: post
+    kind: code
+    description: Irreversible - commenting on a PR. Unreachable without post_gate.
+    fn: record
+    side_effect: true
+    requires_gate: post_gate
+    input: { verdict: $nodes.verdict.output, approval: $nodes.post_gate.output }
+    args: { note: "placeholder: replace with module: ./reducers/post-review.js" }

@@ -200,12 +200,12 @@ nodes:
   - id: matrix_rows
     kind: code
     description: Flatten profiles into readable table rows (code, not a model).
-    module: ./reducers/flatten-profiles.js
+    module: ./reducers/flatten-profiles.py
     input: { items: $nodes.profile.outputs }
 
   - id: matrix
     kind: code
-    module: ./reducers/markdown-table.js
+    module: ./reducers/markdown-table.py
     input: { items: $nodes.matrix_rows.output.items, fields: $nodes.matrix_rows.output.fields }
 
   - id: positioning
@@ -277,7 +277,7 @@ nodes:
 
   - id: report
     kind: code
-    module: ./reducers/landscape-report.js
+    module: ./reducers/landscape-report.py
     input:
       company: $input.company
       market: $input.market
@@ -295,7 +295,7 @@ nodes:
 
   - id: publish
     kind: code
-    module: ./reducers/write-file.js
+    module: ./reducers/write-file.py
     side_effect: true
     requires_gate: approve
     input: { markdown: $nodes.report.output.markdown }

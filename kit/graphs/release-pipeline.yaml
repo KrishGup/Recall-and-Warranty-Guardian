@@ -20,8 +20,8 @@ input_schema:
   properties:
     incident: { type: string, minLength: 20 }
     repo_path: { type: string }
-    test_command: { type: string, default: "npm" }
-    test_args: { type: array, items: { type: string }, default: ["test"] }
+    test_command: { type: string, default: "python" }
+    test_args: { type: array, items: { type: string }, default: ["-m", "pytest", "-q", "-p", "no:cacheprovider"] }
     pr_base: { type: string, default: main }
     notify_url: { type: string, default: "" }
     notify_format: { type: string, enum: [slack, discord, json], default: slack }
@@ -89,14 +89,14 @@ nodes:
   - id: baseline
     kind: code
     description: Run the test suite before changing anything, so a later failure is attributable.
-    module: ./reducers/run-command.js
+    module: ./reducers/run-command.py
     input: { cwd: $input.repo_path, command: $input.test_command, args: $input.test_args }
     args: { timeout_ms: 600000 }
 
   - id: worktree
     kind: code
     description: Isolated workspace - parallel workers that modify files must not share a checkout.
-    module: ./reducers/git-worktree.js
+    module: ./reducers/git-worktree.py
     input: { repo_path: $input.repo_path }
     args: { dir: .worktrees, prefix: gren/ }
 
@@ -127,13 +127,13 @@ nodes:
   - id: diff
     kind: code
     description: The exact diff is state, not a retelling.
-    module: ./reducers/git-diff.js
+    module: ./reducers/git-diff.py
     input: { worktree: $nodes.worktree.output.worktree, base_commit: $nodes.worktree.output.base_commit, changed_by: $nodes.implement.output.files_changed }
 
   - id: tests
     kind: code
     description: Run the tests in the worktree AFTER the change. State on disk is invisible to the graph, so the edge carries the changed-file list - that is what makes "after" real.
-    module: ./reducers/run-command.js
+    module: ./reducers/run-command.py
     input: { cwd: $nodes.worktree.output.worktree, command: $input.test_command, args: $input.test_args, changed_files: $nodes.implement.output.files_changed }
     args: { timeout_ms: 600000 }
 
@@ -186,7 +186,7 @@ nodes:
 
   - id: commit
     kind: code
-    module: ./reducers/git-commit.js
+    module: ./reducers/git-commit.py
     side_effect: true
     requires_gate: approve_commit
     input: { worktree: $nodes.worktree.output.worktree, message: "{{ nodes.changelog.output.pr_title }}\n\n{{ nodes.changelog.output.changelog_line }}", author: "gren release-pipeline <noreply@example.com>" }
@@ -199,7 +199,7 @@ nodes:
 
   - id: pr
     kind: code
-    module: ./reducers/gh-pr.js
+    module: ./reducers/gh-pr.py
     side_effect: true
     requires_gate: approve_pr
     input: { worktree: $nodes.worktree.output.worktree, branch: $nodes.worktree.output.branch, title: $nodes.changelog.output.pr_title, body: $nodes.changelog.output.pr_body, base: $input.pr_base, draft: true }
@@ -212,7 +212,7 @@ nodes:
 
   - id: notify
     kind: code
-    module: ./reducers/post-webhook.js
+    module: ./reducers/post-webhook.py
     side_effect: true
     requires_gate: approve_notify
     input: { url: $input.notify_url, text: "{{ nodes.changelog.output.notification }}\nPR: {{ nodes.pr.output.url }}{{ nodes.pr.output.command }}", payload: { pr: $nodes.pr.output, commit: $nodes.commit.output } }

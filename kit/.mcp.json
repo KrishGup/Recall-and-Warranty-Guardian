@@ -1,9 +1,10 @@
 {
   "mcpServers": {
     "gren": {
-      "command": "node",
+      "command": ".venv/Scripts/python.exe",
       "args": [
-        "node_modules/gren/bin/gren.js",
+        "-m",
+        "gren",
         "mcp"
       ],
       "env": {

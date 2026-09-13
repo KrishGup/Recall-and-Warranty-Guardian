@@ -3,8 +3,8 @@
   "configurations": [
     {
       "name": "gren-ui",
-      "runtimeExecutable": "npx",
-      "runtimeArgs": ["tsx", "src/cli/main.ts", "ui", "--port", "4545"],
+      "runtimeExecutable": ".venv/Scripts/python.exe",
+      "runtimeArgs": ["-m", "gren", "ui", "--port", "4545"],
       "port": 4545
     }
   ]
