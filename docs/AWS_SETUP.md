@@ -92,22 +92,32 @@ US destinations on SNS need a registered origination number (toll-free verificat
 
 ## 6. AgentCore Runtime and the live URL (mostly us; tier 2)
 
-What we do with the tier-B key:
+The deployment project is already in the repository under `deploy/agentcore/` (created with the AgentCore CLI, `npm install -g @aws/agentcore`, Node 18+, `uv` on the PATH):
 
-1. `npm install -g @aws/agentcore` (Node 18+). Write `agent/app.py` with `BedrockAgentCoreApp` (`from bedrock_agentcore.runtime import BedrockAgentCoreApp`; `pip install bedrock-agentcore aws-opentelemetry-distro`) that routes `payload["kind"]` to `start_sweep`, `intake`, `answer` and `status`.
-2. Move the household store off the container disk: `GUARDIAN_S3_BUCKET` (we create `guardian-<account>-household` with the CLI; nothing for you to do).
-3. `agentcore create` → `agentcore deploy` (builds the ARM64 container in CodeBuild, creates the ECR repo and the execution role, registers the runtime) → `agentcore invoke '{"kind":"sweep"}'`. The runtime role gets Bedrock invoke, S3 on the bucket and SES send.
-4. The dashboard for judges: App Runner from the same container (HTTPS URL in minutes), or a Cloudflare Tunnel from the laptop for the video. We add `GUARDIAN_API_TOKEN` before anything is public.
+- `deploy/agentcore/app/guardian/main.py` is the runtime entrypoint (`BedrockAgentCoreApp`); the payload's `kind` selects `sweep`, `answer`, `intake`, `status`, `seed` or `sync`. The container disk is ephemeral, so every invocation pulls the household store and the gren run store from S3 first and pushes them back after; a gate pauses the graph durably and the household's answer is a later invocation.
+- `deploy/agentcore/agentcore/agentcore.json` declares the runtime (CodeZip build, Python 3.13, the env vars, the IAM policy in `app/guardian/agent-policy.json`: Bedrock invoke, the state bucket, SES send); `aws-targets.json` holds the account and region.
+- `python scripts/package_agent.py` vendors `guardian/`, `gren/` and `demo/` into the code location (gitignored copies) before packaging or deploying.
 
-What we paste back into `.env` when it exists:
+Steps once the account is active (the credentials from `aws login --profile guardian` are enough):
+
+```bash
+aws s3 mb s3://guardian-779457758734-state --region us-east-1 --profile guardian   # the state bucket named in agentcore.json
+python scripts/package_agent.py
+cd deploy/agentcore && agentcore deploy -y                       # CDK: execution role, runtime, endpoint
+agentcore invoke '{"kind":"seed"}' && agentcore invoke '{"kind":"sweep"}'
+agentcore status --json                                          # copy the runtime ARN
+```
+
+Local test without deploying: `cd deploy/agentcore && agentcore dev`, then `POST http://localhost:8080/invocations` with `{"kind":"status"}`.
+
+The dashboard then runs in deployed mode by adding to `.env`:
 
 ```
-GUARDIAN_AGENT_RUNTIME_ARN=arn:aws:bedrock-agentcore:us-east-1:<account>:runtime/guardian-xxxx
-GUARDIAN_AGENT_ROLE_ARN=arn:aws:iam::<account>:role/AmazonBedrockAgentCoreSDKRuntime-us-east-1-xxxx
-GUARDIAN_S3_BUCKET=guardian-<account>-household
+GUARDIAN_AGENT_RUNTIME_ARN=arn:aws:bedrock-agentcore:us-east-1:779457758734:runtime/guardian-xxxx
+GUARDIAN_S3_BUCKET=guardian-779457758734-state
 ```
 
-You may get one prompt from the CLI asking to confirm role creation. That is all.
+`guardian serve` then sends sweeps, answers and intake to the runtime and serves reads from the copy of the state it pulls back from S3. A public dashboard for judges is App Runner from the same code, or a Cloudflare Tunnel from the laptop for the video; add `GUARDIAN_API_TOKEN` before anything is public.
 
 ## 7. Fill-in sheet
 

@@ -1,0 +1,30 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "guardian-agentcore"
+version = "0.1.0"
+description = "Recall & Warranty Guardian on Amazon Bedrock AgentCore Runtime (the nightly sweep, intake and answers as one HTTP entrypoint)"
+readme = "README.md"
+requires-python = ">=3.11"
+# The `guardian` and `gren` packages are vendored into this directory by `python scripts/package_agent.py`
+# (run from the repository root) before `agentcore package` / `agentcore deploy`; only third-party deps are listed here.
+dependencies = [
+    "aws-opentelemetry-distro ~= 0.18.0",
+    "bedrock-agentcore >= 1.9.1",
+    "boto3 >= 1.35.0",
+    "botocore[crt] >= 1.35.0",
+    "strands-agents >= 1.55,<2",
+    "strands-agents-tools >= 0.8,<1",
+    "anthropic >= 0.60",
+    "pydantic >= 2.6,<3",
+    "pyyaml >= 6",
+    "jsonschema >= 4",
+    "rapidfuzz >= 3.9",
+    "httpx >= 0.28",
+    "typer >= 0.12",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["."]

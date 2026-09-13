@@ -19,6 +19,8 @@ from gren.models.registry import ModelRegistry, default_bridge
 from .models import Activity, Decision, DecisionOption, InventoryItem, MatchCandidate, Preferences, RecallRecord, SweepRecord, now_iso
 from .notify import Notifier, mask_phone
 from .policy import warranty as warranty_policy
+from .remote import AgentRuntime
+from .state_sync import pull_all, sync_targets_from_env
 from .store import Store
 
 GRAPHS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "graphs")
@@ -67,6 +69,15 @@ class Guardian:
         self._prev_emit = control.emit
         control.emit = self.on_event
         self._lock = threading.RLock()
+        # Deployed mode: model work runs on AgentCore Runtime; this process keeps a synced copy of the state for reads.
+        self.remote: AgentRuntime | None = AgentRuntime.from_env()
+        self._remote_busy = 0
+        self._sync_targets = sync_targets_from_env(store.root, run_store.root)
+        if self.remote and self._sync_targets:
+            try:
+                pull_all(self._sync_targets)
+            except Exception as e:  # noqa: BLE001
+                self.log(f"initial state pull failed: {e}")
 
     # ------------------------------------------------------------------ construction
     @classmethod
@@ -121,9 +132,49 @@ class Guardian:
         if spent + reserve > cap:
             raise ValueError(f"daily model budget reached: ${spent:.2f} of ${cap:.2f} spent today (GUARDIAN_DAILY_BUDGET_USD); no new runs until tomorrow")
 
+    # ------------------------------------------------------------------ deployed runtime
+    def remote_call(self, payload: dict[str, Any], wait: bool = False) -> dict[str, Any] | None:
+        """Send one unit of work to the AgentCore runtime, then refresh the local state from S3. In a thread unless
+        `wait` is set. Returns the runtime's response when waiting."""
+        assert self.remote is not None
+        result: dict[str, Any] = {}
+
+        def go() -> None:
+            self._remote_busy += 1
+            self._emit_local("remote.started", {"kind": payload.get("kind")})
+            try:
+                result.update(self.remote.invoke(payload))  # type: ignore[union-attr]
+                if result.get("error"):
+                    self.store.log(Activity(source="Guardian", text=f"AgentCore runtime {payload.get('kind')} failed", result=str(result["error"])[:200], tone="critical"))
+            except Exception as e:  # noqa: BLE001
+                result["error"] = f"{e.__class__.__name__}: {e}"
+                self.store.log(Activity(source="Guardian", text=f"AgentCore runtime {payload.get('kind')} could not be invoked", result=str(e)[:200], tone="critical"))
+            finally:
+                try:
+                    if self._sync_targets:
+                        pull_all(self._sync_targets)
+                except Exception as e:  # noqa: BLE001
+                    self.log(f"state pull failed: {e}")
+                self._remote_busy -= 1
+                self._emit_local("remote.finished", {"kind": payload.get("kind"), "error": result.get("error")})
+                if payload.get("kind") == "sweep":
+                    self._emit_local("sweep.finished", {"run_id": result.get("run_id"), "status": result.get("status")})
+                elif payload.get("kind") == "answer":
+                    self._emit_local("decision.answered", {"decision_id": payload.get("decision_id")})
+
+        if wait:
+            go()
+            return result
+        threading.Thread(target=go, name=f"guardian-remote-{payload.get('kind')}", daemon=True).start()
+        return None
+
     # ------------------------------------------------------------------ runs
     def start_sweep(self, window_days: int = 45, full_scan: bool = False, auto_approve: bool = False, trigger: str = "dashboard") -> str:
         self.check_budget()
+        if self.remote is not None:
+            session = AgentRuntime.session_id("sweep")
+            self.remote_call({"kind": "sweep", "window_days": window_days, "full_scan": full_scan, "trigger": trigger})
+            return f"remote:{session}"
         rid = self.control.start(spec_path=SWEEP_GRAPH, input_={"window_days": window_days, "full_scan": full_scan, "trigger": trigger}, bridge=self.bridge, auto_approve=auto_approve, labels={"kind": "sweep", "trigger": trigger})
         self.store.upsert_sweep(SweepRecord(run_id=rid, started_at=now_iso(), status="running", bridge=self.bridge or default_bridge().name))
         return rid
@@ -140,6 +191,16 @@ class Guardian:
 
     def intake(self, text: str, source: str = "paste", timeout_s: float = 240) -> dict[str, Any]:
         t0 = time.time()
+        if self.remote is not None:
+            try:
+                self.check_budget()
+            except ValueError as e:
+                return {"run_id": None, "item": None, "fields_confident": 0, "fields_total": 0, "cost_usd": 0.0, "duration_ms": 0, "error": str(e)}
+            res = self.remote_call({"kind": "intake", "text": text, "source": source, "timeout_s": timeout_s}, wait=True) or {}
+            item_id = ((res.get("item") or {}).get("id")) if isinstance(res.get("item"), dict) else None
+            it = self.store.item(item_id) if item_id else None
+            return {"run_id": res.get("run_id"), "item": self.item_view(it) if it else res.get("item"), "fields_confident": int(res.get("fields_confident") or 0), "fields_total": int(res.get("fields_total") or 0),
+                    "cost_usd": float(res.get("cost_usd") or 0), "duration_ms": int((time.time() - t0) * 1000), "error": res.get("error")}
         try:
             self.check_budget()
             rid = self.control.start(spec_path=INTAKE_GRAPH, input_={"text": text, "source": source}, bridge=self.bridge, labels={"kind": "intake"})
@@ -373,6 +434,11 @@ class Guardian:
                 self.store.log(Activity(source="Household", text=f"Approved '{d.remedy_label or choice}' for {d.item_name}", result="remedy agent runs next", tone="ok", run_id=d.run_id, item_id=d.item_id, decision_id=d.id))
             self.store.upsert_decision(d)
             self._emit_local("decision.answered", {"decision_id": d.id, "choice": choice})
+            if self.remote is not None:
+                # the runtime applies the same answer to its copy of the state, releases or forks the gate there, and the
+                # result comes back with the next S3 pull; the local record above gives the dashboard an instant response
+                self.remote_call({"kind": "answer", "decision_id": d.id, "choice": choice, "by": by, "comment": comment})
+                return {"ok": True, "decision": self.decision_view(self.store.decision(d.id) or d), "run_id": d.run_id, "resumed": None, "remote": True}
             resumed = self._maybe_release_gate(d)
             return {"ok": True, "decision": self.decision_view(self.store.decision(d.id) or d), "run_id": d.run_id, "resumed": resumed}
 
@@ -616,7 +682,7 @@ class Guardian:
         decisions = self.store.decisions()
         sweeps = sorted(self.store.sweeps(), key=lambda s: s.started_at)
         pending = [d for d in decisions if d.state == "pending"]
-        running = [s for s in sweeps if s.status in ("running", "created") and self.control.is_running(s.run_id)]
+        running = [s for s in sweeps if s.status in ("running", "created") and self.control.is_running(s.run_id)] or ([True] if self._remote_busy else [])
         last = sweeps[-1] if sweeps else None
         if pending:
             quiet_days = 0
@@ -645,6 +711,7 @@ class Guardian:
             "ending_soon": [{"item_id": e["item_id"], "name": e["name"], "ends_on": e["ends_on"], "pct": e["pct"], "note": e["note"]} for e in warranty_policy.ending_soon(items, 60)[:4]],
             "provider": {"bridge": bridge, "live": bool(avail) and bridge != "mock", "label": {"claude-code": "Claude Code (local, headless)", "bedrock": "Amazon Bedrock", "anthropic": "Anthropic API", "mock": "mock provider (no tokens)", "inbox": "inbox (orchestrator)"}.get(bridge, bridge) + ("" if avail else f" · unavailable: {reason}")},
             "spend": {"today_usd": self.spend_today(), "daily_budget_usd": self.daily_budget()},
+            "runtime": {"mode": "agentcore" if self.remote else "local", "arn": self.remote.arn if self.remote else None, "busy": bool(self._remote_busy), "state_bucket": os.environ.get("GUARDIAN_S3_BUCKET") or None},
         }
 
     def preferences(self) -> Preferences:

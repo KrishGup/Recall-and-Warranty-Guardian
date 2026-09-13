@@ -20,3 +20,15 @@ var/
 # design zips are extracted under design/
 *.zip
 !.env.example
+# AgentCore deployment project: vendored copies, local envs, CDK build output
+deploy/agentcore/app/guardian/guardian/
+deploy/agentcore/app/guardian/gren/
+deploy/agentcore/app/guardian/demo/
+deploy/agentcore/app/guardian/.venv/
+deploy/agentcore/app/guardian/uv.lock
+deploy/agentcore/agentcore/.env.local
+deploy/agentcore/agentcore/cdk/node_modules/
+deploy/agentcore/agentcore/cdk/cdk.out/
+deploy/agentcore/agentcore/cdk/dist/
+deploy/agentcore/agentcore/.cache/
+deploy/agentcore/.git/

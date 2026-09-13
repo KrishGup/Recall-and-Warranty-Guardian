@@ -1,0 +1,29 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "BedrockModels",
+      "Effect": "Allow",
+      "Action": ["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream", "bedrock:Converse", "bedrock:ConverseStream"],
+      "Resource": "*"
+    },
+    {
+      "Sid": "StateBucketList",
+      "Effect": "Allow",
+      "Action": ["s3:ListBucket"],
+      "Resource": "arn:aws:s3:::guardian-779457758734-state"
+    },
+    {
+      "Sid": "StateBucketObjects",
+      "Effect": "Allow",
+      "Action": ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"],
+      "Resource": "arn:aws:s3:::guardian-779457758734-state/*"
+    },
+    {
+      "Sid": "RemedyEmail",
+      "Effect": "Allow",
+      "Action": ["ses:SendEmail", "ses:SendRawEmail"],
+      "Resource": "*"
+    }
+  ]
+}

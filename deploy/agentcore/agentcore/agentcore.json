@@ -1,0 +1,49 @@
+{
+  "$schema": "https://schema.agentcore.aws.dev/v1/agentcore.json",
+  "name": "guardian",
+  "version": 1,
+  "managedBy": "CDK",
+  "tags": {
+    "agentcore:created-by": "agentcore-cli",
+    "agentcore:project-name": "guardian",
+    "project": "recall-and-warranty-guardian"
+  },
+  "runtimes": [
+    {
+      "name": "guardian",
+      "description": "Recall and Warranty Guardian: nightly recall sweep, receipt intake and household answers as one Strands graph runtime",
+      "build": "CodeZip",
+      "entrypoint": "main.py",
+      "codeLocation": "app/guardian/",
+      "runtimeVersion": "PYTHON_3_13",
+      "networkMode": "PUBLIC",
+      "protocol": "HTTP",
+      "envVars": [
+        { "name": "GUARDIAN_S3_BUCKET", "value": "guardian-779457758734-state" },
+        { "name": "GUARDIAN_S3_PREFIX", "value": "guardian" },
+        { "name": "GUARDIAN_DATA", "value": "/tmp/guardian/household" },
+        { "name": "GUARDIAN_RUNS", "value": "/tmp/guardian/runs" },
+        { "name": "GUARDIAN_FEEDS", "value": "live" },
+        { "name": "GUARDIAN_DAILY_BUDGET_USD", "value": "10" },
+        { "name": "GREN_BRIDGE", "value": "bedrock" },
+        { "name": "AWS_REGION", "value": "us-east-1" }
+      ],
+      "additionalPolicies": ["agent-policy.json"],
+      "instrumentation": { "enableOtel": true },
+      "lifecycleConfiguration": { "idleRuntimeSessionTimeout": 900, "maxLifetime": 7200 }
+    }
+  ],
+  "memories": [],
+  "knowledgeBases": [],
+  "credentials": [],
+  "evaluators": [],
+  "onlineEvalConfigs": [],
+  "agentCoreGateways": [],
+  "policyEngines": [],
+  "configBundles": [],
+  "abTests": [],
+  "harnesses": [],
+  "datasets": [],
+  "capacityProviders": [],
+  "payments": []
+}
