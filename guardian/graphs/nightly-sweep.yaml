@@ -1,0 +1,293 @@
+# Guardian nightly sweep, as a gren graph on the Strands Agents engine.
+#
+#   feeds_refresh (code) ─┐
+#                         ├─ candidate_gen (code) ─ matcher (agent, map) ─ verdicts (code) ─┐
+#   expiry_scan (code) ───┴─ warranty (agent, map) ──────────────────────────────────────────┴─ triage (agent)
+#     ─ severity_check (verify, kill authority, one repair round back to triage)
+#     ─ [household_decision] (gate: SMS reply, signed link, dashboard, MCP)  |  digest (code, standard hazards)
+#     ─ answers (code) ─ remedy (agent, map over approved decisions) ─ followup (code, side effect, at most once)
+#
+# Deterministic pipes, judgment in agents. Only ambiguous candidate pairs reach a model; most nights cost cents.
+name: nightly-sweep
+version: 1
+description: Refresh recall feeds, match them against the household inventory, decide what is worth one interruption, wait for the household, then act.
+goal: Every confirmed recall that matters is either surfaced as one decision or logged in the digest, and every approved remedy is requested with the receipt attached.
+
+input_schema:
+  type: object
+  properties:
+    window_days: { type: integer, minimum: 1, maximum: 365, default: 45 }
+    full_scan: { type: boolean, default: false }
+    trigger: { type: string, default: scheduled }
+
+budget: { max_cost_usd: 1.50, max_wall_ms: 900000, max_width: 4 }
+frozen: [verifier_can_kill, width_budget]
+defaults: { model: opus, effort: medium, failure: { retries: 1, timeout_ms: 300000, repair_attempts: 1 } }
+
+output:
+  channel: $nodes.triage.output.channel
+  decisions: $nodes.triage.output.decisions
+  feeds: { cpsc: $nodes.feeds_refresh.output.cpsc, nhtsa: $nodes.feeds_refresh.output.nhtsa, fda: $nodes.feeds_refresh.output.fda, upserted: $nodes.feeds_refresh.output.upserted, mode: $nodes.feeds_refresh.output.mode }
+  matching: { certain: $nodes.candidate_gen.output.certain_count, candidates: $nodes.candidate_gen.output.candidate_count, dropped: $nodes.candidate_gen.output.dropped, confirmed: $nodes.verdicts.output.confirmed_count }
+  actions: $nodes.followup.output
+
+nodes:
+  - id: feeds_refresh
+    kind: code
+    description: Pull new CPSC recalls, NHTSA campaigns for the household's vehicles and openFDA enforcement reports by date window; normalize into RecallRecord rows; upsert.
+    module: ../reducers/feeds_refresh.py
+    input: { window_days: $input.window_days }
+
+  - id: expiry_scan
+    kind: code
+    description: Items whose warranty ends within 30 days above the household's value threshold, plus the notification budget and preferences.
+    module: ../reducers/expiry_scan.py
+    input: { within_days: 30 }
+
+  - id: candidate_gen
+    kind: code
+    description: Matching stages 1-3. Exact keys (UPC, vehicle class, model number), then brand + token_set_ratio >= 80, then the sold-window filter. Only survivors reach a model.
+    module: ../reducers/candidate_gen.py
+    input: { new_recall_ids: $nodes.feeds_refresh.output.new_recall_ids, full_scan: $input.full_scan }
+
+  - id: warranty
+    kind: agent
+    model: sonnet
+    effort: low
+    description: One drafted "anything wrong with it?" question per expiring item above threshold. Budget-aware; triage decides whether it goes out tonight.
+    map: $nodes.expiry_scan.output.items
+    when: { gt: [$nodes.expiry_scan.output.count, 0] }
+    max_width: 2
+    failure: { retries: 1, quorum: 0.5 }
+    input: { budget: $nodes.expiry_scan.output.budget, today: $nodes.expiry_scan.output.today }
+    prompt: |
+      Item whose warranty ends soon: {{ json item }}
+      Write the one question Guardian will ask the household: whether anything is wrong with this item, naming it and the date the
+      warranty ends, in plain words, under 200 characters. Set covered=true when the warranty is still active today. Set ask=true.
+      ask_on is the item's ask_on date unless there is a reason to ask sooner. reason: one sentence. Copy item_id exactly.
+    output_schema:
+      type: object
+      required: [item_id, covered, ask, question, ask_on, reason]
+      additionalProperties: false
+      properties:
+        item_id: { type: string }
+        covered: { type: boolean }
+        ask: { type: boolean }
+        question: { type: string, maxLength: 240 }
+        ask_on: { type: string }
+        reason: { type: string }
+
+  - id: matcher
+    kind: agent
+    model: opus
+    description: Adjudicates only ambiguous candidate pairs. Certain pairs (exact keys) skip the model entirely. Output is a MatchVerdict, validated by the engine.
+    map: $nodes.candidate_gen.output.candidates
+    when: { gt: [$nodes.candidate_gen.output.candidate_count, 0] }
+    max_width: 3
+    failure: { retries: 1, quorum: 0.5, fallback: { model: sonnet } }
+    prompt: |
+      Candidate pair: {{ json item }}
+      Decide whether the household's item is the recalled product. Use only the fields given: the item's brand, product name, model
+      number, UPC, retailer and purchase date against the recall's product names, model numbers, UPCs, description, sold window and
+      retailers.
+      - "yes" only when the brand and product line agree and nothing in the recall (model list, sold window, retailer, size, color or
+        variant) excludes the item.
+      - "no" when a stated model, UPC, lot, sold window or retailer excludes it, or the products are merely similar categories.
+      - "unsure" when exactly one fact would settle it; name that fact in missing_info (for example "model number on the rating plate").
+      confidence is 0 to 1. rationale is two or three sentences naming the fields you compared. Copy match_id from the input.
+    output_schema:
+      type: object
+      required: [match_id, is_match, confidence, rationale, missing_info]
+      additionalProperties: false
+      properties:
+        match_id: { type: string }
+        is_match: { type: string, enum: ["yes", "no", "unsure"] }
+        confidence: { type: number, minimum: 0, maximum: 1 }
+        rationale: { type: string, minLength: 20 }
+        missing_info: { type: array, items: { type: string } }
+
+  - id: verdicts
+    kind: code
+    description: Persist the verdicts, join the certain matches, keep only the warranty questions worth asking, and hand triage one compact input with the recall's hazard, remedy and contact.
+    module: ../reducers/verdicts.py
+    optional: [matcher, warranty]
+    input: { verdicts: $nodes.matcher.outputs, certain: $nodes.candidate_gen.output.certain, questions: $nodes.warranty.outputs }
+
+  - id: triage
+    kind: agent
+    model: opus
+    effort: medium
+    description: Applies the severity rules and the notification budget, drafts the SMS, and chooses the channel. Critical hazards always go through; standard ones go to the digest.
+    when: { or: [ { gt: [$nodes.verdicts.output.confirmed_count, 0] }, { gt: [$nodes.verdicts.output.question_count, 0] } ] }
+    input:
+      confirmed: $nodes.verdicts.output.confirmed
+      questions: $nodes.verdicts.output.questions
+      budget: $nodes.expiry_scan.output.budget
+      prefs: $nodes.expiry_scan.output.prefs
+      today: $nodes.expiry_scan.output.today
+    prompt: |
+      You are Guardian's triage agent for one household. <input> holds the confirmed recall matches (item, recall, deterministic
+      evidence and the matcher's verdict), the drafted warranty questions, the notification budget and the household preferences.
+      Decide what, if anything, is worth interrupting the household for tonight.
+
+      Rules, in this order:
+      1. A confirmed match is CRITICAL when recall.severity is "critical" or the hazard text describes death, serious injury, fire,
+         burns, choking, strangulation, amputation, laceration, lead, electrocution, ingestion, an FDA Class I recall, or an NHTSA
+         park-outside or do-not-drive order. Every critical match becomes one decision (kind recall_remedy) and the channel is
+         "sms_now". Critical always bypasses the budget and the quiet categories.
+      2. A confirmed STANDARD match becomes a digest line, never an interruption, unless the budget still has a remaining standard
+         interruption, the item's category is not in quiet_categories, and prefs.auto_request_standard is false; then at most one
+         standard decision may be added. NHTSA campaigns are standard unless flagged; their digest line says a VIN lookup confirms them.
+      3. A match with verdict "unsure" is a decision only when its recall is critical; its message asks for the missing fact instead
+         of offering a remedy. Otherwise it is a digest line saying what fact would settle it.
+      4. Warranty questions become decisions (kind warranty_checkin) only when budget.remaining is above zero and no critical decision
+         is being surfaced tonight. Otherwise queue them: ask_on from the question, reason "within weekly budget after critical bypass".
+      5. Nothing confirmed and no questions: channel "none", empty lists.
+
+      The SMS message must read like this, under 320 characters, facts only from the input, recall id = recall.native_id:
+      "Guardian: The {brand} {item name} you bought at {retailer} on {purchase_date} matches {source_label} recall {native_id}
+      ({hazard in at most eight words}). Remedy: {remedy in at most twelve words}. Reply 1 to request it, 2 if you no longer own it,
+      3 for details."
+      headline: "{brand} {item name} — {hazard in plain words}". remedy_label: an imperative under six words, for example
+      "Request full refund" or "Request free repair kit". severity of the plan is critical if any decision is critical.
+      digest lines are one sentence each and digest_count equals their number. rationale: two sentences on how the budget and the
+      severity rules were applied. Copy item_id, match_id and recall_id exactly from the input.
+    output_schema:
+      type: object
+      required: [channel, severity, decisions, digest, digest_count, queued, rationale]
+      additionalProperties: false
+      properties:
+        channel: { type: string, enum: [sms_now, digest, none] }
+        severity: { type: string, enum: [critical, standard] }
+        decisions:
+          type: array
+          items:
+            type: object
+            required: [kind, match_id, item_id, recall_id, severity, headline, message, remedy_label]
+            additionalProperties: false
+            properties:
+              kind: { type: string, enum: [recall_remedy, warranty_checkin] }
+              match_id: { type: [string, "null"] }
+              item_id: { type: string }
+              recall_id: { type: [string, "null"] }
+              severity: { type: string, enum: [critical, standard] }
+              headline: { type: string, maxLength: 160 }
+              message: { type: string, maxLength: 320 }
+              remedy_label: { type: string, maxLength: 40 }
+        digest:
+          type: array
+          items:
+            type: object
+            required: [match_id, item_id, recall_id, line]
+            additionalProperties: false
+            properties:
+              match_id: { type: [string, "null"] }
+              item_id: { type: string }
+              recall_id: { type: [string, "null"] }
+              line: { type: string, maxLength: 240 }
+        digest_count: { type: integer, minimum: 0 }
+        queued:
+          type: array
+          items:
+            type: object
+            required: [item_id, ask_on, reason]
+            additionalProperties: false
+            properties:
+              item_id: { type: string }
+              ask_on: { type: string }
+              reason: { type: string }
+        rationale: { type: string }
+
+  - id: severity_check
+    kind: verify
+    model: haiku
+    effort: low
+    description: Verifier with authority. Confirms the plan against the deterministic severity pass and the hazard text; a kill sends triage back through one bounded repair round with the reasons.
+    target: $nodes.triage.output
+    kill_threshold: 0.7
+    min_survivors: 0
+    repair: { node: triage, max_rounds: 1 }
+    input: { hazards: $nodes.verdicts.output.hazards }
+    prompt: |
+      Plan to verify: {{ json item }}
+      <input> lists, per recall id, the deterministic severity keyword pass and the hazard text.
+      Kill the plan when any of these hold: (a) a decision or digest line carries a severity that contradicts the keyword pass or the
+      hazard text (a hazard naming death, serious injury, fire, burns, choking, strangulation, amputation, laceration, lead,
+      electrocution, ingestion or FDA Class I must be critical, and a critical match must be a decision on channel sms_now, never a
+      digest line); (b) a message states an item, retailer, date, recall id or remedy that is not in the plan's own fields; (c) a
+      message is longer than 320 characters or lacks the numbered reply options; (d) channel is "none" while decisions exist.
+      Otherwise pass. Each reason must name the decision or digest index and the exact problem.
+
+  - id: household_decision
+    kind: gate
+    title: One decision from the household
+    description: Human gate. The run pauses here, durably, until the household answers by SMS reply, signed link, dashboard or MCP. Each decision in the plan is answered on its own; the answers ride in the approval comment as JSON.
+    prompt: Read the decisions. Approving means the household asked Guardian to request the listed remedies. Rejecting means nothing is sent.
+    approve_effect: Guardian drafts and emails each approved remedy request with the receipt attached, then schedules a follow-up check.
+    reject_effect: Guardian closes the matches and updates the items. Nothing is sent.
+    when: { eq: [$nodes.triage.output.channel, sms_now] }
+    show: { decisions: $nodes.triage.output.decisions, rationale: $nodes.triage.output.rationale, verifier_kill_rate: $nodes.severity_check.output.kill_rate }
+    timeout_ms: 259200000
+    on_timeout: wait
+    on_reject: { fail_run: false }
+
+  - id: digest
+    kind: code
+    description: Standard hazards never interrupt. Append to the weekly digest, close the match, log a row.
+    module: ../reducers/digest.py
+    when: { gt: [$nodes.triage.output.digest_count, 0] }
+    input: { plan: $nodes.triage.output, verifier_kill_rate: $nodes.severity_check.output.kill_rate }
+
+  - id: answers
+    kind: code
+    description: The household's per-decision answers, parsed from the gate approval, as the list the remedy agent maps over.
+    module: ../reducers/answers.py
+    requires_gate: household_decision
+    input: { decision: $nodes.household_decision.output, plan: $nodes.triage.output }
+
+  - id: remedy
+    kind: agent
+    model: opus
+    effort: medium
+    description: Drafts each approved remedy request (or warranty claim) from the recall's own remedy and contact. Runs only after a recorded approval.
+    map: $nodes.answers.output.approved
+    when: { gt: [$nodes.answers.output.approved_count, 0] }
+    requires_gate: household_decision
+    max_width: 2
+    failure: { retries: 1, quorum: 0.5, fallback: { model: sonnet } }
+    input: { confirmed: $nodes.verdicts.output.confirmed }
+    prompt: |
+      Approved decision: {{ json item }}
+      <input>.confirmed holds the matches with the full recall record: find the one whose match_id equals this decision's match_id
+      (or whose item.id equals item_id) and use its recall.contact and recall.remedy_text.
+      Draft the request the household approved. type is "email_remedy_request" for a recall with an email or web contact,
+      "phone_script" when the recall contact is phone-only, "discard_checklist" for a food recall, "email_warranty_claim" for a
+      warranty check-in. to = the contact email when there is one, else null. subject under 90 characters.
+      body: plain text, 6 to 12 short sentences. Identify the product (brand, name, model number or UPC as given), the purchase
+      (retailer and date), the recall number, and the remedy being requested. Say that proof of purchase is attached when
+      item.has_receipt is true. Ask for confirmation and next steps. Sign "The household, via Guardian". Invent nothing.
+      attachments: ["receipt-{purchase_date}.pdf"] when item.has_receipt is true, else []. next_check_days: 10.
+      Copy decision_id and item_id exactly from the input; recall_id from the decision.
+    output_schema:
+      type: object
+      required: [decision_id, item_id, recall_id, type, to, subject, body, attachments, next_check_days]
+      additionalProperties: false
+      properties:
+        decision_id: { type: string }
+        item_id: { type: string }
+        recall_id: { type: [string, "null"] }
+        type: { type: string, enum: [email_remedy_request, email_warranty_claim, phone_script, discard_checklist] }
+        to: { type: [string, "null"] }
+        subject: { type: string, maxLength: 120 }
+        body: { type: string, minLength: 80 }
+        attachments: { type: array, items: { type: string } }
+        next_check_days: { type: integer, minimum: 1, maximum: 60 }
+
+  - id: followup
+    kind: code
+    description: Side effect, executed at most once and never re-run on resume. Sends each drafted request (SES, or the outbox when SES is not configured), records the action on the decision, closes the match, schedules the 10-business-day follow-up.
+    module: ../reducers/followup.py
+    side_effect: true
+    requires_gate: household_decision
+    optional: [remedy]
+    input: { actions: $nodes.remedy.outputs, answers: $nodes.answers.output }

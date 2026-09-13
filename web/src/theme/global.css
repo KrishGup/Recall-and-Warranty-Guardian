@@ -1,0 +1,30 @@
+/* Guardian global styles. Tokens live in tokens.ts; these CSS variables mirror them so components can use var(--x).
+   data-theme on <html> switches the palette, dir on <html> switches text direction. */
+:root {
+  --bg: #F7F4F3; --surface: #FFFFFF; --ink: #000F08; --ink2: #4A5551; --line: #DDD7D4; --primary: #2274A5; --primaryInk: #FFFFFF;
+  --critical: #960200; --criticalBg: #F8E6E4; --ok: #2E7D4F; --tint: #EFEBE9; --faint: #B9B3B0; --warn: #B8860B; --amberLine: #D9A004;
+  --accent: #FCBA04; --topbar: #000F08; --topbarInk: #F7F4F3;
+  --font-heading: 'Roboto Slab', Georgia, serif; --font-body: Lora, Georgia, serif; --font-ui: Habibi, serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  color-scheme: light;
+}
+:root[data-theme='dark'] {
+  --bg: #0A130E; --surface: #131F18; --ink: #F7F4F3; --ink2: #B9C3BD; --line: #2C3B33; --primary: #6FB3E3; --primaryInk: #000F08;
+  --critical: #E4746A; --criticalBg: #3A1512; --ok: #5DBB86; --tint: #1C2A22; --faint: #4A5A52; --warn: #D9A004; --amberLine: #FCBA04;
+  color-scheme: dark;
+}
+html, body, #root { margin: 0; padding: 0; height: 100%; }
+body { background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 15px; line-height: 1.5; -webkit-font-smoothing: antialiased; }
+* { box-sizing: border-box; }
+a { color: var(--primary); }
+a:hover { filter: brightness(0.85); }
+button, input, select, textarea { font: inherit; }
+button, a, [role='row'], [role='separator'], [role='tab'] { transition: background-color .15s ease, border-color .15s ease, color .15s ease, filter .15s ease, box-shadow .15s ease; }
+code, pre, kbd { font-family: var(--font-mono); }
+/* gPulse: scale pulse for the logo and header dots. gFade: opacity pulse for SVG circles. gDash: dash march for running nodes. */
+@keyframes gPulse { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.35); opacity: .7; } }
+@keyframes gFade { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
+@keyframes gDash { to { stroke-dashoffset: -20; } }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }

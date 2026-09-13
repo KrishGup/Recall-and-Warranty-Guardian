@@ -1,0 +1,507 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Roboto+Slab:wght@400;500;600;700&family=Lora:ital,wght@0,400;0,500;0,600;1,400&family=Habibi&display=swap" rel="stylesheet">
+<style>
+html,body{margin:0;padding:0;background:#F7F4F3}
+*{box-sizing:border-box}
+a{color:#2274A5}a:hover{color:#1A5B82}
+button,input,select{font:inherit}
+button,a,[role=separator],[role=tab]{transition:background-color .15s ease,border-color .15s ease,color .15s ease,filter .15s ease}
+@keyframes gPulse{0%,100%{opacity:1}50%{opacity:.35}}
+@keyframes gDash{to{stroke-dashoffset:-20}}
+@media (prefers-reduced-motion: reduce){*{transition:none!important;animation:none!important}}
+</style>
+</helmet>
+<div dir="{{ dir }}" lang="en" style="height:100vh; --bg:{{ t.bg }}; --surface:{{ t.surface }}; --ink:{{ t.ink }}; --ink2:{{ t.ink2 }}; --line:{{ t.line }}; --primary:{{ t.primary }}; --primaryInk:{{ t.primaryInk }}; --critical:{{ t.critical }}; --ok:{{ t.ok }}; --tint:{{ t.tint }}; --desk:{{ t.desk }}; --mob:{{ t.mob }}; background:var(--bg,#F7F4F3); color:var(--ink,#000F08); font-family:Lora,Georgia,serif; font-size:14px; line-height:1.45; display:flex; flex-direction:column; overflow:hidden">
+
+  <a href="#canvas" style="position:absolute; top:-48px; inset-inline-start:8px; background:#FCBA04; color:#000F08; padding:8px 12px; border-radius:4px; z-index:80; font-family:Habibi,serif" style-focus="top:8px; outline:2px solid #2274A5; outline-offset:2px">Skip to graph</a>
+
+  <header role="banner" style="background:#000F08; color:#F7F4F3; height:52px; flex:0 0 auto; display:flex; align-items:center; gap:12px; padding-inline:16px; z-index:30">
+    <a href="Guardian Dashboard v2.dc.html" aria-label="Back to Guardian dashboard" style="display:flex; align-items:center; gap:10px; text-decoration:none; color:#F7F4F3" style-focus="outline:2px solid #FCBA04; outline-offset:4px; border-radius:4px">
+      {{ logo }}
+      <span style="font-family:'Roboto Slab',serif; font-weight:600; font-size:17px; white-space:nowrap">Guardian</span>
+    </a>
+    <span aria-hidden="true" style="color:#B9C3BD">/</span>
+    <span style="font-family:Habibi,serif; font-size:15px; white-space:nowrap">Agent flow</span>
+    <span style="display:var(--desk,inline-flex); align-items:center; gap:6px; font-family:Habibi,serif; font-size:12px; letter-spacing:0.06em; text-transform:uppercase; padding:3px 10px; border-radius:12px; background:#FCBA04; color:#000F08; margin-inline-start:4px">Technical</span>
+    <div style="flex:1"></div>
+    <span style="font-family:Habibi,serif; font-size:13px; display:var(--desk,flex); align-items:center; gap:8px; white-space:nowrap"><span aria-hidden="true" style="width:8px; height:8px; border-radius:50%; background:#3FBF7F; animation:gPulse 1.4s infinite"></span>Trace stream connected</span>
+    <button type="button" onClick="{{ toggleScheme }}" aria-pressed="{{ isDark }}" style="display:var(--desk,inline-flex); align-items:center; height:36px; padding-inline:12px; border:1px solid rgba(247,244,243,0.35); background:transparent; color:#F7F4F3; border-radius:18px; cursor:pointer; font-family:Habibi,serif; font-size:13px" style-hover="background:rgba(247,244,243,0.12)" style-focus="outline:2px solid #FCBA04; outline-offset:2px">{{ schemeLabel }}</button>
+    <button type="button" onClick="{{ toggleDir }}" aria-label="Toggle text direction" style="display:var(--desk,inline-flex); align-items:center; height:36px; padding-inline:12px; border:1px solid rgba(247,244,243,0.35); background:transparent; color:#F7F4F3; border-radius:18px; cursor:pointer; font-family:Habibi,serif; font-size:13px" style-hover="background:rgba(247,244,243,0.12)" style-focus="outline:2px solid #FCBA04; outline-offset:2px">{{ dirLabel }}</button>
+    <button type="button" onClick="{{ runNow }}" style="display:inline-flex; align-items:center; height:36px; padding-inline:14px; border:0; background:#2274A5; color:#fff; border-radius:18px; cursor:pointer; font-family:Habibi,serif; font-size:13px; white-space:nowrap" style-hover="filter:brightness(1.1)" style-focus="outline:2px solid #FCBA04; outline-offset:2px">Run sweep now</button>
+  </header>
+
+  <div style="display:flex; flex:1; min-height:0; position:relative">
+
+    <!-- RUNS SIDEBAR -->
+    <aside aria-label="Runs" style="width:{{ sideW }}; flex:0 0 auto; display:var(--desk,flex); flex-direction:column; background:var(--surface,#fff); border-inline-end:1px solid var(--line,#DDD7D4); position:relative; min-height:0">
+      <div style="display:flex; justify-content:space-between; align-items:center; padding:12px 14px; border-bottom:1px solid var(--line,#DDD7D4)"><h2 style="font-family:'Roboto Slab',serif; font-size:15px; font-weight:600; margin:0">Runs</h2><span style="font-family:Habibi,serif; font-size:12px; color:var(--ink2,#4A5551)">{{ runCount }} · last 7 days</span></div>
+      <div style="flex:1; overflow-y:auto; min-height:0">
+        <sc-for list="{{ runList }}" as="r" hint-placeholder-count="5">
+          <button type="button" onClick="{{ r.select }}" aria-pressed="{{ r.active }}" style="display:block; width:100%; text-align:start; border:0; border-bottom:1px solid var(--line,#DDD7D4); border-inline-start:3px solid {{ r.bar }}; background:{{ r.bg }}; color:inherit; padding:10px 14px; cursor:pointer; font:inherit" style-hover="background:var(--tint,#EFEBE9)" style-focus="outline:2px solid var(--primary,#2274A5); outline-offset:-2px">
+            <div style="display:flex; align-items:center; gap:8px"><span aria-hidden="true" style="width:8px; height:8px; border-radius:50%; background:{{ r.dot }}; animation:{{ r.anim }}"></span><span style="font-family:'Roboto Slab',serif; font-weight:600; font-size:14px">{{ r.graph }}</span><sc-if value="{{ r.live }}" hint-placeholder-val="{{ false }}"><span style="font-family:Habibi,serif; font-size:11px; letter-spacing:0.06em; text-transform:uppercase; padding:1px 7px; border-radius:10px; background:var(--primary,#2274A5); color:var(--primaryInk,#fff)">live</span></sc-if></div>
+            <div style="font-family:ui-monospace,monospace; font-size:11px; color:var(--ink2,#4A5551); margin-top:2px" dir="ltr">{{ r.id }}</div>
+            <div style="display:flex; gap:10px; flex-wrap:wrap; font-family:Habibi,serif; font-size:12px; color:var(--ink2,#4A5551); margin-top:4px"><span style="color:{{ r.dot }}">{{ r.status }}</span><span>{{ r.done }} nodes</span><span>{{ r.cost }}</span></div>
+          </button>
+        </sc-for>
+      </div>
+      <div role="separator" aria-label="Resize runs panel" aria-orientation="vertical" aria-valuemin="220" aria-valuemax="420" aria-valuenow="{{ sideWNum }}" tabIndex="0" onPointerDown="{{ dragSide }}" onKeyDown="{{ keySide }}" style="position:absolute; inset-block:0; inset-inline-end:0; width:12px; cursor:col-resize; touch-action:none; display:flex; align-items:center; justify-content:center" style-hover="background:var(--tint,#EFEBE9)" style-focus="outline:2px solid var(--primary,#2274A5); outline-offset:-2px"><span aria-hidden="true" style="width:4px; height:40px; border-radius:2px; background:var(--line,#DDD7D4)"></span></div>
+    </aside>
+
+    <!-- MAIN COLUMN -->
+    <div style="flex:1; min-width:0; display:flex; flex-direction:column; min-height:0">
+      <!-- mobile run picker -->
+      <div style="display:var(--mob,none); gap:8px; padding:10px 12px; border-bottom:1px solid var(--line,#DDD7D4); background:var(--surface,#fff); align-items:center">
+        <label style="font-family:Habibi,serif; font-size:13px; flex:0 0 auto" for="runSel">Run</label>
+        <select id="runSel" value="{{ runId }}" onChange="{{ pickRun }}" style="flex:1; min-height:40px; border:2px solid var(--line,#DDD7D4); border-radius:8px; background:var(--bg,#F7F4F3); color:var(--ink,#000F08); padding-inline:10px; font-family:'Roboto Slab',serif; font-size:13px">
+          <sc-for list="{{ runList }}" as="r" hint-placeholder-count="3"><option value="{{ r.id }}">{{ r.label }}</option></sc-for>
+        </select>
+      </div>
+
+      <!-- CANVAS -->
+      <section id="canvas" tabIndex="-1" aria-label="Run graph" style="outline:none; flex:1; min-height:160px; position:relative; overflow:hidden; background:var(--bg,#F7F4F3); background-image:radial-gradient(var(--line,#DDD7D4) 1px, transparent 1px); background-size:20px 20px">
+        {{ svg }}
+        <div style="position:absolute; top:12px; inset-inline-start:12px; display:flex; gap:8px; flex-wrap:wrap; z-index:3">
+          <div role="group" aria-label="View" style="display:inline-flex; background:var(--surface,#fff); border:1px solid var(--line,#DDD7D4); border-radius:20px; overflow:hidden">
+            <button type="button" onClick="{{ fit }}" style="min-height:36px; padding-inline:12px; border:0; border-inline-end:1px solid var(--line,#DDD7D4); background:transparent; color:var(--ink,#000F08); font-family:Habibi,serif; font-size:13px; cursor:pointer" style-hover="background:var(--tint,#EFEBE9)" style-focus="outline:2px solid var(--primary,#2274A5); outline-offset:-2px">Fit</button>
+            <button type="button" onClick="{{ zoomIn }}" aria-label="Zoom in" style="min-height:36px; width:38px; border:0; border-inline-end:1px solid var(--line,#DDD7D4); background:transparent; color:var(--ink,#000F08); font-family:'Roboto Slab',serif; font-size:16px; cursor:pointer" style-hover="background:var(--tint,#EFEBE9)" style-focus="outline:2px solid var(--primary,#2274A5); outline-offset:-2px">+</button>
+            <button type="button" onClick="{{ zoomOut }}" aria-label="Zoom out" style="min-height:36px; width:38px; border:0; background:transparent; color:var(--ink,#000F08); font-family:'Roboto Slab',serif; font-size:16px; cursor:pointer" style-hover="background:var(--tint,#EFEBE9)" style-focus="outline:2px solid var(--primary,#2274A5); outline-offset:-2px">−</button>
+          </div>
+          <button type="button" onClick="{{ toggleCritical }}" aria-pressed="{{ showCritical }}" style="min-height:36px; padding-inline:12px; border:1px solid {{ cpBorder }}; background:{{ cpBg }}; color:{{ cpInk }}; border-radius:20px; font-family:Habibi,serif; font-size:13px; cursor:pointer" style-hover="border-color:var(--primary,#2274A5)" style-focus="outline:2px solid var(--primary,#2274A5); outline-offset:2px">Critical path</button>
+          <button type="button" onClick="{{ autoLayout }}" style="min-height:36px; padding-inline:12px; border:1px solid var(--line,#DDD7D4); background:var(--surface,#fff); color:var(--ink,#000F08); border-radius:20px; font-family:Habibi,serif; font-size:13px; cursor:pointer" style-hover="border-color:var(--primary,#2274A5)" style-focus="outline:2px solid var(--primary,#2274A5); outline-offset:2px">Auto-layout</button>
+        </div>
+        <div style="position:absolute; top:12px; inset-inline-end:12px; display:var(--desk,flex); gap:6px; align-items:center; z-index:3; background:var(--surface,#fff); border:1px solid var(--line,#DDD7D4); border-radius:20px; padding:4px 6px 4px 12px; font-family:Habibi,serif; font-size:13px">
+          <span style="display:inline-flex; align-items:center; gap:6px; color:{{ run.dot }}"><span aria-hidden="true" style="width:8px; height:8px; border-radius:50%; background:{{ run.dot }}"></span>{{ run.status }}</span>
+          <span aria-hidden="true" style="color:var(--line,#DDD7D4)">|</span><span style="font-family:'Roboto Slab',serif">{{ run.cost }}</span>
+          <span aria-hidden="true" style="color:var(--line,#DDD7D4)">|</span><span style="font-family:'Roboto Slab',serif">{{ run.wall }}</span>
+          <sc-if value="{{ run.canApprove }}" hint-placeholder-val="{{ false }}"><button type="button" onClick="{{ selectGate }}" style="min-height:28px; padding-inline:10px; border:0; border-radius:14px; background:#FCBA04; color:#000F08; font-family:Habibi,serif; font-size:12px; cursor:pointer" style-hover="filter:brightness(0.95)" style-focus="outline:2px solid var(--primary,#2274A5); outline-offset:2px">1 gate waiting</button></sc-if>
+        </div>
+        <div style="position:absolute; bottom:12px; inset-inline-start:12px; display:{{ legendDisplay }}; gap:14px; flex-wrap:wrap; z-index:3; background:var(--surface,#fff); border:1px solid var(--line,#DDD7D4); border-radius:12px; padding:6px 12px; font-family:Habibi,serif; font-size:12px; color:var(--ink2,#4A5551)">
+          <span style="display:inline-flex; align-items:center; gap:6px"><span aria-hidden="true" style="width:22px; border-top:3px solid var(--primary,#2274A5)"></span>critical path</span>
+          <span style="display:inline-flex; align-items:center; gap:6px"><span aria-hidden="true" style="width:22px; border-top:2px solid var(--ink2,#4A5551)"></span>data</span>
+          <span style="display:inline-flex; align-items:center; gap:6px"><span aria-hidden="true" style="width:22px; border-top:2px dashed #D9A004"></span>gate</span>
+          <span style="display:inline-flex; align-items:center; gap:6px"><span aria-hidden="true" style="width:22px; border-top:2px dashed var(--critical,#960200)"></span>repair</span>
+          <span style="display:inline-flex; align-items:center; gap:6px"><span aria-hidden="true" style="width:22px; border-top:2px solid var(--ink,#000F08)"></span>route</span>
+          <span>drag nodes · wheel to zoom · hover an edge to see what crosses it</span>
+        </div>
+        <sc-if value="{{ tip }}" hint-placeholder-val="{{ false }}">
+          <div role="tooltip" style="position:absolute; left:{{ tip.x }}px; top:{{ tip.y }}px; pointer-events:none; background:var(--surface,#fff); border:1px solid var(--line,#DDD7D4); border-radius:8px; padding:8px 12px; box-shadow:0 8px 24px rgba(0,15,8,0.18); font-size:12px; max-width:380px; z-index:5">
+            <div style="font-family:Habibi,serif; color:var(--ink2,#4A5551); margin-bottom:3px">{{ tip.title }}</div>
+            <sc-for list="{{ tip.data }}" as="d" hint-placeholder-count="1"><code dir="ltr" style="display:block; font-family:ui-monospace,monospace; font-size:11.5px">{{ d }}</code></sc-for>
+          </div>
+        </sc-if>
+      </section>
+
+      <!-- DRAWER -->
+      <section aria-label="Run details" style="flex:0 0 auto; height:{{ drawerH }}; background:var(--surface,#fff); border-top:1px solid var(--line,#DDD7D4); display:flex; flex-direction:column; min-height:0">
+        <div role="separator" aria-label="Resize details drawer" aria-orientation="horizontal" aria-valuemin="44" aria-valuemax="600" aria-valuenow="{{ drawerHNum }}" tabIndex="0" onPointerDown="{{ dragDrawer }}" onKeyDown="{{ keyDrawer }}" style="height:14px; display:flex; align-items:center; justify-content:center; cursor:row-resize; touch-action:none; flex:0 0 auto" style-hover="background:var(--tint,#EFEBE9)" style-focus="outline:2px solid var(--primary,#2274A5); outline-offset:-2px"><span aria-hidden="true" style="width:56px; height:4px; border-radius:2px; background:var(--line,#DDD7D4)"></span></div>
+        <div role="tablist" aria-label="Details" style="display:flex; align-items:center; gap:2px; padding:0 8px; border-bottom:1px solid var(--line,#DDD7D4); overflow-x:auto; flex:0 0 auto">
+          <sc-for list="{{ tabs }}" as="tb" hint-placeholder-count="6">
+            <button type="button" role="tab" aria-selected="{{ tb.on }}" onClick="{{ tb.pick }}" style="min-height:38px; padding:0 12px; border:0; border-bottom:2px solid {{ tb.bar }}; background:transparent; color:{{ tb.color }}; font-family:Habibi,serif; font-size:13px; cursor:pointer; white-space:nowrap; display:inline-flex; align-items:center; gap:6px" style-hover="color:var(--primary,#2274A5)" style-focus="outline:2px solid var(--primary,#2274A5); outline-offset:-2px">{{ tb.label }}<sc-if value="{{ tb.count }}" hint-placeholder-val="{{ false }}"><span style="min-width:18px; height:18px; padding-inline:5px; border-radius:9px; background:#FCBA04; color:#000F08; font-size:11px; display:inline-flex; align-items:center; justify-content:center; font-family:'Roboto Slab',serif">{{ tb.count }}</span></sc-if></button>
+          </sc-for>
+          <div style="flex:1"></div>
+          <button type="button" onClick="{{ toggleDrawer }}" aria-label="{{ drawerToggleLabel }}" style="width:36px; height:32px; border:0; background:transparent; color:var(--ink,#000F08); cursor:pointer; border-radius:8px; font-size:14px" style-hover="background:var(--tint,#EFEBE9)" style-focus="outline:2px solid var(--primary,#2274A5); outline-offset:-2px">{{ drawerChevron }}</button>
+        </div>
+        <div style="flex:1; min-height:0; overflow:auto; padding:12px 16px">
+          <sc-if value="{{ tabEvents }}" hint-placeholder-val="{{ true }}">
+            <ol style="list-style:none; margin:0; padding:0; font-family:ui-monospace,monospace; font-size:12px" dir="ltr">
+              <sc-for list="{{ events }}" as="ev" hint-placeholder-count="8">
+                <li style="display:grid; grid-template-columns:72px 170px 150px minmax(0,1fr); gap:10px; padding:4px 4px; border-bottom:1px solid var(--line,#DDD7D4)"><span style="color:var(--ink2,#4A5551)">{{ ev.t }}</span><span style="color:{{ ev.color }}">{{ ev.type }}</span><span style="color:var(--primary,#2274A5)">{{ ev.node }}</span><span style="white-space:pre-wrap; word-break:break-word">{{ ev.text }}</span></li>
+              </sc-for>
+            </ol>
+          </sc-if>
+          <sc-if value="{{ tabMetrics }}" hint-placeholder-val="{{ false }}">
+            <div style="display:grid; grid-template-columns:repeat(auto-fill,minmax(170px,1fr)); gap:10px; margin-bottom:14px">
+              <sc-for list="{{ metricCards }}" as="mc" hint-placeholder-count="8">
+                <div style="border:1px solid var(--line,#DDD7D4); border-radius:12px; padding:12px 14px"><div style="font-family:Habibi,serif; font-size:11px; text-transform:uppercase; letter-spacing:0.06em; color:var(--ink2,#4A5551)">{{ mc.label }}</div><div style="font-family:'Roboto Slab',serif; font-size:22px; font-weight:600; margin-top:2px">{{ mc.value }}</div><div style="font-size:12px; color:var(--ink2,#4A5551); margin-top:2px">{{ mc.sub }}</div></div>
+              </sc-for>
+            </div>
+            <table style="border-collapse:collapse; width:100%; font-size:13px">
+              <thead><tr><th scope="col" style="text-align:start; padding:6px 8px; border-bottom:1px solid var(--line,#DDD7D4); font-family:Habibi,serif; font-size:11px; text-transform:uppercase; letter-spacing:0.06em; color:var(--ink2,#4A5551); font-weight:400">Node</th><th scope="col" style="text-align:start; padding:6px 8px; border-bottom:1px solid var(--line,#DDD7D4); font-family:Habibi,serif; font-size:11px; text-transform:uppercase; letter-spacing:0.06em; color:var(--ink2,#4A5551); font-weight:400">Kind</th><th scope="col" style="text-align:start; padding:6px 8px; border-bottom:1px solid var(--line,#DDD7D4); font-family:Habibi,serif; font-size:11px; text-transform:uppercase; letter-spacing:0.06em; color:var(--ink2,#4A5551); font-weight:400">Status</th><th scope="col" style="text-align:start; padding:6px 8px; border-bottom:1px solid var(--line,#DDD7D4); font-family:Habibi,serif; font-size:11px; text-transform:uppercase; letter-spacing:0.06em; color:var(--ink2,#4A5551); font-weight:400">Duration</th><th scope="col" style="text-align:start; padding:6px 8px; border-bottom:1px solid var(--line,#DDD7D4); font-family:Habibi,serif; font-size:11px; text-transform:uppercase; letter-spacing:0.06em; color:var(--ink2,#4A5551); font-weight:400">Tokens</th><th scope="col" style="text-align:start; padding:6px 8px; border-bottom:1px solid var(--line,#DDD7D4); font-family:Habibi,serif; font-size:11px; text-transform:uppercase; letter-spacing:0.06em; color:var(--ink2,#4A5551); font-weight:400">Cost</th></tr></thead>
+              <tbody>
+                <sc-for list="{{ nodeRows }}" as="nr" hint-placeholder-count="8">
+                  <tr onClick="{{ nr.select }}" style="cursor:pointer" style-hover="background:var(--tint,#EFEBE9)"><td style="padding:6px 8px; border-bottom:1px solid var(--line,#DDD7D4); font-family:'Roboto Slab',serif; font-weight:500">{{ nr.id }}</td><td style="padding:6px 8px; border-bottom:1px solid var(--line,#DDD7D4)">{{ nr.kind }}</td><td style="padding:6px 8px; border-bottom:1px solid var(--line,#DDD7D4); color:{{ nr.color }}; font-family:Habibi,serif">{{ nr.status }}</td><td style="padding:6px 8px; border-bottom:1px solid var(--line,#DDD7D4); font-family:'Roboto Slab',serif">{{ nr.dur }}</td><td style="padding:6px 8px; border-bottom:1px solid var(--line,#DDD7D4); font-family:'Roboto Slab',serif">{{ nr.tokens }}</td><td style="padding:6px 8px; border-bottom:1px solid var(--line,#DDD7D4); font-family:'Roboto Slab',serif">{{ nr.cost }}</td></tr>
+                </sc-for>
+              </tbody>
+            </table>
+          </sc-if>
+          <sc-if value="{{ tabDecisions }}" hint-placeholder-val="{{ false }}">
+            <sc-for list="{{ decisions }}" as="dc" hint-placeholder-count="2">
+              <div style="border:1px solid var(--line,#DDD7D4); border-inline-start:3px solid var(--ink,#000F08); border-radius:0 12px 12px 0; padding:12px 16px; margin-bottom:10px">
+                <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:baseline"><span style="font-family:'Roboto Slab',serif; font-weight:600">{{ dc.node }}</span><span style="font-family:Habibi,serif; font-size:13px; color:var(--ink2,#4A5551)">{{ dc.kind }} · {{ dc.t }}</span></div>
+                <div style="margin:4px 0 8px">{{ dc.text }}</div>
+                <pre dir="ltr" style="margin:0; padding:10px 12px; border-radius:8px; background:var(--tint,#EFEBE9); font-family:ui-monospace,monospace; font-size:12px; white-space:pre-wrap; text-align:left">{{ dc.state }}</pre>
+              </div>
+            </sc-for>
+            <sc-if value="{{ noDecisions }}" hint-placeholder-val="{{ false }}"><p style="color:var(--ink2,#4A5551); margin:8px 0">No routes or gates were reached in this run.</p></sc-if>
+          </sc-if>
+          <sc-if value="{{ tabTasks }}" hint-placeholder-val="{{ false }}">
+            <sc-if value="{{ run.canApprove }}" hint-placeholder-val="{{ true }}">
+              <div style="border:2px solid #FCBA04; border-radius:12px; padding:14px 16px; max-width:720px">
+                <div style="font-family:Habibi,serif; font-size:12px; letter-spacing:0.06em; text-transform:uppercase; color:var(--ink2,#4A5551)">Gate · household_decision · waiting {{ waitFor }}</div>
+                <div style="font-family:'Roboto Slab',serif; font-size:16px; font-weight:600; margin:4px 0 6px">Approve remedy request for Graco Modes Nest stroller?</div>
+                <p style="margin:0 0 12px; font-size:13px; color:var(--ink2,#4A5551)">The same decision the household sees by SMS. Any of SMS reply, signed link, dashboard, or MCP can answer it; the approval is written as a file and the graph resumes into <code dir="ltr" style="font-family:ui-monospace,monospace">remedy</code>.</p>
+                <div style="display:flex; gap:8px; flex-wrap:wrap">
+                  <button type="button" onClick="{{ approve }}" style="min-height:40px; padding-inline:16px; border-radius:20px; border:0; background:var(--ok,#2E7D4F); color:#fff; font-family:Habibi,serif; font-size:14px; cursor:pointer" style-hover="filter:brightness(0.92)" style-focus="outline:2px solid var(--primary,#2274A5); outline-offset:2px">Approve (as dashboard)</button>
+                  <button type="button" onClick="{{ reject }}" style="min-height:40px; padding-inline:16px; border-radius:20px; border:2px solid var(--critical,#960200); background:transparent; color:var(--critical,#960200); font-family:Habibi,serif; font-size:14px; cursor:pointer" style-hover="background:var(--tint,#EFEBE9)" style-focus="outline:2px solid var(--primary,#2274A5); outline-offset:2px">Reject</button>
+                </div>
+              </div>
+            </sc-if>
+            <sc-if value="{{ run.noTasks }}" hint-placeholder-val="{{ false }}"><p style="color:var(--ink2,#4A5551); margin:8px 0">No open tasks. Gates and inbox tasks appear here while the graph is paused on them.</p></sc-if>
+          </sc-if>
+          <sc-if value="{{ tabSpec }}" hint-placeholder-val="{{ false }}">
+            <pre dir="ltr" style="margin:0; padding:12px 14px; border-radius:8px; background:var(--tint,#EFEBE9); font-family:ui-monospace,monospace; font-size:12px; line-height:1.5; white-space:pre-wrap; text-align:left">{{ specYaml }}</pre>
+          </sc-if>
+          <sc-if value="{{ tabOutput }}" hint-placeholder-val="{{ false }}">
+            <pre dir="ltr" style="margin:0; padding:12px 14px; border-radius:8px; background:var(--tint,#EFEBE9); font-family:ui-monospace,monospace; font-size:12px; line-height:1.5; white-space:pre-wrap; text-align:left">{{ run.output }}</pre>
+          </sc-if>
+        </div>
+      </section>
+    </div>
+
+    <!-- INSPECTOR -->
+    <aside aria-label="Inspector" style="width:{{ inspW }}; flex:0 0 auto; display:{{ inspDisplay }}; flex-direction:column; background:var(--surface,#fff); border-inline-start:1px solid var(--line,#DDD7D4); position:{{ inspPos }}; inset-inline:0; bottom:0; max-height:{{ inspMaxH }}; z-index:40; min-height:0; box-shadow:{{ inspShadow }}; border-radius:{{ inspRadius }}">
+      <div role="separator" aria-label="Resize inspector" aria-orientation="vertical" aria-valuemin="280" aria-valuemax="600" aria-valuenow="{{ inspWNum }}" tabIndex="0" onPointerDown="{{ dragInsp }}" onKeyDown="{{ keyInsp }}" style="position:absolute; inset-block:0; inset-inline-start:0; width:12px; cursor:col-resize; touch-action:none; display:var(--desk,flex); align-items:center; justify-content:center; z-index:2" style-hover="background:var(--tint,#EFEBE9)" style-focus="outline:2px solid var(--primary,#2274A5); outline-offset:-2px"><span aria-hidden="true" style="width:4px; height:40px; border-radius:2px; background:var(--line,#DDD7D4)"></span></div>
+      <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:8px; padding:14px 16px 10px 20px; border-bottom:1px solid var(--line,#DDD7D4)">
+        <div style="min-width:0">
+          <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap"><span style="font-family:Habibi,serif; font-size:11px; letter-spacing:0.06em; text-transform:uppercase; padding:2px 8px; border-radius:10px; background:{{ sel.kindBg }}; color:{{ sel.kindInk }}">{{ sel.kindLabel }}</span><span style="display:inline-flex; align-items:center; gap:6px; font-family:Habibi,serif; font-size:13px; color:{{ sel.color }}"><span aria-hidden="true" style="width:8px; height:8px; border-radius:50%; background:{{ sel.color }}"></span>{{ sel.status }}</span></div>
+          <h2 style="font-family:'Roboto Slab',serif; font-size:18px; font-weight:600; margin:6px 0 0; overflow-wrap:anywhere">{{ sel.id }}</h2>
+          <div style="font-size:13px; color:var(--ink2,#4A5551)">{{ sel.sub }}</div>
+        </div>
+        <button type="button" onClick="{{ closeInsp }}" aria-label="Close inspector" style="width:40px; height:40px; border-radius:50%; border:0; background:transparent; color:var(--ink,#000F08); font-size:22px; cursor:pointer; flex:0 0 auto" style-hover="background:var(--tint,#EFEBE9)" style-focus="outline:2px solid var(--primary,#2274A5); outline-offset:2px">×</button>
+      </div>
+      <div style="flex:1; min-height:0; overflow-y:auto; padding:14px 16px 20px 20px; display:flex; flex-direction:column; gap:16px">
+        <p style="margin:0; font-size:14px">{{ sel.desc }}</p>
+        <dl style="margin:0; display:grid; grid-template-columns:max-content 1fr; gap:6px 14px; font-size:13px">
+          <sc-for list="{{ sel.kv }}" as="kv" hint-placeholder-count="5"><dt style="font-family:Habibi,serif; font-size:11px; text-transform:uppercase; letter-spacing:0.06em; color:var(--ink2,#4A5551); padding-top:3px">{{ kv.k }}</dt><dd style="margin:0; font-family:'Roboto Slab',serif; overflow-wrap:anywhere">{{ kv.v }}</dd></sc-for>
+        </dl>
+        <sc-if value="{{ sel.isGateWaiting }}" hint-placeholder-val="{{ false }}">
+          <div style="border:2px solid #FCBA04; border-radius:12px; padding:12px 14px">
+            <div style="font-family:'Roboto Slab',serif; font-weight:600; margin-bottom:4px">Waiting on the household</div>
+            <p style="margin:0 0 10px; font-size:13px; color:var(--ink2,#4A5551)">Paused {{ waitFor }}. SMS sent 03:04; signed link expires in 71 h. Nothing downstream runs until an approval record exists.</p>
+            <div style="display:flex; gap:8px; flex-wrap:wrap"><button type="button" onClick="{{ approve }}" style="min-height:38px; padding-inline:14px; border-radius:19px; border:0; background:var(--ok,#2E7D4F); color:#fff; font-family:Habibi,serif; font-size:13px; cursor:pointer" style-hover="filter:brightness(0.92)" style-focus="outline:2px solid var(--primary,#2274A5); outline-offset:2px">Approve</button><button type="button" onClick="{{ reject }}" style="min-height:38px; padding-inline:14px; border-radius:19px; border:2px solid var(--critical,#960200); background:transparent; color:var(--critical,#960200); font-family:Habibi,serif; font-size:13px; cursor:pointer" style-hover="background:var(--tint,#EFEBE9)" style-focus="outline:2px solid var(--primary,#2274A5); outline-offset:2px">Reject</button></div>
+          </div>
+        </sc-if>
+        <div>
+          <div style="font-family:Habibi,serif; font-size:11px; text-transform:uppercase; letter-spacing:0.06em; color:var(--ink2,#4A5551); margin-bottom:6px">Inputs crossing into this node</div>
+          <sc-for list="{{ sel.inputs }}" as="inp" hint-placeholder-count="2"><div style="display:flex; gap:8px; align-items:baseline; padding:4px 0; border-bottom:1px solid var(--line,#DDD7D4); font-size:12.5px"><span style="font-family:'Roboto Slab',serif; font-weight:500; flex:0 0 auto">{{ inp.from }}</span><code dir="ltr" style="font-family:ui-monospace,monospace; font-size:11.5px; color:var(--ink2,#4A5551); overflow-wrap:anywhere">{{ inp.data }}</code></div></sc-for>
+          <sc-if value="{{ sel.noInputs }}" hint-placeholder-val="{{ false }}"><div style="font-size:13px; color:var(--ink2,#4A5551)">Entry node. Reads the run input and the feeds store.</div></sc-if>
+        </div>
+        <div>
+          <div style="font-family:Habibi,serif; font-size:11px; text-transform:uppercase; letter-spacing:0.06em; color:var(--ink2,#4A5551); margin-bottom:6px">Structured output</div>
+          <pre dir="ltr" style="margin:0; padding:10px 12px; border-radius:8px; background:var(--tint,#EFEBE9); font-family:ui-monospace,monospace; font-size:12px; line-height:1.5; white-space:pre-wrap; text-align:left; max-height:260px; overflow:auto">{{ sel.output }}</pre>
+        </div>
+        <sc-if value="{{ sel.hasAttempts }}" hint-placeholder-val="{{ false }}">
+          <div>
+            <div style="font-family:Habibi,serif; font-size:11px; text-transform:uppercase; letter-spacing:0.06em; color:var(--ink2,#4A5551); margin-bottom:6px">Attempts</div>
+            <sc-for list="{{ sel.attempts }}" as="at" hint-placeholder-count="1"><div style="display:flex; gap:10px; align-items:center; padding:6px 0; border-bottom:1px solid var(--line,#DDD7D4); font-size:13px"><span aria-hidden="true" style="width:8px; height:8px; border-radius:50%; background:{{ at.color }}"></span><span style="font-family:'Roboto Slab',serif">#{{ at.n }}</span><span style="flex:1">{{ at.text }}</span><span style="font-family:'Roboto Slab',serif; font-size:12px; color:var(--ink2,#4A5551)">{{ at.dur }}</span></div></sc-for>
+          </div>
+        </sc-if>
+        <div style="display:flex; gap:8px; flex-wrap:wrap; padding-top:4px; border-top:1px solid var(--line,#DDD7D4)">
+          <button type="button" onClick="{{ copyPrompt }}" style="min-height:36px; padding-inline:12px; border-radius:18px; border:2px solid var(--line,#DDD7D4); background:transparent; color:var(--ink,#000F08); font-family:Habibi,serif; font-size:13px; cursor:pointer" style-hover="border-color:var(--primary,#2274A5)" style-focus="outline:2px solid var(--primary,#2274A5); outline-offset:2px">Copy last prompt</button>
+          <button type="button" onClick="{{ copySpec }}" style="min-height:36px; padding-inline:12px; border-radius:18px; border:2px solid var(--line,#DDD7D4); background:transparent; color:var(--ink,#000F08); font-family:Habibi,serif; font-size:13px; cursor:pointer" style-hover="border-color:var(--primary,#2274A5)" style-focus="outline:2px solid var(--primary,#2274A5); outline-offset:2px">Copy node spec</button>
+          <button type="button" onClick="{{ fork }}" style="min-height:36px; padding-inline:12px; border-radius:18px; border:2px solid var(--primary,#2274A5); background:transparent; color:var(--primary,#2274A5); font-family:Habibi,serif; font-size:13px; cursor:pointer" style-hover="background:var(--tint,#EFEBE9)" style-focus="outline:2px solid var(--primary,#2274A5); outline-offset:2px">Fork run from here</button>
+        </div>
+      </div>
+    </aside>
+  </div>
+
+  <sc-if value="{{ toast }}" hint-placeholder-val="{{ false }}">
+    <div role="status" aria-live="polite" style="position:fixed; bottom:20px; inset-inline-start:50%; transform:translateX(-50%); background:var(--ink,#000F08); color:var(--bg,#F7F4F3); padding:12px 20px; border-radius:24px; font-family:Habibi,serif; font-size:14px; z-index:70; box-shadow:0 8px 24px rgba(0,15,8,0.25); max-width:calc(100vw - 32px)">{{ toast }}</div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;colorScheme&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;light&quot;,&quot;dark&quot;],&quot;default&quot;:&quot;light&quot;,&quot;tsType&quot;:&quot;'light' | 'dark'&quot;,&quot;section&quot;:&quot;Appearance&quot;},&quot;direction&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;ltr&quot;,&quot;rtl&quot;],&quot;default&quot;:&quot;ltr&quot;,&quot;tsType&quot;:&quot;'ltr' | 'rtl'&quot;,&quot;section&quot;:&quot;Appearance&quot;}}">
+class Component extends DCLogic {
+  state = { runId: 'sweep-2026-09-13', sel: null, tab: 'events', narrow: false, dark: null, dir: null, sideW: 280, inspW: 380, drawerH: null, drawerOpen: true, view: { x: 40, y: 40, k: 1 }, pos: {}, hover: null, showCritical: true, approved: {}, rejected: {}, running: false, toast: '' };
+  componentDidMount() {
+    this._mq = window.matchMedia('(max-width: 900px)');
+    const on = () => this.setState({ narrow: this._mq.matches });
+    on(); this._mq.addEventListener('change', on); this._off = () => this._mq.removeEventListener('change', on);
+    this._svgRef = React.createRef();
+    setTimeout(() => { const colH = window.innerHeight - 52; if (colH < 600) this.setState({ drawerOpen: false }); this.fit(); }, 150);
+    this._wheel = (e) => { const svg = this._svgRef.current; if (!svg) return; e.preventDefault(); const r = svg.getBoundingClientRect(); const mx = e.clientX - r.left, my = e.clientY - r.top; const v = this.state.view; const k2 = Math.min(3, Math.max(0.2, v.k * Math.exp(-e.deltaY * 0.0015))); this.setState({ view: { x: mx - (mx - v.x) * (k2 / v.k), y: my - (my - v.y) * (k2 / v.k), k: k2 } }); };
+    this._resize = () => this.fit();
+    window.addEventListener('resize', this._resize);
+    this._bind = setInterval(() => { const svg = this._svgRef.current; if (svg && !svg._bound) { svg._bound = true; svg.addEventListener('wheel', this._wheel, { passive: false }); } }, 300);
+  }
+  componentWillUnmount() { this._off && this._off(); clearTimeout(this._t); clearInterval(this._bind); window.removeEventListener('resize', this._resize); }
+  say(m) { this.setState({ toast: m }); clearTimeout(this._t); this._t = setTimeout(() => this.setState({ toast: '' }), 3000); }
+  drag(e, onMove) { e.preventDefault(); const sx = e.clientX, sy = e.clientY, s0 = Object.assign({}, this.state); const move = (ev) => onMove(ev.clientX - sx, ev.clientY - sy, s0); const up = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); }; window.addEventListener('pointermove', move); window.addEventListener('pointerup', up); }
+  graph() {
+    const N = [
+      { id:'feeds_refresh', kind:'code', level:0, desc:'Lambda. Pulls CPSC, NHTSA (for known vehicles) and openFDA by date window, normalizes into RecallRecord rows, snapshots raw JSON to S3.', tools:'http, s3, dynamodb' },
+      { id:'expiry_scan', kind:'code', level:0, desc:'Query items whose warranty ends within 30 days and whose price exceeds the household threshold.', tools:'dynamodb' },
+      { id:'candidate_gen', kind:'code', level:1, desc:'Stages 1–3 of the matcher: UPC / VIN / model equality, then brand + token_set_ratio ≥ 80, then the sold-window filter. Only survivors reach a model.', tools:'rapidfuzz' },
+      { id:'warranty', kind:'agent', level:1, model:'claude-opus-5', desc:'For each expiring item above threshold: coverage assessment and a drafted "anything wrong with it?" question. Budget-aware; queues to digest when the weekly budget is spent.', map:true },
+      { id:'matcher', kind:'agent', level:2, model:'claude-opus-5', desc:'Adjudicates only ambiguous candidate pairs. Certain pairs (exact keys) skip the model entirely. Output is a MatchVerdict schema, validated by the engine.', map:true },
+      { id:'triage', kind:'agent', level:3, model:'claude-opus-5', desc:'Reads preferences from AgentCore Memory, classifies severity, checks the notification budget, drafts the message and chooses a channel.', tools:'memory, draft_message' },
+      { id:'severity_check', kind:'verify', level:4, model:'claude-haiku-4-5', desc:'Verifier with authority: confirms the keyword severity pass. A kill sends triage back through one bounded repair round with the verifier\'s reasons.' },
+      { id:'household_decision', kind:'gate', level:5, desc:'Human gate. request_decision raises the guardian-decision interrupt; the run pauses until an approval record exists (SMS reply, signed link, dashboard, or MCP).' },
+      { id:'digest', kind:'code', level:5, desc:'Alternate route for standard hazards: append to the weekly digest and log. No interruption.', tools:'dynamodb' },
+      { id:'remedy', kind:'agent', level:6, model:'claude-opus-5', desc:'Side effect, executed at most once and never re-run on resume. Sends the remedy request via SES with the receipt attached, logs the action.', side_effect:true, tools:'ses, s3' },
+      { id:'followup', kind:'code', level:7, desc:'Schedules a 10-business-day follow-up check via EventBridge Scheduler and writes the Activity row.', tools:'scheduler' },
+    ];
+    const E = [
+      { from:'feeds_refresh', to:'candidate_gen', kind:'data', data:['$nodes.feeds_refresh.new_recalls[]', '$nodes.feeds_refresh.upserted'] },
+      { from:'expiry_scan', to:'warranty', kind:'data', data:['$nodes.expiry_scan.items[] (map)'] },
+      { from:'candidate_gen', to:'matcher', kind:'data', data:['$nodes.candidate_gen.candidates[] (map)', '$nodes.candidate_gen.certain[]'] },
+      { from:'matcher', to:'triage', kind:'data', data:['$nodes.matcher.verdicts[] · MatchVerdict'] },
+      { from:'warranty', to:'triage', kind:'data', data:['$nodes.warranty.questions[] · CoverageAssessment'] },
+      { from:'triage', to:'severity_check', kind:'data', data:['$nodes.triage.plan · SurfacePlan'] },
+      { from:'severity_check', to:'triage', kind:'repair', data:['repair: max_rounds 1 · feedback = verdict.reasons'] },
+      { from:'severity_check', to:'household_decision', kind:'route', data:['when: plan.channel == "sms_now"', 'show: plan.message, plan.options'] },
+      { from:'severity_check', to:'digest', kind:'route', data:['when: plan.channel == "digest"'] },
+      { from:'household_decision', to:'remedy', kind:'gate', data:['requires_gate: household_decision', '$nodes.household_decision.choice'] },
+      { from:'remedy', to:'followup', kind:'data', data:['$nodes.remedy.action · ActionReport'] },
+    ];
+    return { N, E };
+  }
+  runs(s) {
+    const approved = !!s.approved['sweep-2026-09-13'], rejected = !!s.rejected['sweep-2026-09-13'], live = s.running;
+    const st = (status, extra) => Object.assign({ status }, extra || {});
+    const tonight = {
+      id:'sweep-2026-09-13', graph:'nightly-sweep', label:'nightly-sweep · Sep 13', started:'03:00:00', wall_ms: approved ? 27960000 + 15200 : rejected ? 27960000 + 1200 : 19300, cost: approved ? 0.104 : 0.086,
+      status: approved || rejected ? 'completed' : live ? 'running' : 'paused',
+      nodes: {
+        feeds_refresh: st('completed', { dur:4100, out:'{ "cpsc": 4, "nhtsa": 0, "fda": 61, "upserted": 65 }' }),
+        expiry_scan: st('completed', { dur:210, out:'{ "items": [ { "id": "itm_vitamix", "ends_on": "2026-10-01", "price": 449.95 } ] }' }),
+        candidate_gen: st('completed', { dur:320, out:'{ "certain": [ { "item": "itm_graco_stroller", "recall": "cpsc#25-000", "key": "upc" } ],\n  "candidates": [ { "item": "itm_similac_37q", "recall": "fda#F-1234-2026", "score": 84 } ],\n  "unlikely": 3 }' }),
+        warranty: st('completed', { dur:5200, tok:1310, cost:0.024, items:'1/1', out:'{ "questions": [ { "item": "itm_vitamix", "covered": true, "ask_on": "2026-09-17",\n    "reason": "within weekly budget after critical bypass" } ] }' }),
+        matcher: st('completed', { dur:6800, tok:2140, cost:0.041, items:'1/1', out:'{ "verdicts": [ { "pair": "itm_similac_37q × fda#F-1234-2026", "is_match": "no", "confidence": 0.93,\n    "rationale": "Lot 37-Q outside recalled range 12-A..21-F", "missing_info": [] } ] }' }),
+        triage: st('completed', { dur:2900, tok:1380, cost:0.021, attempts:2, out:'{ "channel": "sms_now", "severity": "critical",\n  "message": "The Graco stroller you bought at Target on 2024-03-14 matches CPSC recall 25-000 (hinge can pinch or amputate a fingertip). Remedy: free repair kit. Reply 1 to request it, 2 if you no longer own it, 3 for details.",\n  "options": ["request_remedy", "no_longer_own", "details"] }' }),
+        severity_check: st('completed', { dur:1100, tok:640, cost:0.001, kill:'1 killed / 2', out:'{ "verdict": "pass", "confidence": 0.98, "reasons": ["hazard text contains amputate → critical"] }' }),
+        household_decision: approved ? st('completed', { dur:27940000, badge:'approved · sms', out:'{ "choice": "request_remedy", "by": "sms", "answered_at": "2026-09-13T10:45:12Z" }' }) : rejected ? st('completed', { dur:27940000, badge:'rejected · dashboard', out:'{ "choice": "no_longer_own", "by": "dashboard" }' }) : st('waiting_approval', { badge:'awaiting approval', out:'(awaiting interruptResponse)' }),
+        digest: st('skipped', { badge:'route not taken', out:'(skipped · route sms_now selected)' }),
+        remedy: approved ? st('completed', { dur:5200, tok:960, cost:0.018, badge:'side-effect done', out:'{ "type": "email_sent", "to": "recalls@gracobaby.com", "attachments": ["receipt-2024-03-14.pdf"],\n  "message_id": "0100018f-…", "side_effect_done": true }' }) : rejected ? st('skipped', { badge:'gate rejected', out:'(skipped · gate rejected)' }) : st('pending', { out:'(not run)' }),
+        followup: approved ? st('completed', { dur:180, out:'{ "next_check_at": "2026-09-27", "schedule": "guardian-followup-0913" }' }) : rejected ? st('skipped', { out:'(skipped)' }) : st('pending', { out:'(not run)' }),
+      },
+      events: [
+        ['03:00:01','run.started','—','graph nightly-sweep · household hh_ada · budget $0.50 / 600 s'],
+        ['03:00:01','call.started','feeds_refresh','cpsc 2026-09-12..13 · nhtsa 1 vehicle · fda weekly window'],
+        ['03:00:05','call.finished','feeds_refresh','65 upserted · 4.1 s'],
+        ['03:00:05','call.finished','expiry_scan','1 item above $200 ends within 30 d'],
+        ['03:00:05','call.finished','candidate_gen','1 certain · 1 candidate · 3 unlikely (date window)'],
+        ['03:00:06','item.started','matcher','itm_similac_37q × fda#F-1234-2026'],
+        ['03:00:06','item.started','warranty','itm_vitamix'],
+        ['03:00:11','item.finished','warranty','covered · ask 2026-09-17 · $0.024'],
+        ['03:00:13','item.finished','matcher','is_match no · 0.93 · $0.041'],
+        ['03:00:13','call.started','triage','1 certain match + 1 warranty question · prefs: budget weekly, threshold 200'],
+        ['03:00:15','call.finished','triage','channel digest · severity standard'],
+        ['03:00:16','verify.kill','severity_check','hazard text contains "amputate" → must be critical'],
+        ['03:00:16','repair.scheduled','triage','round 1/1 · feedback attached'],
+        ['03:00:19','call.finished','triage','channel sms_now · severity critical'],
+        ['03:00:20','call.finished','severity_check','pass · 0.98'],
+        ['03:00:20','route.selected','severity_check','→ household_decision (plan.channel == sms_now)'],
+        ['03:00:20','gate.waiting','household_decision','sms sent via SNS · link /d/7f3a… expires 72 h · session checkpointed'],
+        ['03:00:20','run.paused','—','interrupt guardian-decision · state persisted to AgentCore Memory'],
+      ].concat(approved ? [
+        ['10:45:12','gate.approved','household_decision','choice request_remedy · by sms'],
+        ['10:45:12','run.resumed','—','invoke kind=resume · same runtimeSessionId'],
+        ['10:45:13','call.started','remedy','draft → recalls@gracobaby.com · attach receipt-2024-03-14.pdf'],
+        ['10:45:18','call.finished','remedy','email_sent · side_effect_done · $0.018'],
+        ['10:45:18','call.finished','followup','next_check_at 2026-09-27'],
+        ['10:45:18','run.completed','—','total $0.104 · human wait 7 h 44 m'],
+      ] : rejected ? [
+        ['10:45:12','gate.rejected','household_decision','choice no_longer_own · by dashboard'],
+        ['10:45:12','run.completed','—','remedy skipped (gate rejected) · item status updated'],
+      ] : []),
+      decisions: [
+        { node:'severity_check', kind:'verify.kill', t:'03:00:16', text:'Verifier killed the first triage plan: keyword pass found "amputate" but the plan said standard.', state:'{ "verdict": "kill", "reasons": ["hazard text contains amputate → critical"], "repair_round": 1 }' },
+        { node:'severity_check', kind:'route.selected', t:'03:00:20', text:'Deterministic route on the verified plan. State snapshot stored with the decision.', state:'{ "route": "household_decision",\n  "state": { "plan.channel": "sms_now", "plan.severity": "critical", "budget.remaining_week": 1, "prefs.quiet_categories": ["Kitchen","Tools"] } }' },
+      ].concat(approved ? [{ node:'household_decision', kind:'gate.approved', t:'10:45:12', text:'Household answered by SMS reply "1".', state:'{ "choice": "request_remedy", "by": "sms", "token": "7f3a…", "answered_at": "2026-09-13T10:45:12Z" }' }] : rejected ? [{ node:'household_decision', kind:'gate.rejected', t:'10:45:12', text:'Rejected from the dashboard.', state:'{ "choice": "no_longer_own", "by": "dashboard" }' }] : []),
+      output: approved ? '{ "surfaced": 1, "remedies_sent": 1, "digest_added": 0, "questions_queued": 1,\n  "human_wait_ms": 27940000, "cost_usd": 0.104 }' : '(run paused · no output yet)',
+      metrics: { wall: approved ? '7 h 44 m' : '19.3 s', cp: '19.3 s', speedup:'1.6×', sum:'31.0 s', cost: approved ? '$0.104' : '$0.086', calls: approved ? '5 agent calls' : '4 agent calls', width:'2 / 4', agentSec:'16 s agent time', fail:'0%', retry:'25%', kill:'50%', killSub:'1 / 2 plans killed', human: approved ? '1 gate · 7 h 44 m wait' : '1 gate · waiting', tokens:'5.5k in', tokSub:'1.2k out · 2.1k cached' },
+    };
+    const quiet = (id, day, cpsc, fda, note) => ({
+      id, graph:'nightly-sweep', label:'nightly-sweep · ' + day, started:'03:00:00', wall_ms: 4700, cost: 0.0, status:'completed',
+      nodes: { feeds_refresh: st('completed', { dur:3900, out:`{ "cpsc": ${cpsc}, "nhtsa": 0, "fda": ${fda}, "upserted": ${cpsc + fda} }` }), expiry_scan: st('completed', { dur:190, out:'{ "items": [] }' }), candidate_gen: st('completed', { dur:280, out:'{ "certain": [], "candidates": [], "unlikely": ' + note + ' }' }), warranty: st('skipped', { badge:'0 items', out:'(skipped · empty map)' }), matcher: st('skipped', { badge:'0 candidates', out:'(skipped · empty map)' }), triage: st('skipped', { badge:'skip cascade', out:'(skipped · when: nothing to surface)' }), severity_check: st('skipped', { out:'(skipped)' }), household_decision: st('skipped', { out:'(skipped)' }), digest: st('skipped', { out:'(skipped)' }), remedy: st('skipped', { out:'(skipped)' }), followup: st('skipped', { out:'(skipped)' }) },
+      events: [['03:00:01','run.started','—','graph nightly-sweep'],['03:00:05','call.finished','feeds_refresh',`${cpsc} cpsc · ${fda} fda`],['03:00:05','call.finished','candidate_gen',`0 candidates · ${note} dropped by date window`],['03:00:05','node.skipped','matcher','empty map'],['03:00:05','node.skipped','triage','when: false (cascade)'],['03:00:05','run.completed','—','0 LLM calls · $0.000 · quiet']],
+      decisions: [], output:'{ "surfaced": 0, "remedies_sent": 0, "digest_added": 0, "questions_queued": 0, "cost_usd": 0 }',
+      metrics: { wall:'4.7 s', cp:'4.7 s', speedup:'1.0×', sum:'4.4 s', cost:'$0.000', calls:'0 agent calls', width:'2 / 4', agentSec:'0 s agent time', fail:'0%', retry:'0%', kill:'—', killSub:'no verifications', human:'0 gates', tokens:'0', tokSub:'no model calls' },
+    });
+    const intake = { id:'intake-2026-09-12-1140', graph:'intake', label:'intake · Sep 12 11:40', started:'11:40:02', wall_ms: 3100, cost:0.003, status:'completed', nodes:{}, events:[['11:40:02','run.started','—','SES inbound · from target.com'],['11:40:03','call.finished','redact_pan','1 card number stripped'],['11:40:05','call.finished','extract','claude-haiku-4-5 · InventoryItem · 0.97'],['11:40:05','call.finished','save_item','itm_babyletto_sheets · warranty n/a'],['11:40:05','run.completed','—','$0.003']], decisions:[], output:'{ "item": "itm_babyletto_sheets", "fields_confident": 9, "fields_total": 10 }', metrics:{ wall:'3.1 s', cp:'3.1 s', speedup:'1.0×', sum:'3.1 s', cost:'$0.003', calls:'1 agent call', width:'1 / 4', agentSec:'2 s agent time', fail:'0%', retry:'0%', kill:'—', killSub:'no verifications', human:'0 gates', tokens:'3.9k in', tokSub:'0.4k out' }, other:true };
+    return [tonight, quiet('sweep-2026-09-12','Sep 12',2,48,2), intake, quiet('sweep-2026-09-11','Sep 11',5,0,2), quiet('sweep-2026-09-10','Sep 10',3,55,1)];
+  }
+  layout(N) { const W = 216, H = 88, GX = 76, GY = 26; const byL = {}; N.forEach(n => (byL[n.level] ??= []).push(n.id)); const rows = Math.max(...Object.values(byL).map(l => l.length)); const pos = {}; Object.entries(byL).forEach(([l, ids]) => { const total = ids.length * H + (ids.length - 1) * GY; const off = (rows * (H + GY) - total) / 2; ids.forEach((id, i) => pos[id] = { x: +l * (W + GX), y: off + i * (H + GY), w: W, h: H }); }); return pos; }
+  fit() { const svg = this._svgRef && this._svgRef.current; if (!svg) return; const r = svg.getBoundingClientRect(); const pos = Object.assign(this.layout(this.graph().N), this.state.pos); const ps = Object.values(pos); const minX = Math.min(...ps.map(p => p.x)), minY = Math.min(...ps.map(p => p.y)), maxX = Math.max(...ps.map(p => p.x + p.w)), maxY = Math.max(...ps.map(p => p.y + p.h)); const raw = Math.min((r.width - 60) / (maxX - minX), (r.height - 120) / (maxY - minY)); const k = Math.min(1.2, Math.max(0.6, raw));
+    if (raw >= 0.6) { this.setState({ view: { k, x: (r.width - (maxX - minX) * k) / 2 - minX * k, y: (r.height - (maxY - minY) * k) / 2 - minY * k + 20 } }); return; }
+    const run = this.runs(this.state).find(x => x.id === this.state.runId) || this.runs(this.state)[0];
+    const focusId = Object.keys(run.nodes).find(id => ['waiting_approval','running'].includes(run.nodes[id].status)) || 'triage';
+    const f = pos[focusId] || ps[0]; this.setState({ view: { k, x: r.width / 2 - (f.x + f.w / 2) * k, y: r.height / 2 - (f.y + f.h / 2) * k + 20 } }); }
+  zoom(f) { const svg = this._svgRef.current; const r = svg ? svg.getBoundingClientRect() : { width: 800, height: 400 }; const v = this.state.view; const mx = r.width / 2, my = r.height / 2; const k2 = Math.min(3, Math.max(0.2, v.k * f)); this.setState({ view: { x: mx - (mx - v.x) * (k2 / v.k), y: my - (my - v.y) * (k2 / v.k), k: k2 } }); }
+  renderVals() {
+    const s = this.state, p = this.props, h = React.createElement;
+    const dark = s.dark ?? (p.colorScheme === 'dark'); const dir = s.dir ?? (p.direction || 'ltr'); const rtl = dir === 'rtl'; const narrow = s.narrow;
+    const light = { bg:'#F7F4F3', surface:'#FFFFFF', ink:'#000F08', ink2:'#4A5551', line:'#DDD7D4', primary:'#2274A5', primaryInk:'#FFFFFF', critical:'#960200', ok:'#2E7D4F', tint:'#EFEBE9', faint:'#B9B3B0' };
+    const darkT = { bg:'#0A130E', surface:'#131F18', ink:'#F7F4F3', ink2:'#B9C3BD', line:'#2C3B33', primary:'#6FB3E3', primaryInk:'#000F08', critical:'#E4746A', ok:'#5DBB86', tint:'#1C2A22', faint:'#4A5A52' };
+    const t = Object.assign({}, dark ? darkT : light, { desk: narrow ? 'none' : 'flex', mob: narrow ? 'flex' : 'none' });
+    const amber = '#FCBA04', amberLine = dark ? '#FCBA04' : '#D9A004';
+    const KIND = { agent:{ c:t.primary, ink:t.primaryInk, label:'Agent' }, code:{ c:t.ink2, ink:t.surface, label:'Code' }, verify:{ c:t.ok, ink:'#fff', label:'Verify' }, gate:{ c:amber, ink:'#000F08', label:'Gate · human' } };
+    const STATUS = { completed:{ c:t.ok, label:'completed' }, running:{ c:t.primary, label:'running' }, failed:{ c:t.critical, label:'failed' }, waiting_approval:{ c:amberLine, label:'waiting approval' }, skipped:{ c:t.faint, label:'skipped' }, pending:{ c:t.faint, label:'pending' }, paused:{ c:amberLine, label:'paused' } };
+    const { N, E } = this.graph(); const runs = this.runs(s); const run = runs.find(r => r.id === s.runId) || runs[0];
+    const nodeOf = (id) => run.nodes[id] || { status: 'pending', out:'(no data for this graph)' };
+    const fmtMs = (ms) => ms == null ? '—' : ms < 1000 ? Math.round(ms) + ' ms' : ms < 60000 ? (ms / 1000).toFixed(1) + ' s' : ms < 3600000 ? Math.floor(ms / 60000) + ' m ' + Math.round((ms % 60000) / 1000) + ' s' : Math.floor(ms / 3600000) + ' h ' + Math.round((ms % 3600000) / 60000) + ' m';
+    const fmtUsd = (v) => v == null ? '—' : '$' + Number(v).toFixed(3);
+    const pos = Object.assign(this.layout(N), s.pos);
+    const critical = ['feeds_refresh','candidate_gen','matcher','triage','severity_check','household_decision','remedy','followup'];
+    const cp = new Set(s.showCritical ? critical : []);
+    const sel = s.sel; const rel = new Set(); if (sel) { rel.add(sel); const walk = (id, up) => E.forEach(e => { if (e.kind === 'repair') return; const nx = up ? (e.to === id ? e.from : null) : (e.from === id ? e.to : null); if (nx && !rel.has(nx)) { rel.add(nx); walk(nx, up); } }); walk(sel, true); walk(sel, false); }
+    const marker = (id, color) => h('marker', { id, viewBox:'0 0 10 10', refX:9, refY:5, markerWidth:8, markerHeight:8, orient:'auto-start-reverse' }, h('path', { d:'M0,0 L10,5 L0,10 z', fill:color }));
+    const edgeEls = []; E.forEach((e, i) => {
+      const f = pos[e.from], to = pos[e.to]; const back = e.kind === 'repair';
+      const d = back ? `M${f.x + f.w / 2},${f.y} C${f.x + f.w / 2},${f.y - 70} ${to.x + to.w / 2},${to.y - 70} ${to.x + to.w / 2},${to.y}` : `M${f.x + f.w},${f.y + f.h / 2} C${f.x + f.w + 44},${f.y + f.h / 2} ${to.x - 44},${to.y + to.h / 2} ${to.x},${to.y + to.h / 2}`;
+      const st1 = nodeOf(e.from).status, st2 = nodeOf(e.to).status; const active = st1 === 'completed' && ['completed','running','waiting_approval'].includes(st2);
+      const crit = cp.has(e.from) && cp.has(e.to) && !back; const hi = sel && (e.from === sel || e.to === sel); const dim = sel && !hi && !(rel.has(e.from) && rel.has(e.to));
+      let stroke = t.faint, dash = null, width = 1.6, mk = 'gArrow';
+      if (e.kind === 'gate') { stroke = amberLine; dash = '7 4'; mk = 'gArrowG'; } if (e.kind === 'repair') { stroke = t.critical; dash = '4 3'; mk = 'gArrowR'; } if (e.kind === 'route') { stroke = t.ink; mk = 'gArrowK'; }
+      if (active && e.kind === 'data') { stroke = t.ok; mk = 'gArrowOk'; } if (crit) { stroke = t.primary; width = 2.6; mk = 'gArrowC'; } if (hi) { stroke = t.primary; width = 2.8; mk = 'gArrowC'; }
+      edgeEls.push(h('path', { key:'h' + i, d, fill:'none', stroke:'transparent', strokeWidth:14, style:{ cursor:'pointer' }, onPointerEnter:(ev) => { const r = this._svgRef.current.getBoundingClientRect(); this.setState({ hover: { i, x: ev.clientX - r.left + 14, y: ev.clientY - r.top + 14 } }); }, onPointerMove:(ev) => { const r = this._svgRef.current.getBoundingClientRect(); this.setState({ hover: { i, x: ev.clientX - r.left + 14, y: ev.clientY - r.top + 14 } }); }, onPointerLeave:() => this.setState({ hover: null }) }));
+      edgeEls.push(h('path', { key:'e' + i, d, fill:'none', stroke, strokeWidth:width, strokeDasharray:dash, markerEnd:`url(#${mk})`, opacity: dim ? 0.18 : 1, style:{ pointerEvents:'none', transition:'stroke .15s, opacity .15s' } }));
+    });
+    const nodeEls = N.map(n => { const P = pos[n.id]; const nd = nodeOf(n.id); const k = KIND[n.kind]; const stt = STATUS[nd.status] || STATUS.pending; const isSel = sel === n.id; const dim = sel && !isSel && !rel.has(n.id);
+      const sub = [n.model ? n.model.replace('claude-', '') : n.kind, n.map ? 'map' : null, n.tools, n.side_effect ? 'side-effect' : null].filter(Boolean).join(' · ');
+      const badge = nd.badge || (nd.items ? nd.items + ' items' : '') || (nd.kill ? nd.kill : '') || (nd.attempts ? nd.attempts + ' attempts' : '');
+      const right = nd.status === 'completed' ? fmtMs(nd.dur) + (nd.cost ? ' · ' + fmtUsd(nd.cost) : '') : '';
+      const strokeC = isSel ? t.primary : nd.status === 'running' ? t.primary : nd.status === 'waiting_approval' ? amberLine : nd.status === 'failed' ? t.critical : cp.has(n.id) ? t.primary : t.line;
+      return h('g', { key:n.id, transform:`translate(${P.x},${P.y})`, style:{ cursor:'pointer', opacity: dim ? 0.3 : nd.status === 'skipped' ? 0.6 : 1, transition:'opacity .15s' }, tabIndex:0, role:'button', 'aria-label': `${n.id}, ${k.label}, ${stt.label}`, onKeyDown:(ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); this.setState({ sel: n.id }); } },
+        onPointerDown:(ev) => { ev.stopPropagation(); const start = Object.assign({}, P); let moved = false; this.drag(ev, (dx, dy, s0) => { if (Math.abs(dx) + Math.abs(dy) > 3) moved = true; const np = Object.assign({}, s0.pos); np[n.id] = Object.assign({}, start, { x: start.x + dx / s0.view.k, y: start.y + dy / s0.view.k }); this.setState({ pos: np }); }); const up = () => { window.removeEventListener('pointerup', up); if (!moved) { const wasOpen = !!this.state.sel; this.setState({ sel: n.id }); if (!wasOpen) setTimeout(() => this.fit(), 30); } }; window.addEventListener('pointerup', up); } },
+        h('rect', { width:P.w, height:P.h, rx:12, fill:t.surface, stroke:strokeC, strokeWidth: isSel ? 2.5 : (nd.status === 'running' || nd.status === 'waiting_approval' || nd.status === 'failed') ? 2 : 1.2, strokeDasharray: nd.status === 'running' ? '6 4' : nd.status === 'skipped' ? '3 3' : null, style: nd.status === 'running' ? { animation:'gDash 1.2s linear infinite' } : null }),
+        h('rect', { x: rtl ? P.w - 5 : 0, y:0, width:5, height:P.h, rx:2, fill:k.c }),
+        h('circle', { cx: rtl ? P.w - 20 : 20, cy:20, r:5, fill:stt.c, style: nd.status === 'running' || nd.status === 'waiting_approval' ? { animation:'gPulse 1.2s infinite' } : null }),
+        h('text', { x: rtl ? P.w - 32 : 32, y:24, textAnchor: rtl ? 'end' : 'start', fill:t.ink, style:{ fontFamily:"'Roboto Slab',serif", fontWeight:600, fontSize:13.5, pointerEvents:'none' } }, n.id),
+        h('text', { x: rtl ? 12 : P.w - 12, y:24, textAnchor: rtl ? 'start' : 'end', fill:k.c, style:{ fontFamily:'Habibi,serif', fontSize:10.5, letterSpacing:'.06em', textTransform:'uppercase', pointerEvents:'none' } }, k.label.toUpperCase()),
+        h('text', { x: rtl ? P.w - 16 : 16, y:45, textAnchor: rtl ? 'end' : 'start', fill:t.ink2, style:{ fontFamily:'Habibi,serif', fontSize:11, pointerEvents:'none' } }, sub),
+        h('text', { x: rtl ? P.w - 16 : 16, y:66, textAnchor: rtl ? 'end' : 'start', fill:t.ink, style:{ fontFamily:'ui-monospace,monospace', fontSize:11, pointerEvents:'none' } }, badge),
+        h('text', { x: rtl ? 12 : P.w - 12, y:80, textAnchor: rtl ? 'start' : 'end', fill:t.ink2, style:{ fontFamily:"'Roboto Slab',serif", fontSize:11, pointerEvents:'none' } }, right),
+        h('title', null, `${n.id} · ${k.label} · ${stt.label}`)
+      ); });
+    const svg = h('svg', { ref:this._svgRef, id:'flow-svg', role:'img', 'aria-label':'Graph of the ' + run.graph + ' run', style:{ width:'100%', height:'100%', display:'block', cursor:'grab', touchAction:'none' }, onPointerDown:(ev) => { if (ev.target.tagName === 'path') return; this.drag(ev, (dx, dy, s0) => this.setState({ view: { x: s0.view.x + dx, y: s0.view.y + dy, k: s0.view.k } })); } },
+      h('defs', null, marker('gArrow', t.faint), marker('gArrowC', t.primary), marker('gArrowG', amberLine), marker('gArrowR', t.critical), marker('gArrowK', t.ink), marker('gArrowOk', t.ok)),
+      h('g', { transform:`translate(${s.view.x},${s.view.y}) scale(${s.view.k})` }, edgeEls, nodeEls));
+    const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+    const colH = (typeof window !== 'undefined' ? window.innerHeight : 900) - 52 - (narrow ? 60 : 0);
+    const drawerMax = Math.max(120, Math.round(colH * 0.45));
+    const drawerDefault = Math.min(260, Math.round(colH * 0.32));
+    const drawerH = s.drawerOpen ? clamp(s.drawerH == null ? drawerDefault : s.drawerH, 120, drawerMax) : 52;
+    const sideW = clamp(s.sideW, 220, 420), inspW = clamp(s.inspW, 280, 600);
+    const svgEl = this._svgRef && this._svgRef.current; const canvasW = svgEl ? svgEl.getBoundingClientRect().width : 1200;
+    const canvasSmall = colH - drawerH < 300 || canvasW < 760;
+    const runList = runs.map(r => { const stt = STATUS[r.status] || STATUS.pending; const done = Object.values(r.nodes).filter(n => n.status === 'completed').length; const total = Object.keys(r.nodes).length || 4; return { id:r.id, graph:r.graph, label:r.label, status:stt.label, dot:stt.c, anim: r.status === 'running' ? 'gPulse 1.2s infinite' : 'none', live: r.status === 'running' || r.status === 'paused', active: r.id === run.id, bg: r.id === run.id ? t.tint : 'transparent', bar: r.id === run.id ? t.primary : 'transparent', done: r.other ? '4/4' : done + '/' + total, cost: fmtUsd(r.cost), select: () => { this.setState({ runId: r.id, sel: null }); setTimeout(() => this.fit(), 50); } }; });
+    const runStt = STATUS[run.status] || STATUS.pending;
+    const canApprove = run.id === 'sweep-2026-09-13' && nodeOf('household_decision').status === 'waiting_approval';
+    const tabsDef = [['events','Events'],['metrics','Metrics'],['decisions','Decisions'],['tasks','Tasks'],['spec','Spec'],['output','Output']];
+    const tabs = tabsDef.map(([id, label]) => ({ label, on: s.tab === id, pick: () => this.setState({ tab: id, drawerOpen: true }), bar: s.tab === id ? t.primary : 'transparent', color: s.tab === id ? t.primary : t.ink2, count: id === 'tasks' && canApprove ? 1 : false }));
+    const evColor = (type) => /kill|reject|failed/.test(type) ? t.critical : /finished|completed|approved/.test(type) ? t.ok : /waiting|paused|repair/.test(type) ? amberLine : t.ink2;
+    const events = run.events.map(([tm, type, node, text]) => ({ t: tm, type, node, text, color: evColor(type) }));
+    const m = run.metrics;
+    const metricCards = [{ label:'wall clock', value:m.wall, sub:'critical path ' + m.cp }, { label:'parallel speedup', value:m.speedup, sub:'sum of work ' + m.sum }, { label:'cost', value:m.cost, sub:m.calls }, { label:'peak width', value:m.width, sub:m.agentSec }, { label:'node failure rate', value:m.fail, sub:'retry rate ' + m.retry }, { label:'verifier kill rate', value:m.kill, sub:m.killSub }, { label:'human', value:m.human, sub:'approval latency is separated from execution' }, { label:'tokens', value:m.tokens, sub:m.tokSub }];
+    const nodeRows = N.map(n => { const nd = nodeOf(n.id); const stt = STATUS[nd.status] || STATUS.pending; return { id:n.id, kind:KIND[n.kind].label, status:stt.label, color:stt.c, dur: fmtMs(nd.dur), tokens: nd.tok ? nd.tok.toLocaleString() : '—', cost: fmtUsd(nd.cost), select: () => this.setState({ sel: n.id }) }; });
+    const selNode = N.find(n => n.id === sel); const selData = selNode ? nodeOf(sel) : null;
+    const selStt = selData ? (STATUS[selData.status] || STATUS.pending) : STATUS.pending;
+    const inputs = selNode ? E.filter(e => e.to === sel && e.kind !== 'repair').map(e => ({ from:e.from, data:e.data.join(' · ') })) : [];
+    const selView = selNode ? { id:selNode.id, kindLabel:KIND[selNode.kind].label, kindBg:KIND[selNode.kind].c, kindInk:KIND[selNode.kind].ink, status:selStt.label, color:selStt.c, sub:[selNode.model || (selNode.kind === 'code' ? 'deterministic' : ''), selNode.tools ? 'tools: ' + selNode.tools : null, selNode.map ? 'map over items' : null, selNode.side_effect ? 'side effect · at most once' : null].filter(Boolean).join(' · '), desc:selNode.desc,
+      kv:[{ k:'Duration', v:fmtMs(selData.dur) }, { k:'Tokens', v: selData.tok ? selData.tok.toLocaleString() : '0' }, { k:'Cost', v: fmtUsd(selData.cost || 0) }, { k:'Attempts', v: String(selData.attempts || (selData.status === 'completed' ? 1 : 0)) }, { k:'On critical path', v: critical.includes(sel) ? 'yes' : 'no' }],
+      isGateWaiting: selNode.kind === 'gate' && selData.status === 'waiting_approval', inputs, noInputs: inputs.length === 0, output: selData.out || '(no output)',
+      hasAttempts: !!selData.attempts, attempts: selData.attempts ? [{ n:1, text:'channel digest · killed by severity_check', dur:'2.1 s', color:t.critical }, { n:2, text:'channel sms_now · passed', dur:'0.8 s', color:t.ok }] : [] } : { id:'', kindLabel:'', kindBg:'transparent', kindInk:t.ink, status:'', color:'transparent', sub:'', desc:'', kv:[], isGateWaiting:false, inputs:[], noInputs:false, output:'', hasAttempts:false, attempts:[] };
+    const hover = s.hover != null && E[s.hover.i] ? { x: s.hover.x, y: s.hover.y, title: `${E[s.hover.i].from} → ${E[s.hover.i].to} · ${E[s.hover.i].kind}`, data: E[s.hover.i].data } : false;
+    const decide = (choice, by) => { const key = choice === 'approve' ? 'approved' : 'rejected'; const o = Object.assign({}, s[key]); o['sweep-2026-09-13'] = true; this.setState({ [key]: o, sel: null }); this.say(choice === 'approve' ? 'Approval written · graph resumed into remedy.' : 'Rejected · remedy skipped, match closed.'); };
+    return {
+      t, dir, isDark: dark, schemeLabel: dark ? 'Light' : 'Dark', dirLabel: rtl ? 'LTR' : 'RTL', toggleScheme: () => this.setState({ dark: !dark }), toggleDir: () => this.setState({ dir: rtl ? 'ltr' : 'rtl' }),
+      logo: h('span', { 'aria-hidden':true, style:{ position:'relative', width:28, height:28, borderRadius:'50%', background:'#F7F4F3', display:'inline-block', overflow:'hidden', flex:'0 0 auto' } }, h('span', { style:{ position:'absolute', inset:0, borderRadius:'50%', background:'#000F08' } }), h('span', { style:{ position:'absolute', width:9, height:9, borderRadius:'50%', background: canApprove ? '#E0463A' : s.running ? '#3FBF7F' : amber, left:9.5, top:9.5, boxShadow:'0 0 0 2px #000F08', animation: s.running ? 'gPulse 1.1s infinite' : 'none' } }), h('span', { style:{ position:'absolute', inset:0, borderRadius:'50%', background:'#F7F4F3', transformOrigin:'100% 50%', transform:'translateX(58%) rotate(28deg)' } })),
+      runNow: () => { if (s.running) return; this.setState({ running: true }); this.say('Manual sweep started · feeds_refresh running.'); setTimeout(() => { this.setState({ running: false }); this.say('Sweep finished · nothing new.'); }, 4000); },
+      svg, fit: () => this.fit(), zoomIn: () => this.zoom(1.25), zoomOut: () => this.zoom(0.8), autoLayout: () => { this.setState({ pos: {} }); setTimeout(() => this.fit(), 30); },
+      showCritical: s.showCritical, toggleCritical: () => this.setState({ showCritical: !s.showCritical }), cpBorder: s.showCritical ? t.primary : t.line, cpBg: s.showCritical ? t.primary : t.surface, cpInk: s.showCritical ? t.primaryInk : t.ink,
+      runList, runCount: runs.length, runId: run.id, pickRun: (e) => { this.setState({ runId: e.target.value, sel: null }); setTimeout(() => this.fit(), 50); },
+      run: { status: runStt.label, dot: runStt.c, cost: fmtUsd(run.cost), wall: fmtMs(run.wall_ms), canApprove, noTasks: !canApprove, output: run.output },
+      selectGate: () => this.setState({ sel: 'household_decision' }), waitFor: '7 h 41 m',
+      approve: () => decide('approve', 'dashboard'), reject: () => decide('reject', 'dashboard'),
+      sideW: sideW + 'px', sideWNum: sideW, dragSide: (e) => this.drag(e, (dx, dy, s0) => this.setState({ sideW: clamp(s0.sideW + (rtl ? -dx : dx), 220, 420) })), keySide: (e) => { const g = rtl ? 'ArrowLeft' : 'ArrowRight', sh = rtl ? 'ArrowRight' : 'ArrowLeft'; if (e.key === g || e.key === sh) { e.preventDefault(); this.setState({ sideW: clamp(sideW + (e.key === g ? 24 : -24), 220, 420) }); } },
+      inspW: narrow ? '100%' : inspW + 'px', inspWNum: inspW, inspDisplay: sel ? 'flex' : 'none', inspPos: narrow ? 'fixed' : 'relative', inspMaxH: narrow ? '70vh' : 'none', inspShadow: narrow ? '0 -8px 24px rgba(0,15,8,0.2)' : 'none', inspRadius: narrow ? '16px 16px 0 0' : '0',
+      dragInsp: (e) => { this.drag(e, (dx, dy, s0) => this.setState({ inspW: clamp(s0.inspW + (rtl ? dx : -dx), 280, 600) })); const up = () => { window.removeEventListener('pointerup', up); setTimeout(() => this.fit(), 30); }; window.addEventListener('pointerup', up); }, keyInsp: (e) => { const g = rtl ? 'ArrowRight' : 'ArrowLeft', sh = rtl ? 'ArrowLeft' : 'ArrowRight'; if (e.key === g || e.key === sh) { e.preventDefault(); this.setState({ inspW: clamp(inspW + (e.key === g ? 24 : -24), 280, 600) }); } },
+      closeInsp: () => { this.setState({ sel: null }); setTimeout(() => this.fit(), 30); },
+      drawerH: drawerH + 'px', drawerHNum: drawerH, dragDrawer: (e) => { this.drag(e, (dx, dy, s0) => this.setState({ drawerH: clamp((s0.drawerOpen ? (s0.drawerH == null ? drawerDefault : s0.drawerH) : 52) - dy, 120, drawerMax), drawerOpen: true })); const up = () => { window.removeEventListener('pointerup', up); setTimeout(() => this.fit(), 30); }; window.addEventListener('pointerup', up); }, keyDrawer: (e) => { if (e.key === 'ArrowUp' || e.key === 'ArrowDown') { e.preventDefault(); this.setState({ drawerH: clamp(drawerH + (e.key === 'ArrowUp' ? 24 : -24), 120, drawerMax), drawerOpen: true }); setTimeout(() => this.fit(), 30); } },
+      legendDisplay: canvasSmall || narrow ? 'none' : 'flex',
+      toggleDrawer: () => { this.setState({ drawerOpen: !s.drawerOpen }); setTimeout(() => this.fit(), 30); }, drawerChevron: s.drawerOpen ? '▾' : '▴', drawerToggleLabel: s.drawerOpen ? 'Collapse details' : 'Expand details',
+      tabs, tabEvents: s.tab === 'events', tabMetrics: s.tab === 'metrics', tabDecisions: s.tab === 'decisions', tabTasks: s.tab === 'tasks', tabSpec: s.tab === 'spec', tabOutput: s.tab === 'output',
+      events, metricCards, nodeRows, decisions: run.decisions, noDecisions: run.decisions.length === 0,
+      specYaml: SPEC_YAML, sel: selView, tip: hover,
+      copyPrompt: () => this.say('Last prompt copied (from the attempt artifact).'), copySpec: () => this.say('Node spec copied as YAML.'), fork: () => this.say('Forked · new run resets ' + (sel || 'node') + ' and everything downstream.'),
+      toast: s.toast,
+    };
+  }
+}
+const SPEC_YAML = `name: nightly-sweep
+budget: { max_cost_usd: 0.50, max_wall_s: 600, max_width: 4 }
+nodes:
+  - id: feeds_refresh
+    kind: code
+    run: feeds.refresh
+    input: { window: $input.window, vehicles: $input.vehicles }
+  - id: expiry_scan
+    kind: code
+    run: warranty.expiring
+    input: { within_days: 30, threshold: $prefs.value_threshold }
+  - id: candidate_gen
+    kind: code
+    run: matcher.candidates
+    input: { recalls: $nodes.feeds_refresh.new_recalls, items: $household.items }
+  - id: warranty
+    kind: agent
+    model: opus
+    map: $nodes.expiry_scan.items
+    schema: CoverageAssessment
+    prompt: prompts/warranty.md
+  - id: matcher
+    kind: agent
+    model: opus
+    map: $nodes.candidate_gen.candidates
+    schema: MatchVerdict
+    prompt: prompts/matcher.md
+  - id: triage
+    kind: agent
+    model: opus
+    tools: [memory.get_preferences, budget.check, draft_message]
+    input: { verdicts: $nodes.matcher.verdicts, certain: $nodes.candidate_gen.certain, questions: $nodes.warranty.questions }
+    schema: SurfacePlan
+  - id: severity_check
+    kind: verify
+    model: haiku
+    target: $nodes.triage.plan
+    repair: { node: triage, max_rounds: 1 }
+    routes:
+      - when: $nodes.triage.plan.channel == "sms_now"
+        to: household_decision
+      - when: $nodes.triage.plan.channel == "digest"
+        to: digest
+  - id: household_decision
+    kind: gate
+    show: [$nodes.triage.plan.message, $nodes.triage.plan.options]
+    channels: [sms, link, dashboard, mcp]
+    expires_h: 72
+  - id: digest
+    kind: code
+    run: digest.append
+  - id: remedy
+    kind: agent
+    model: opus
+    requires_gate: household_decision
+    side_effect: true
+    tools: [ses.send, s3.attach_receipt, log_action]
+    schema: ActionReport
+  - id: followup
+    kind: code
+    run: scheduler.followup
+    input: { action: $nodes.remedy.action, business_days: 10 }`;
+</script>
+</body>
+</html>

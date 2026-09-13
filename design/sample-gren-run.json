@@ -1,0 +1,2865 @@
+{
+ "summary": {
+  "id": "starter-fork-join-20260913-055526-6568f1",
+  "graph": "starter-fork-join",
+  "status": "paused",
+  "created_at": "2026-09-13T05:55:26.040Z",
+  "updated_at": "2026-09-13T05:55:27.319Z",
+  "cost_usd": 0.028867,
+  "bridge": "mock",
+  "parent": null,
+  "nodes": {
+   "total": 8,
+   "completed": 6,
+   "failed": 0,
+   "skipped": 0,
+   "waiting": 1
+  }
+ },
+ "run": {
+  "id": "starter-fork-join-20260913-055526-6568f1",
+  "graph": "starter-fork-join",
+  "spec_file": "X:\\Code\\26Projects\\gren\\graphs\\starter-fork-join.yaml",
+  "spec": {
+   "name": "starter-fork-join",
+   "version": 1,
+   "description": "Plan, fan out, reduce, verify, synthesize, approve - the fork/join shape with a verifier and a gate.",
+   "goal": "A short answer built only from findings that survived an adversarial check.",
+   "input_schema": {
+    "type": "object",
+    "required": [
+     "task"
+    ],
+    "properties": {
+     "task": {
+      "type": "string",
+      "minLength": 10
+     }
+    }
+   },
+   "output": {
+    "from": "answer"
+   },
+   "budget": {
+    "max_cost_usd": 1.0,
+    "max_wall_ms": 600000,
+    "max_width": 3
+   },
+   "defaults": {
+    "model": "haiku",
+    "effort": "low",
+    "failure": {
+     "retries": 1,
+     "timeout_ms": 180000
+    }
+   },
+   "nodes": [
+    {
+     "id": "plan",
+     "description": "Split the task into three independent angles.",
+     "side_effect": false,
+     "kind": "agent",
+     "model": "sonnet",
+     "prompt": "Task: {{ input.task }}\nSplit it into exactly 3 sub-questions that can be researched independently (different angles, no overlap).\n",
+     "output_schema": {
+      "type": "object",
+      "required": [
+       "subtasks"
+      ],
+      "additionalProperties": false,
+      "properties": {
+       "subtasks": {
+        "type": "array",
+        "minItems": 3,
+        "maxItems": 3,
+        "items": {
+         "type": "object",
+         "required": [
+          "name",
+          "question"
+         ],
+         "additionalProperties": false,
+         "properties": {
+          "name": {
+           "type": "string"
+          },
+          "question": {
+           "type": "string"
+          }
+         }
+        }
+       }
+      }
+     }
+    },
+    {
+     "id": "work",
+     "description": "One worker per sub-question, in parallel, each in its own context.",
+     "failure": {
+      "retries": 1,
+      "quorum": 0.67
+     },
+     "side_effect": false,
+     "map": "$nodes.plan.output.subtasks",
+     "max_width": 3,
+     "kind": "agent",
+     "prompt": "Sub-question \"{{ item.name }}\": {{ item.question }}\nYou have no tools. Answer from reasoning and well-known practice, not from invented sources.\nGive 2-4 findings. Each finding has one specific claim, the reasoning behind it (say \"reasoning:\" when it is not\na cited fact), and an honest confidence between 0 and 1. Use confidence 0.5 or lower for claims you cannot check.\n",
+     "output_schema": {
+      "type": "object",
+      "required": [
+       "findings"
+      ],
+      "additionalProperties": false,
+      "properties": {
+       "findings": {
+        "type": "array",
+        "minItems": 1,
+        "maxItems": 4,
+        "items": {
+         "type": "object",
+         "required": [
+          "claim",
+          "evidence",
+          "confidence"
+         ],
+         "additionalProperties": false,
+         "properties": {
+          "claim": {
+           "type": "string"
+          },
+          "evidence": {
+           "type": "string"
+          },
+          "confidence": {
+           "type": "number",
+           "minimum": 0,
+           "maximum": 1
+          }
+         }
+        }
+       }
+      }
+     }
+    },
+    {
+     "id": "flatten",
+     "input": {
+      "items": "$nodes.work.outputs"
+     },
+     "side_effect": false,
+     "kind": "code",
+     "fn": "flatten",
+     "args": {
+      "path": "findings"
+     }
+    },
+    {
+     "id": "dedupe",
+     "input": {
+      "items": "$nodes.flatten.output.items"
+     },
+     "side_effect": false,
+     "kind": "code",
+     "fn": "dedupe",
+     "args": {
+      "key": [
+       "claim"
+      ]
+     }
+    },
+    {
+     "id": "verify",
+     "description": "Adversarial check of each finding; killed findings never reach the answer.",
+     "side_effect": false,
+     "kind": "verify",
+     "target": "$nodes.dedupe.output.items",
+     "prompt": "Finding: {{ json item }}\nThe workers had no tools. A finding based on reasoning is acceptable when it says so.\nKill the finding only for these reasons: the claim contradicts its own evidence, the claim is too vague to act on,\nthe numbers do not add up, or the confidence is above 0.6 for a claim that is not checkable.\nOtherwise pass it. List any weaker problems as reasons but still pass.\n",
+     "kill_threshold": 0.8,
+     "min_survivors": 1
+    },
+    {
+     "id": "answer",
+     "description": "Synthesis from surviving findings only, with visible coverage.",
+     "input": {
+      "task": "$input.task",
+      "findings": "$nodes.verify.survivors",
+      "killed": "$nodes.verify.output.kill_rate",
+      "workers": "$nodes.work.count"
+     },
+     "side_effect": false,
+     "kind": "agent",
+     "model": "sonnet",
+     "effort": "medium",
+     "prompt": "Answer the task using ONLY the findings in <input>. Cite each finding you use by its claim text in `used_claims`.\nState what remains uncertain. Mention how many workers completed and the share of findings the verifier killed.\n",
+     "output_schema": {
+      "type": "object",
+      "required": [
+       "answer",
+       "used_claims",
+       "uncertainties"
+      ],
+      "additionalProperties": false,
+      "properties": {
+       "answer": {
+        "type": "string",
+        "minLength": 80
+       },
+       "used_claims": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       },
+       "uncertainties": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       }
+      }
+     }
+    },
+    {
+     "id": "approve",
+     "side_effect": false,
+     "kind": "gate",
+     "title": "Record this answer?",
+     "prompt": "Read the answer. Then approve or reject.",
+     "approve_effect": "The system records the answer (placeholder side effect).",
+     "reject_effect": "The system records nothing. The run stops.",
+     "show": {
+      "answer": "$nodes.answer.output",
+      "killed_findings": "$nodes.verify.killed"
+     }
+    },
+    {
+     "id": "record",
+     "input": {
+      "answer": "$nodes.answer.output"
+     },
+     "requires_gate": "approve",
+     "side_effect": true,
+     "kind": "code",
+     "fn": "record",
+     "args": {
+      "note": "replace with module: ./reducers/write-file.py or post-webhook.py"
+     }
+    }
+   ]
+  },
+  "input": {
+   "task": "Should a small team adopt graph orchestration for agents?"
+  },
+  "status": "paused",
+  "created_at": "2026-09-13T05:55:26.040Z",
+  "updated_at": "2026-09-13T05:55:27.319Z",
+  "bridge": "mock",
+  "budget": {
+   "max_cost_usd": 1.0,
+   "max_wall_ms": 600000,
+   "max_width": 3
+  },
+  "frozen": [
+   "gate_before_side_effect",
+   "spend_cap",
+   "no_unbounded_loops",
+   "structured_outputs_only",
+   "no_side_effect_retry_without_idempotency"
+  ],
+  "totals": {
+   "cost_usd": 0.028867,
+   "usage": {
+    "inputTokens": 7580,
+    "outputTokens": 3500,
+    "totalTokens": 11080,
+    "cacheReadInputTokens": 0,
+    "cacheWriteInputTokens": 0
+   },
+   "agent_calls": 14,
+   "retries": 0,
+   "wall_ms": 1270
+  },
+  "approvals": {},
+  "decisions": [
+   {
+    "at": "2026-09-13T05:55:27.096Z",
+    "node": "verify",
+    "kind": "verify",
+    "detail": "1/9 killed (threshold 0.8): #2 mock verifier: could not confirm the source supports the claim",
+    "state": null
+   }
+  ],
+  "parent": null,
+  "labels": null,
+  "context": null,
+  "engine": "strands",
+  "started_at": "2026-09-13T05:55:26.048Z"
+ },
+ "nodes": {
+  "plan": {
+   "id": "plan",
+   "kind": "agent",
+   "status": "completed",
+   "attempts": [
+    {
+     "attempt": 1,
+     "item": null,
+     "started_at": "2026-09-13T05:55:26.074Z",
+     "model": "claude-sonnet-5",
+     "bridge": "mock",
+     "status": "ok",
+     "usage": {
+      "inputTokens": 442,
+      "outputTokens": 250,
+      "totalTokens": 692,
+      "cacheReadInputTokens": 0,
+      "cacheWriteInputTokens": 0
+     },
+     "cost_usd": 0.003384,
+     "ended_at": "2026-09-13T05:55:26.170Z",
+     "duration_ms": 95,
+     "source": "mock",
+     "artifact": "artifacts/plan.a1.json"
+    }
+   ],
+   "cost_usd": 0.003384,
+   "usage": {
+    "inputTokens": 442,
+    "outputTokens": 250,
+    "totalTokens": 692,
+    "cacheReadInputTokens": 0,
+    "cacheWriteInputTokens": 0
+   },
+   "agent_calls": 1,
+   "retries": 0,
+   "repairs": 0,
+   "started_at": "2026-09-13T05:55:26.057Z",
+   "ended_at": "2026-09-13T05:55:26.186Z",
+   "error": null,
+   "output": {
+    "subtasks": [
+     {
+      "name": "mock name from plan: reducer verifier budget",
+      "question": "mock question from plan: latency graph reducer"
+     },
+     {
+      "name": "mock name from plan: market topology budget",
+      "question": "mock question from plan: reducer graph verifier"
+     },
+     {
+      "name": "mock name from plan: claim latency evidence",
+      "question": "mock question from plan: topology topology graph"
+     }
+    ]
+   },
+   "artifact": "artifacts/plan.a1.json",
+   "duration_ms": 128
+  },
+  "work": {
+   "id": "work",
+   "kind": "agent",
+   "status": "completed",
+   "attempts": [
+    {
+     "attempt": 1,
+     "item": 0,
+     "started_at": "2026-09-13T05:55:26.231Z",
+     "model": "claude-haiku-4-5",
+     "bridge": "mock",
+     "status": "ok",
+     "usage": {
+      "inputTokens": 507,
+      "outputTokens": 250,
+      "totalTokens": 757,
+      "cacheReadInputTokens": 0,
+      "cacheWriteInputTokens": 0
+     },
+     "cost_usd": 0.0017569999999999999,
+     "ended_at": "2026-09-13T05:55:26.368Z",
+     "duration_ms": 136,
+     "source": "mock",
+     "artifact": "artifacts/work.i0.a1.json"
+    },
+    {
+     "attempt": 1,
+     "item": 1,
+     "started_at": "2026-09-13T05:55:26.248Z",
+     "model": "claude-haiku-4-5",
+     "bridge": "mock",
+     "status": "ok",
+     "usage": {
+      "inputTokens": 507,
+      "outputTokens": 250,
+      "totalTokens": 757,
+      "cacheReadInputTokens": 0,
+      "cacheWriteInputTokens": 0
+     },
+     "cost_usd": 0.0017569999999999999,
+     "ended_at": "2026-09-13T05:55:26.339Z",
+     "duration_ms": 90,
+     "source": "mock",
+     "artifact": "artifacts/work.i1.a1.json"
+    },
+    {
+     "attempt": 1,
+     "item": 2,
+     "started_at": "2026-09-13T05:55:26.266Z",
+     "model": "claude-haiku-4-5",
+     "bridge": "mock",
+     "status": "ok",
+     "usage": {
+      "inputTokens": 507,
+      "outputTokens": 250,
+      "totalTokens": 757,
+      "cacheReadInputTokens": 0,
+      "cacheWriteInputTokens": 0
+     },
+     "cost_usd": 0.0017569999999999999,
+     "ended_at": "2026-09-13T05:55:26.398Z",
+     "duration_ms": 131,
+     "source": "mock",
+     "artifact": "artifacts/work.i2.a1.json"
+    }
+   ],
+   "cost_usd": 0.005271,
+   "usage": {
+    "inputTokens": 1521,
+    "outputTokens": 750,
+    "totalTokens": 2271,
+    "cacheReadInputTokens": 0,
+    "cacheWriteInputTokens": 0
+   },
+   "agent_calls": 3,
+   "retries": 0,
+   "repairs": 0,
+   "started_at": "2026-09-13T05:55:26.198Z",
+   "ended_at": "2026-09-13T05:55:26.437Z",
+   "error": null,
+   "items": [
+    {
+     "index": 0,
+     "status": "completed",
+     "attempts": 1,
+     "output": {
+      "findings": [
+       {
+        "claim": "mock claim from work: topology claim topology",
+        "evidence": "mock evidence from work: latency graph market",
+        "confidence": 0.224
+       },
+       {
+        "claim": "mock claim from work: claim topology signal",
+        "evidence": "mock evidence from work: graph topology evidence",
+        "confidence": 0.308
+       }
+      ]
+     },
+     "error": null,
+     "duration_ms": 161
+    },
+    {
+     "index": 1,
+     "status": "completed",
+     "attempts": 1,
+     "output": {
+      "findings": [
+       {
+        "claim": "mock claim from work: budget budget verifier",
+        "evidence": "mock evidence from work: budget reducer market",
+        "confidence": 0.35
+       },
+       {
+        "claim": "mock claim from work: signal claim verifier",
+        "evidence": "mock evidence from work: graph market topology",
+        "confidence": 0.064
+       },
+       {
+        "claim": "mock claim from work: graph reducer signal",
+        "evidence": "mock evidence from work: signal claim verifier",
+        "confidence": 0.729
+       },
+       {
+        "claim": "mock claim from work: signal evidence reducer",
+        "evidence": "mock evidence from work: market graph graph",
+        "confidence": 0.476
+       }
+      ]
+     },
+     "error": null,
+     "duration_ms": 114
+    },
+    {
+     "index": 2,
+     "status": "completed",
+     "attempts": 1,
+     "output": {
+      "findings": [
+       {
+        "claim": "mock claim from work: budget market market",
+        "evidence": "mock evidence from work: evidence market verifier",
+        "confidence": 0.593
+       },
+       {
+        "claim": "mock claim from work: graph latency latency",
+        "evidence": "mock evidence from work: graph budget latency",
+        "confidence": 0.241
+       },
+       {
+        "claim": "mock claim from work: budget market graph",
+        "evidence": "mock evidence from work: topology market reducer",
+        "confidence": 0.117
+       }
+      ]
+     },
+     "error": null,
+     "duration_ms": 155
+    }
+   ],
+   "outputs": [
+    {
+     "findings": [
+      {
+       "claim": "mock claim from work: topology claim topology",
+       "evidence": "mock evidence from work: latency graph market",
+       "confidence": 0.224
+      },
+      {
+       "claim": "mock claim from work: claim topology signal",
+       "evidence": "mock evidence from work: graph topology evidence",
+       "confidence": 0.308
+      }
+     ]
+    },
+    {
+     "findings": [
+      {
+       "claim": "mock claim from work: budget budget verifier",
+       "evidence": "mock evidence from work: budget reducer market",
+       "confidence": 0.35
+      },
+      {
+       "claim": "mock claim from work: signal claim verifier",
+       "evidence": "mock evidence from work: graph market topology",
+       "confidence": 0.064
+      },
+      {
+       "claim": "mock claim from work: graph reducer signal",
+       "evidence": "mock evidence from work: signal claim verifier",
+       "confidence": 0.729
+      },
+      {
+       "claim": "mock claim from work: signal evidence reducer",
+       "evidence": "mock evidence from work: market graph graph",
+       "confidence": 0.476
+      }
+     ]
+    },
+    {
+     "findings": [
+      {
+       "claim": "mock claim from work: budget market market",
+       "evidence": "mock evidence from work: evidence market verifier",
+       "confidence": 0.593
+      },
+      {
+       "claim": "mock claim from work: graph latency latency",
+       "evidence": "mock evidence from work: graph budget latency",
+       "confidence": 0.241
+      },
+      {
+       "claim": "mock claim from work: budget market graph",
+       "evidence": "mock evidence from work: topology market reducer",
+       "confidence": 0.117
+      }
+     ]
+    }
+   ],
+   "duration_ms": 239
+  },
+  "flatten": {
+   "id": "flatten",
+   "kind": "code",
+   "status": "completed",
+   "attempts": [
+    {
+     "attempt": 1,
+     "started_at": "2026-09-13T05:55:26.466Z",
+     "status": "ok",
+     "bridge": "code",
+     "ended_at": "2026-09-13T05:55:26.474Z"
+    }
+   ],
+   "cost_usd": 0.0,
+   "usage": {},
+   "agent_calls": 0,
+   "retries": 0,
+   "repairs": 0,
+   "started_at": "2026-09-13T05:55:26.451Z",
+   "ended_at": "2026-09-13T05:55:26.476Z",
+   "error": null,
+   "output": {
+    "items": [
+     {
+      "claim": "mock claim from work: topology claim topology",
+      "evidence": "mock evidence from work: latency graph market",
+      "confidence": 0.224
+     },
+     {
+      "claim": "mock claim from work: claim topology signal",
+      "evidence": "mock evidence from work: graph topology evidence",
+      "confidence": 0.308
+     },
+     {
+      "claim": "mock claim from work: budget budget verifier",
+      "evidence": "mock evidence from work: budget reducer market",
+      "confidence": 0.35
+     },
+     {
+      "claim": "mock claim from work: signal claim verifier",
+      "evidence": "mock evidence from work: graph market topology",
+      "confidence": 0.064
+     },
+     {
+      "claim": "mock claim from work: graph reducer signal",
+      "evidence": "mock evidence from work: signal claim verifier",
+      "confidence": 0.729
+     },
+     {
+      "claim": "mock claim from work: signal evidence reducer",
+      "evidence": "mock evidence from work: market graph graph",
+      "confidence": 0.476
+     },
+     {
+      "claim": "mock claim from work: budget market market",
+      "evidence": "mock evidence from work: evidence market verifier",
+      "confidence": 0.593
+     },
+     {
+      "claim": "mock claim from work: graph latency latency",
+      "evidence": "mock evidence from work: graph budget latency",
+      "confidence": 0.241
+     },
+     {
+      "claim": "mock claim from work: budget market graph",
+      "evidence": "mock evidence from work: topology market reducer",
+      "confidence": 0.117
+     }
+    ],
+    "_stats": {
+     "in": 3,
+     "out": 9
+    }
+   },
+   "artifact": "artifacts/flatten.a1.json",
+   "duration_ms": 25
+  },
+  "dedupe": {
+   "id": "dedupe",
+   "kind": "code",
+   "status": "completed",
+   "attempts": [
+    {
+     "attempt": 1,
+     "started_at": "2026-09-13T05:55:26.504Z",
+     "status": "ok",
+     "bridge": "code",
+     "ended_at": "2026-09-13T05:55:26.513Z"
+    }
+   ],
+   "cost_usd": 0.0,
+   "usage": {},
+   "agent_calls": 0,
+   "retries": 0,
+   "repairs": 0,
+   "started_at": "2026-09-13T05:55:26.490Z",
+   "ended_at": "2026-09-13T05:55:26.515Z",
+   "error": null,
+   "output": {
+    "items": [
+     {
+      "claim": "mock claim from work: topology claim topology",
+      "evidence": "mock evidence from work: latency graph market",
+      "confidence": 0.224
+     },
+     {
+      "claim": "mock claim from work: claim topology signal",
+      "evidence": "mock evidence from work: graph topology evidence",
+      "confidence": 0.308
+     },
+     {
+      "claim": "mock claim from work: budget budget verifier",
+      "evidence": "mock evidence from work: budget reducer market",
+      "confidence": 0.35
+     },
+     {
+      "claim": "mock claim from work: signal claim verifier",
+      "evidence": "mock evidence from work: graph market topology",
+      "confidence": 0.064
+     },
+     {
+      "claim": "mock claim from work: graph reducer signal",
+      "evidence": "mock evidence from work: signal claim verifier",
+      "confidence": 0.729
+     },
+     {
+      "claim": "mock claim from work: signal evidence reducer",
+      "evidence": "mock evidence from work: market graph graph",
+      "confidence": 0.476
+     },
+     {
+      "claim": "mock claim from work: budget market market",
+      "evidence": "mock evidence from work: evidence market verifier",
+      "confidence": 0.593
+     },
+     {
+      "claim": "mock claim from work: graph latency latency",
+      "evidence": "mock evidence from work: graph budget latency",
+      "confidence": 0.241
+     },
+     {
+      "claim": "mock claim from work: budget market graph",
+      "evidence": "mock evidence from work: topology market reducer",
+      "confidence": 0.117
+     }
+    ],
+    "removed": 0,
+    "_stats": {
+     "in": 9,
+     "out": 9,
+     "compression": 0.0
+    }
+   },
+   "artifact": "artifacts/dedupe.a1.json",
+   "duration_ms": 25
+  },
+  "verify": {
+   "id": "verify",
+   "kind": "verify",
+   "status": "completed",
+   "attempts": [
+    {
+     "attempt": 1,
+     "item": 0,
+     "started_at": "2026-09-13T05:55:26.563Z",
+     "model": "claude-haiku-4-5",
+     "bridge": "mock",
+     "status": "ok",
+     "usage": {
+      "inputTokens": 530,
+      "outputTokens": 250,
+      "totalTokens": 780,
+      "cacheReadInputTokens": 0,
+      "cacheWriteInputTokens": 0
+     },
+     "cost_usd": 0.00178,
+     "ended_at": "2026-09-13T05:55:26.645Z",
+     "duration_ms": 81,
+     "source": "mock",
+     "artifact": "artifacts/verify.i0.a1.json"
+    },
+    {
+     "attempt": 1,
+     "item": 1,
+     "started_at": "2026-09-13T05:55:26.583Z",
+     "model": "claude-haiku-4-5",
+     "bridge": "mock",
+     "status": "ok",
+     "usage": {
+      "inputTokens": 531,
+      "outputTokens": 250,
+      "totalTokens": 781,
+      "cacheReadInputTokens": 0,
+      "cacheWriteInputTokens": 0
+     },
+     "cost_usd": 0.001781,
+     "ended_at": "2026-09-13T05:55:26.698Z",
+     "duration_ms": 114,
+     "source": "mock",
+     "artifact": "artifacts/verify.i1.a1.json"
+    },
+    {
+     "attempt": 1,
+     "item": 2,
+     "started_at": "2026-09-13T05:55:26.602Z",
+     "model": "claude-haiku-4-5",
+     "bridge": "mock",
+     "status": "ok",
+     "usage": {
+      "inputTokens": 530,
+      "outputTokens": 250,
+      "totalTokens": 780,
+      "cacheReadInputTokens": 0,
+      "cacheWriteInputTokens": 0
+     },
+     "cost_usd": 0.00178,
+     "ended_at": "2026-09-13T05:55:26.749Z",
+     "duration_ms": 147,
+     "source": "mock",
+     "artifact": "artifacts/verify.i2.a1.json"
+    },
+    {
+     "attempt": 1,
+     "item": 3,
+     "started_at": "2026-09-13T05:55:26.687Z",
+     "model": "claude-haiku-4-5",
+     "bridge": "mock",
+     "status": "ok",
+     "usage": {
+      "inputTokens": 530,
+      "outputTokens": 250,
+      "totalTokens": 780,
+      "cacheReadInputTokens": 0,
+      "cacheWriteInputTokens": 0
+     },
+     "cost_usd": 0.00178,
+     "ended_at": "2026-09-13T05:55:26.800Z",
+     "duration_ms": 112,
+     "source": "mock",
+     "artifact": "artifacts/verify.i3.a1.json"
+    },
+    {
+     "attempt": 1,
+     "item": 4,
+     "started_at": "2026-09-13T05:55:26.740Z",
+     "model": "claude-haiku-4-5",
+     "bridge": "mock",
+     "status": "ok",
+     "usage": {
+      "inputTokens": 530,
+      "outputTokens": 250,
+      "totalTokens": 780,
+      "cacheReadInputTokens": 0,
+      "cacheWriteInputTokens": 0
+     },
+     "cost_usd": 0.00178,
+     "ended_at": "2026-09-13T05:55:26.854Z",
+     "duration_ms": 114,
+     "source": "mock",
+     "artifact": "artifacts/verify.i4.a1.json"
+    },
+    {
+     "attempt": 1,
+     "item": 5,
+     "started_at": "2026-09-13T05:55:26.791Z",
+     "model": "claude-haiku-4-5",
+     "bridge": "mock",
+     "status": "ok",
+     "usage": {
+      "inputTokens": 530,
+      "outputTokens": 250,
+      "totalTokens": 780,
+      "cacheReadInputTokens": 0,
+      "cacheWriteInputTokens": 0
+     },
+     "cost_usd": 0.00178,
+     "ended_at": "2026-09-13T05:55:26.913Z",
+     "duration_ms": 121,
+     "source": "mock",
+     "artifact": "artifacts/verify.i5.a1.json"
+    },
+    {
+     "attempt": 1,
+     "item": 6,
+     "started_at": "2026-09-13T05:55:26.844Z",
+     "model": "claude-haiku-4-5",
+     "bridge": "mock",
+     "status": "ok",
+     "usage": {
+      "inputTokens": 531,
+      "outputTokens": 250,
+      "totalTokens": 781,
+      "cacheReadInputTokens": 0,
+      "cacheWriteInputTokens": 0
+     },
+     "cost_usd": 0.001781,
+     "ended_at": "2026-09-13T05:55:26.964Z",
+     "duration_ms": 120,
+     "source": "mock",
+     "artifact": "artifacts/verify.i6.a1.json"
+    },
+    {
+     "attempt": 1,
+     "item": 7,
+     "started_at": "2026-09-13T05:55:26.903Z",
+     "model": "claude-haiku-4-5",
+     "bridge": "mock",
+     "status": "ok",
+     "usage": {
+      "inputTokens": 530,
+      "outputTokens": 250,
+      "totalTokens": 780,
+      "cacheReadInputTokens": 0,
+      "cacheWriteInputTokens": 0
+     },
+     "cost_usd": 0.00178,
+     "ended_at": "2026-09-13T05:55:26.997Z",
+     "duration_ms": 93,
+     "source": "mock",
+     "artifact": "artifacts/verify.i7.a1.json"
+    },
+    {
+     "attempt": 1,
+     "item": 8,
+     "started_at": "2026-09-13T05:55:26.955Z",
+     "model": "claude-haiku-4-5",
+     "bridge": "mock",
+     "status": "ok",
+     "usage": {
+      "inputTokens": 530,
+      "outputTokens": 250,
+      "totalTokens": 780,
+      "cacheReadInputTokens": 0,
+      "cacheWriteInputTokens": 0
+     },
+     "cost_usd": 0.00178,
+     "ended_at": "2026-09-13T05:55:27.044Z",
+     "duration_ms": 89,
+     "source": "mock",
+     "artifact": "artifacts/verify.i8.a1.json"
+    }
+   ],
+   "cost_usd": 0.016022,
+   "usage": {
+    "inputTokens": 4772,
+    "outputTokens": 2250,
+    "totalTokens": 7022,
+    "cacheReadInputTokens": 0,
+    "cacheWriteInputTokens": 0
+   },
+   "agent_calls": 9,
+   "retries": 0,
+   "repairs": 0,
+   "started_at": "2026-09-13T05:55:26.530Z",
+   "ended_at": "2026-09-13T05:55:27.105Z",
+   "error": null,
+   "items": [
+    {
+     "index": 0,
+     "status": "completed",
+     "attempts": 1,
+     "output": {
+      "verdict": "pass",
+      "reasons": [],
+      "confidence": 0.349
+     },
+     "error": null,
+     "duration_ms": 109
+    },
+    {
+     "index": 1,
+     "status": "completed",
+     "attempts": 1,
+     "output": {
+      "verdict": "pass",
+      "reasons": [],
+      "confidence": 0.424
+     },
+     "error": null,
+     "duration_ms": 141
+    },
+    {
+     "index": 2,
+     "status": "completed",
+     "attempts": 1,
+     "output": {
+      "verdict": "kill",
+      "reasons": [
+       "mock verifier: could not confirm the source supports the claim"
+      ],
+      "confidence": 0.923
+     },
+     "error": null,
+     "duration_ms": 174
+    },
+    {
+     "index": 3,
+     "status": "completed",
+     "attempts": 1,
+     "output": {
+      "verdict": "pass",
+      "reasons": [],
+      "confidence": 0.396
+     },
+     "error": null,
+     "duration_ms": 139
+    },
+    {
+     "index": 4,
+     "status": "completed",
+     "attempts": 1,
+     "output": {
+      "verdict": "pass",
+      "reasons": [],
+      "confidence": 0.414
+     },
+     "error": null,
+     "duration_ms": 143
+    },
+    {
+     "index": 5,
+     "status": "completed",
+     "attempts": 1,
+     "output": {
+      "verdict": "kill",
+      "reasons": [
+       "mock verifier: could not confirm the source supports the claim"
+      ],
+      "confidence": 0.728
+     },
+     "error": null,
+     "duration_ms": 147
+    },
+    {
+     "index": 6,
+     "status": "completed",
+     "attempts": 1,
+     "output": {
+      "verdict": "pass",
+      "reasons": [],
+      "confidence": 0.352
+     },
+     "error": null,
+     "duration_ms": 147
+    },
+    {
+     "index": 7,
+     "status": "completed",
+     "attempts": 1,
+     "output": {
+      "verdict": "pass",
+      "reasons": [],
+      "confidence": 0.248
+     },
+     "error": null,
+     "duration_ms": 120
+    },
+    {
+     "index": 8,
+     "status": "completed",
+     "attempts": 1,
+     "output": {
+      "verdict": "pass",
+      "reasons": [],
+      "confidence": 0.395
+     },
+     "error": null,
+     "duration_ms": 114
+    }
+   ],
+   "outputs": [
+    {
+     "verdict": "pass",
+     "reasons": [],
+     "confidence": 0.349
+    },
+    {
+     "verdict": "pass",
+     "reasons": [],
+     "confidence": 0.424
+    },
+    {
+     "verdict": "kill",
+     "reasons": [
+      "mock verifier: could not confirm the source supports the claim"
+     ],
+     "confidence": 0.923
+    },
+    {
+     "verdict": "pass",
+     "reasons": [],
+     "confidence": 0.396
+    },
+    {
+     "verdict": "pass",
+     "reasons": [],
+     "confidence": 0.414
+    },
+    {
+     "verdict": "kill",
+     "reasons": [
+      "mock verifier: could not confirm the source supports the claim"
+     ],
+     "confidence": 0.728
+    },
+    {
+     "verdict": "pass",
+     "reasons": [],
+     "confidence": 0.352
+    },
+    {
+     "verdict": "pass",
+     "reasons": [],
+     "confidence": 0.248
+    },
+    {
+     "verdict": "pass",
+     "reasons": [],
+     "confidence": 0.395
+    }
+   ],
+   "verify": {
+    "total": 9,
+    "survivors": [
+     {
+      "claim": "mock claim from work: topology claim topology",
+      "evidence": "mock evidence from work: latency graph market",
+      "confidence": 0.224
+     },
+     {
+      "claim": "mock claim from work: claim topology signal",
+      "evidence": "mock evidence from work: graph topology evidence",
+      "confidence": 0.308
+     },
+     {
+      "claim": "mock claim from work: signal claim verifier",
+      "evidence": "mock evidence from work: graph market topology",
+      "confidence": 0.064
+     },
+     {
+      "claim": "mock claim from work: graph reducer signal",
+      "evidence": "mock evidence from work: signal claim verifier",
+      "confidence": 0.729
+     },
+     {
+      "claim": "mock claim from work: signal evidence reducer",
+      "evidence": "mock evidence from work: market graph graph",
+      "confidence": 0.476
+     },
+     {
+      "claim": "mock claim from work: budget market market",
+      "evidence": "mock evidence from work: evidence market verifier",
+      "confidence": 0.593
+     },
+     {
+      "claim": "mock claim from work: graph latency latency",
+      "evidence": "mock evidence from work: graph budget latency",
+      "confidence": 0.241
+     },
+     {
+      "claim": "mock claim from work: budget market graph",
+      "evidence": "mock evidence from work: topology market reducer",
+      "confidence": 0.117
+     }
+    ],
+    "killed": [
+     {
+      "index": 2,
+      "item": {
+       "claim": "mock claim from work: budget budget verifier",
+       "evidence": "mock evidence from work: budget reducer market",
+       "confidence": 0.35
+      },
+      "reasons": [
+       "mock verifier: could not confirm the source supports the claim"
+      ],
+      "confidence": 0.923
+     }
+    ],
+    "kill_rate": 0.111,
+    "repair_round": 0
+   },
+   "output": {
+    "total": 9,
+    "survivors": [
+     {
+      "claim": "mock claim from work: topology claim topology",
+      "evidence": "mock evidence from work: latency graph market",
+      "confidence": 0.224
+     },
+     {
+      "claim": "mock claim from work: claim topology signal",
+      "evidence": "mock evidence from work: graph topology evidence",
+      "confidence": 0.308
+     },
+     {
+      "claim": "mock claim from work: signal claim verifier",
+      "evidence": "mock evidence from work: graph market topology",
+      "confidence": 0.064
+     },
+     {
+      "claim": "mock claim from work: graph reducer signal",
+      "evidence": "mock evidence from work: signal claim verifier",
+      "confidence": 0.729
+     },
+     {
+      "claim": "mock claim from work: signal evidence reducer",
+      "evidence": "mock evidence from work: market graph graph",
+      "confidence": 0.476
+     },
+     {
+      "claim": "mock claim from work: budget market market",
+      "evidence": "mock evidence from work: evidence market verifier",
+      "confidence": 0.593
+     },
+     {
+      "claim": "mock claim from work: graph latency latency",
+      "evidence": "mock evidence from work: graph budget latency",
+      "confidence": 0.241
+     },
+     {
+      "claim": "mock claim from work: budget market graph",
+      "evidence": "mock evidence from work: topology market reducer",
+      "confidence": 0.117
+     }
+    ],
+    "killed": [
+     {
+      "index": 2,
+      "item": {
+       "claim": "mock claim from work: budget budget verifier",
+       "evidence": "mock evidence from work: budget reducer market",
+       "confidence": 0.35
+      },
+      "reasons": [
+       "mock verifier: could not confirm the source supports the claim"
+      ],
+      "confidence": 0.923
+     }
+    ],
+    "kill_rate": 0.111,
+    "verified": 9
+   },
+   "duration_ms": 575
+  },
+  "answer": {
+   "id": "answer",
+   "kind": "agent",
+   "status": "completed",
+   "attempts": [
+    {
+     "attempt": 1,
+     "item": null,
+     "started_at": "2026-09-13T05:55:27.139Z",
+     "model": "claude-sonnet-5",
+     "bridge": "mock",
+     "status": "ok",
+     "usage": {
+      "inputTokens": 845,
+      "outputTokens": 250,
+      "totalTokens": 1095,
+      "cacheReadInputTokens": 0,
+      "cacheWriteInputTokens": 0
+     },
+     "cost_usd": 0.00419,
+     "ended_at": "2026-09-13T05:55:27.246Z",
+     "duration_ms": 107,
+     "source": "mock",
+     "artifact": "artifacts/answer.a1.json"
+    }
+   ],
+   "cost_usd": 0.00419,
+   "usage": {
+    "inputTokens": 845,
+    "outputTokens": 250,
+    "totalTokens": 1095,
+    "cacheReadInputTokens": 0,
+    "cacheWriteInputTokens": 0
+   },
+   "agent_calls": 1,
+   "retries": 0,
+   "repairs": 0,
+   "started_at": "2026-09-13T05:55:27.122Z",
+   "ended_at": "2026-09-13T05:55:27.265Z",
+   "error": null,
+   "output": {
+    "answer": "mock answer from answer: claim signal verifier market graph latency verifier evidence claim",
+    "used_claims": [
+     "mock used_claims[0] from answer: claim evidence claim"
+    ],
+    "uncertainties": [
+     "mock uncertainties[0] from answer: graph claim topology"
+    ]
+   },
+   "artifact": "artifacts/answer.a1.json",
+   "duration_ms": 142
+  },
+  "approve": {
+   "id": "approve",
+   "kind": "gate",
+   "status": "waiting_approval",
+   "attempts": [],
+   "cost_usd": 0.0,
+   "usage": {},
+   "agent_calls": 0,
+   "retries": 0,
+   "repairs": 0,
+   "gate": {
+    "requested_at": "2026-09-13T05:55:27.282Z"
+   },
+   "output": null,
+   "artifact": "artifacts/approve.gate.json"
+  },
+  "record": {
+   "id": "record",
+   "kind": "code",
+   "status": "pending",
+   "attempts": [],
+   "cost_usd": 0.0,
+   "usage": {},
+   "agent_calls": 0,
+   "retries": 0,
+   "repairs": 0
+  }
+ },
+ "analysis": {
+  "name": "starter-fork-join",
+  "nodes": {
+   "plan": {
+    "id": "plan",
+    "kind": "agent",
+    "model": "claude-sonnet-5",
+    "deps": [],
+    "dependents": [
+     "work"
+    ],
+    "level": 0,
+    "est_ms": 15000.0,
+    "est_cost_usd": 0.009666,
+    "fan_out": false,
+    "on_critical_path": true
+   },
+   "work": {
+    "id": "work",
+    "kind": "agent",
+    "model": "claude-haiku-4-5",
+    "deps": [
+     "plan"
+    ],
+    "dependents": [
+     "answer",
+     "flatten"
+    ],
+    "level": 1,
+    "est_ms": 6000.0,
+    "est_cost_usd": 0.004893,
+    "fan_out": true,
+    "on_critical_path": true
+   },
+   "flatten": {
+    "id": "flatten",
+    "kind": "code",
+    "model": null,
+    "deps": [
+     "work"
+    ],
+    "dependents": [
+     "dedupe"
+    ],
+    "level": 2,
+    "est_ms": 200.0,
+    "est_cost_usd": 0.0,
+    "fan_out": false,
+    "on_critical_path": true
+   },
+   "dedupe": {
+    "id": "dedupe",
+    "kind": "code",
+    "model": null,
+    "deps": [
+     "flatten"
+    ],
+    "dependents": [
+     "verify"
+    ],
+    "level": 3,
+    "est_ms": 200.0,
+    "est_cost_usd": 0.0,
+    "fan_out": false,
+    "on_critical_path": true
+   },
+   "verify": {
+    "id": "verify",
+    "kind": "verify",
+    "model": "claude-haiku-4-5",
+    "deps": [
+     "dedupe"
+    ],
+    "dependents": [
+     "answer",
+     "approve"
+    ],
+    "level": 4,
+    "est_ms": 6000.0,
+    "est_cost_usd": 0.004898,
+    "fan_out": false,
+    "on_critical_path": true
+   },
+   "answer": {
+    "id": "answer",
+    "kind": "agent",
+    "model": "claude-sonnet-5",
+    "deps": [
+     "verify",
+     "work"
+    ],
+    "dependents": [
+     "approve",
+     "record"
+    ],
+    "level": 5,
+    "est_ms": 15000.0,
+    "est_cost_usd": 0.009782,
+    "fan_out": false,
+    "on_critical_path": true
+   },
+   "approve": {
+    "id": "approve",
+    "kind": "gate",
+    "model": null,
+    "deps": [
+     "answer",
+     "verify"
+    ],
+    "dependents": [
+     "record"
+    ],
+    "level": 6,
+    "est_ms": 0.0,
+    "est_cost_usd": 0.0,
+    "fan_out": false,
+    "on_critical_path": false
+   },
+   "record": {
+    "id": "record",
+    "kind": "code",
+    "model": null,
+    "deps": [
+     "answer",
+     "approve"
+    ],
+    "dependents": [],
+    "level": 7,
+    "est_ms": 200.0,
+    "est_cost_usd": 0.0,
+    "fan_out": false,
+    "on_critical_path": true
+   }
+  },
+  "edges": [
+   {
+    "from": "plan",
+    "to": "work",
+    "kind": "data",
+    "data": [
+     "$nodes.plan.output.subtasks"
+    ]
+   },
+   {
+    "from": "work",
+    "to": "flatten",
+    "kind": "data",
+    "data": [
+     "$nodes.work.outputs"
+    ]
+   },
+   {
+    "from": "flatten",
+    "to": "dedupe",
+    "kind": "data",
+    "data": [
+     "$nodes.flatten.output.items"
+    ]
+   },
+   {
+    "from": "dedupe",
+    "to": "verify",
+    "kind": "data",
+    "data": [
+     "$nodes.dedupe.output.items"
+    ]
+   },
+   {
+    "from": "verify",
+    "to": "answer",
+    "kind": "data",
+    "data": [
+     "$nodes.verify.output.kill_rate",
+     "$nodes.verify.survivors"
+    ]
+   },
+   {
+    "from": "work",
+    "to": "answer",
+    "kind": "data",
+    "data": [
+     "$nodes.work.count"
+    ]
+   },
+   {
+    "from": "answer",
+    "to": "approve",
+    "kind": "data",
+    "data": [
+     "$nodes.answer.output"
+    ]
+   },
+   {
+    "from": "verify",
+    "to": "approve",
+    "kind": "data",
+    "data": [
+     "$nodes.verify.killed"
+    ]
+   },
+   {
+    "from": "answer",
+    "to": "record",
+    "kind": "data",
+    "data": [
+     "$nodes.answer.output"
+    ]
+   },
+   {
+    "from": "approve",
+    "to": "record",
+    "kind": "gate",
+    "data": [
+     "human approval"
+    ]
+   }
+  ],
+  "order": [
+   "plan",
+   "work",
+   "flatten",
+   "dedupe",
+   "verify",
+   "answer",
+   "approve",
+   "record"
+  ],
+  "levels": [
+   [
+    "plan"
+   ],
+   [
+    "work"
+   ],
+   [
+    "flatten"
+   ],
+   [
+    "dedupe"
+   ],
+   [
+    "verify"
+   ],
+   [
+    "answer"
+   ],
+   [
+    "approve"
+   ],
+   [
+    "record"
+   ]
+  ],
+  "critical_path": {
+   "nodes": [
+    "plan",
+    "work",
+    "flatten",
+    "dedupe",
+    "verify",
+    "answer",
+    "record"
+   ],
+   "est_ms": 42600.0
+  },
+  "sum_of_work_ms": 54600.0,
+  "parallel_speedup": 1.28,
+  "max_width": 3,
+  "est_cost_usd": {
+   "min": 0.0341,
+   "max": 0.078
+  },
+  "frozen": [
+   "gate_before_side_effect",
+   "spend_cap",
+   "no_unbounded_loops",
+   "structured_outputs_only",
+   "no_side_effect_retry_without_idempotency"
+  ],
+  "findings": [
+   {
+    "level": "info",
+    "code": "map_blocks",
+    "node": "work",
+    "message": "fan-out node \"work\" blocks the run if quorum is not met (on_failure: block)."
+   }
+  ],
+  "checklist": [
+   {
+    "item": "Every edge carries real data or authority",
+    "ok": true
+   },
+   {
+    "item": "Every node has one bounded job with structured output",
+    "ok": true
+   },
+   {
+    "item": "Independent nodes can run in parallel",
+    "ok": true
+   },
+   {
+    "item": "Joins are placed only where the full set is required",
+    "ok": null,
+    "note": "review manually"
+   },
+   {
+    "item": "Important results are verified before moving downstream",
+    "ok": true,
+    "note": null
+   },
+   {
+    "item": "Failures can be retried without duplicating side effects",
+    "ok": true
+   },
+   {
+    "item": "The graph can resume from a checkpoint",
+    "ok": true,
+    "note": "Strands session state + gren checkpoints after every node"
+   },
+   {
+    "item": "Every cycle has a hard stop and budget",
+    "ok": null
+   },
+   {
+    "item": "A human can interrupt high-risk paths",
+    "ok": true
+   },
+   {
+    "item": "Every route selection is explainable",
+    "ok": true,
+    "note": "router decisions are logged with the state that produced them"
+   },
+   {
+    "item": "Spend cap set",
+    "ok": true
+   },
+   {
+    "item": "Width budget set",
+    "ok": true
+   }
+  ],
+  "ok": true
+ },
+ "metrics": {
+  "run_id": "starter-fork-join-20260913-055526-6568f1",
+  "graph": "starter-fork-join",
+  "status": "paused",
+  "wall_ms": 1270.0,
+  "human_wait_ms": 0.0,
+  "active_ms": 1270.0,
+  "nested_runs": 0,
+  "cost_usd": 0.02887,
+  "agent_calls": 14,
+  "tokens": {
+   "input": 7580,
+   "output": 3500,
+   "cache_read": 0
+  },
+  "critical_path": {
+   "nodes": [
+    "plan",
+    "work",
+    "flatten",
+    "dedupe",
+    "verify",
+    "answer"
+   ],
+   "ms": 1134.0
+  },
+  "sum_of_node_ms": 1984.0,
+  "parallel_speedup": 1.75,
+  "width": {
+   "peak": 3,
+   "budget": 3,
+   "agent_seconds": 1.6
+  },
+  "node_failure_rate": 0.0,
+  "retry_rate": 0.0,
+  "verifier": {
+   "candidates": 9,
+   "killed": 1,
+   "kill_rate": 0.111,
+   "per_verifier": [
+    {
+     "id": "verify",
+     "candidates": 9,
+     "killed": 1,
+     "kill_rate": 0.111,
+     "repair_rounds": 0
+    }
+   ]
+  },
+  "fan_out": {
+   "workers": 3,
+   "failed_workers": 0,
+   "unique_per_worker": null
+  },
+  "compression": {
+   "records_in": 9,
+   "records_out": 9,
+   "ratio": 1.0,
+   "per_reducer": [
+    {
+     "id": "flatten",
+     "in": 3,
+     "out": 9
+    },
+    {
+     "id": "dedupe",
+     "in": 9,
+     "out": 9
+    }
+   ]
+  },
+  "human": {
+   "gates": 1,
+   "approved": 0,
+   "rejected": 0,
+   "auto": 0,
+   "manual_tasks": 0,
+   "orchestrator_tasks": 0,
+   "cost_unknown_calls": 0,
+   "intervention_rate": 0.0
+  },
+  "cost_by_model": {
+   "claude-sonnet-5": 0.00757,
+   "claude-haiku-4-5": 0.02129
+  },
+  "nodes": [
+   {
+    "id": "plan",
+    "kind": "agent",
+    "status": "completed",
+    "duration_ms": 128.0,
+    "cost_usd": 0.00338,
+    "attempts": 1,
+    "failed_attempts": 0,
+    "retries": 0,
+    "repairs": 0,
+    "on_critical_path": true
+   },
+   {
+    "id": "work",
+    "kind": "agent",
+    "status": "completed",
+    "duration_ms": 239.0,
+    "cost_usd": 0.00527,
+    "attempts": 3,
+    "failed_attempts": 0,
+    "retries": 0,
+    "repairs": 0,
+    "on_critical_path": true,
+    "items": {
+     "total": 3,
+     "completed": 3
+    }
+   },
+   {
+    "id": "flatten",
+    "kind": "code",
+    "status": "completed",
+    "duration_ms": 25.0,
+    "cost_usd": 0.0,
+    "attempts": 1,
+    "failed_attempts": 0,
+    "retries": 0,
+    "repairs": 0,
+    "on_critical_path": true,
+    "compression": {
+     "in": 3,
+     "out": 9
+    }
+   },
+   {
+    "id": "dedupe",
+    "kind": "code",
+    "status": "completed",
+    "duration_ms": 25.0,
+    "cost_usd": 0.0,
+    "attempts": 1,
+    "failed_attempts": 0,
+    "retries": 0,
+    "repairs": 0,
+    "on_critical_path": true,
+    "compression": {
+     "in": 9,
+     "out": 9
+    }
+   },
+   {
+    "id": "verify",
+    "kind": "verify",
+    "status": "completed",
+    "duration_ms": 575.0,
+    "cost_usd": 0.01602,
+    "attempts": 9,
+    "failed_attempts": 0,
+    "retries": 0,
+    "repairs": 0,
+    "on_critical_path": true,
+    "items": {
+     "total": 9,
+     "completed": 9
+    },
+    "kill_rate": 0.111
+   },
+   {
+    "id": "answer",
+    "kind": "agent",
+    "status": "completed",
+    "duration_ms": 142.0,
+    "cost_usd": 0.00419,
+    "attempts": 1,
+    "failed_attempts": 0,
+    "retries": 0,
+    "repairs": 0,
+    "on_critical_path": true
+   },
+   {
+    "id": "approve",
+    "kind": "gate",
+    "status": "waiting_approval",
+    "duration_ms": 0.0,
+    "cost_usd": 0.0,
+    "attempts": 0,
+    "failed_attempts": 0,
+    "retries": 0,
+    "repairs": 0,
+    "on_critical_path": false
+   },
+   {
+    "id": "record",
+    "kind": "code",
+    "status": "pending",
+    "duration_ms": 0.0,
+    "cost_usd": 0.0,
+    "attempts": 0,
+    "failed_attempts": 0,
+    "retries": 0,
+    "repairs": 0,
+    "on_critical_path": false
+   }
+  ],
+  "hints": [
+   "Reducers removed <10% of records: synthesis is reading almost raw fan-out output. Consider stronger dedupe/ranking.",
+   "Peak width hit the budget (3/3). Raising it only helps if workers add unique coverage."
+  ]
+ },
+ "tasks": [],
+ "events": [
+  {
+   "ts": "2026-09-13T05:55:26.053Z",
+   "seq": 1,
+   "run_id": "starter-fork-join-20260913-055526-6568f1",
+   "type": "run.started",
+   "node": null,
+   "item": null,
+   "data": {
+    "graph": "starter-fork-join",
+    "bridge": "mock",
+    "nodes": 8,
+    "critical_path_est_ms": 42600.0,
+    "engine": "strands"
+   }
+  },
+  {
+   "ts": "2026-09-13T05:55:26.071Z",
+   "seq": 2,
+   "run_id": "starter-fork-join-20260913-055526-6568f1",
+   "type": "node.started",
+   "node": "plan",
+   "item": null,
+   "data": {
+    "kind": "agent",
+    "repair_round": null
+   }
+  },
+  {
+   "ts": "2026-09-13T05:55:26.082Z",
+   "seq": 3,
+   "run_id": "starter-fork-join-20260913-055526-6568f1",
+   "type": "call.started",
+   "node": "plan",
+   "item": null,
+   "data": {
+    "attempt": 1,
+    "model": "claude-sonnet-5",
+    "bridge": "mock",
+    "role": "agent"
+   }
+  },
+  {
+   "ts": "2026-09-13T05:55:26.180Z",
+   "seq": 4,
+   "run_id": "starter-fork-join-20260913-055526-6568f1",
+   "type": "call.finished",
+   "node": "plan",
+   "item": null,
+   "data": {
+    "attempt": 1,
+    "ok": true,
+    "duration_ms": 95,
+    "cost_usd": 0.003384,
+    "model": "claude-sonnet-5",
+    "source": "mock",
+    "repairs": 0
+   }
+  },
+  {
+   "ts": "2026-09-13T05:55:26.197Z",
+   "seq": 5,
+   "run_id": "starter-fork-join-20260913-055526-6568f1",
+   "type": "node.completed",
+   "node": "plan",
+   "item": null,
+   "data": {
+    "duration_ms": 128,
+    "cost_usd": 0.003384,
+    "items": null
+   }
+  },
+  {
+   "ts": "2026-09-13T05:55:26.211Z",
+   "seq": 6,
+   "run_id": "starter-fork-join-20260913-055526-6568f1",
+   "type": "node.started",
+   "node": "work",
+   "item": null,
+   "data": {
+    "kind": "agent",
+    "repair_round": null
+   }
+  },
+  {
+   "ts": "2026-09-13T05:55:26.221Z",
+   "seq": 7,
+   "run_id": "starter-fork-join-20260913-055526-6568f1",
+   "type": "fanout.started",
+   "node": "work",
+   "item": null,
+   "data": {
+    "total": 3,
+    "pending": 3,
+    "width": 3
+   }
+  },
+  {
+   "ts": "2026-09-13T05:55:26.228Z",
+   "seq": 8,
+   "run_id": "starter-fork-join-20260913-055526-6568f1",
+   "type": "item.started",
+   "node": "work",
+   "item": 0,
+   "data": {}
+  },
+  {
+   "ts": "2026-09-13T05:55:26.239Z",
+   "seq": 9,
+   "run_id": "starter-fork-join-20260913-055526-6568f1",
+   "type": "call.started",
+   "node": "work",
+   "item": 0,
+   "data": {
+    "attempt": 1,
+    "model": "claude-haiku-4-5",
+    "bridge": "mock",
+    "role": "agent"
+   }
+  },
+  {
+   "ts": "2026-09-13T05:55:26.247Z",
+   "seq": 10,
+   "run_id": "starter-fork-join-20260913-055526-6568f1",
+   "type": "item.started",
+   "node": "work",
+   "item": 1,
+   "data": {}
+  },
+  {
+   "ts": "2026-09-13T05:55:26.256Z",
+   "seq": 11,
+   "run_id": "starter-fork-join-20260913-055526-6568f1",
+   "type": "call.started",
+   "node": "work",
+   "item": 1,
+   "data": {
+    "attempt": 1,
+    "model": "claude-haiku-4-5",
+    "bridge": "mock",
+    "role": "agent"
+   }
+  },
+  {
+   "ts": "2026-09-13T05:55:26.265Z",
+   "seq": 12,
+   "run_id": "starter-fork-join-20260913-055526-6568f1",
+   "type": "item.started",
+   "node": "work",
+   "item": 2,
+   "data": {}
+  },
+  {
+   "ts": "2026-09-13T05:55:26.273Z",
+   "seq": 13,
+   "run_id": "starter-fork-join-20260913-055526-6568f1",
+   "type": "call.started",
+   "node": "work",
+   "item": 2,
+   "data": {
+    "attempt": 1,
+    "model": "claude-haiku-4-5",
+    "bridge": "mock",
+    "role": "agent"
+   }
+  },
+  {
+   "ts": "2026-09-13T05:55:26.349Z",
+   "seq": 14,
+   "run_id": "starter-fork-join-20260913-055526-6568f1",
+   "type": "call.finished",
+   "node": "work",
+   "item": 1,
+   "data": {
+    "attempt": 1,
+    "ok": true,
+    "duration_ms": 90,
+    "cost_usd": 0.0017569999999999999,
+    "model": "claude-haiku-4-5",
+    "source": "mock",
+    "repairs": 0
+   }
+  },
+  {
+   "ts": "2026-09-13T05:55:26.361Z",
+   "seq": 15,
+   "run_id": "starter-fork-join-20260913-055526-6568f1",
+   "type": "item.completed",
+   "node": "work",
+   "item": 1,
+   "data": {
+    "duration_ms": 114
+   }
+  },
+  {
+   "ts": "2026-09-13T05:55:26.378Z",
+   "seq": 16,
+   "run_id": "starter-fork-join-20260913-055526-6568f1",
+   "type": "call.finished",
+   "node": "work",
+   "item": 0,
+   "data": {
+    "attempt": 1,
+    "ok": true,
+    "duration_ms": 136,
+    "cost_usd": 0.0017569999999999999,
+    "model": "claude-haiku-4-5",
+    "source": "mock",
+    "repairs": 0
+   }
+  },
+  {
+   "ts": "2026-09-13T05:55:26.391Z",
+   "seq": 17,
+   "run_id": "starter-fork-join-20260913-055526-6568f1",
+   "type": "item.completed",
+   "node": "work",
+   "item": 0,
+   "data": {
+    "duration_ms": 161
+   }
+  },
+  {
+   "ts": "2026-09-13T05:55:26.407Z",
+   "seq": 18,
+   "run_id": "starter-fork-join-20260913-055526-6568f1",
+   "type": "call.finished",
+   "node": "work",
+   "item": 2,
+   "data": {
+    "attempt": 1,
+    "ok": true,
+    "duration_ms": 131,
+    "cost_usd": 0.0017569999999999999,
+    "model": "claude-haiku-4-5",
+    "source": "mock",
+    "repairs": 0
+   }
+  },
+  {
+   "ts": "2026-09-13T05:55:26.422Z",
+   "seq": 19,
+   "run_id": "starter-fork-join-20260913-055526-6568f1",
+   "type": "item.completed",
+   "node": "work",
+   "item": 2,
+   "data": {
+    "duration_ms": 155
+   }
+  },
+  {
+   "ts": "2026-09-13T05:55:26.436Z",
+   "seq": 20,
+   "run_id": "starter-fork-join-20260913-055526-6568f1",
+   "type": "fanout.finished",
+   "node": "work",
+   "item": null,
+   "data": {
+    "total": 3,
+    "completed": 3,
+    "failed": 0,
+    "quorum": 0.67
+   }
+  },
+  {
+   "ts": "2026-09-13T05:55:26.450Z",
+   "seq": 21,
+   "run_id": "starter-fork-join-20260913-055526-6568f1",
+   "type": "node.completed",
+   "node": "work",
+   "item": null,
+   "data": {
+    "duration_ms": 239,
+    "cost_usd": 0.005271,
+    "items": {
+     "total": 3,
+     "completed": 3
+    }
+   }
+  },
+  {
+   "ts": "2026-09-13T05:55:26.465Z",
+   "seq": 22,
+   "run_id": "starter-fork-join-20260913-055526-6568f1",
+   "type": "node.started",
+   "node": "flatten",
+   "item": null,
+   "data": {
+    "kind": "code",
+    "repair_round": null
+   }
+  },
+  {
+   "ts": "2026-09-13T05:55:26.473Z",
+   "seq": 23,
+   "run_id": "starter-fork-join-20260913-055526-6568f1",
+   "type": "code.executed",
+   "node": "flatten",
+   "item": null,
+   "data": {
+    "duration_ms": 0,
+    "stats": {
+     "in": 3,
+     "out": 9
+    }
+   }
+  },
+  {
+   "ts": "2026-09-13T05:55:26.489Z",
+   "seq": 24,
+   "run_id": "starter-fork-join-20260913-055526-6568f1",
+   "type": "node.completed",
+   "node": "flatten",
+   "item": null,
+   "data": {
+    "duration_ms": 25,
+    "cost_usd": 0.0,
+    "items": null
+   }
+  },
+  {
+   "ts": "2026-09-13T05:55:26.503Z",
+   "seq": 25,
+   "run_id": "starter-fork-join-20260913-055526-6568f1",
+   "type": "node.started",
+   "node": "dedupe",
+   "item": null,
+   "data": {
+    "kind": "code",
+    "repair_round": null
+   }
+  },
+  {
+   "ts": "2026-09-13T05:55:26.513Z",
+   "seq": 26,
+   "run_id": "starter-fork-join-20260913-055526-6568f1",
+   "type": "code.executed",
+   "node": "dedupe",
+   "item": null,
+   "data": {
+    "duration_ms": 0,
+    "stats": {
+     "in": 9,
+     "out": 9,
+     "compression": 0.0
+    }
+   }
+  },
+  {
+   "ts": "2026-09-13T05:55:26.529Z",
+   "seq": 27,
+   "run_id": "starter-fork-join-20260913-055526-6568f1",
+   "type": "node.completed",
+   "node": "dedupe",
+   "item": null,
+   "data": {
+    "duration_ms": 25,
+    "cost_usd": 0.0,
+    "items": null
+   }
+  },
+  {
+   "ts": "2026-09-13T05:55:26.544Z",
+   "seq": 28,
+   "run_id": "starter-fork-join-20260913-055526-6568f1",
+   "type": "node.started",
+   "node": "verify",
+   "item": null,
+   "data": {
+    "kind": "verify",
+    "repair_round": null
+   }
+  },
+  {
+   "ts": "2026-09-13T05:55:26.553Z",
+   "seq": 29,
+   "run_id": "starter-fork-join-20260913-055526-6568f1",
+   "type": "fanout.started",
+   "node": "verify",
+   "item": null,
+   "data": {
+    "total": 9,
+    "pending": 9,
+    "width": 3
+   }
+  },
+  {
+   "ts": "2026-09-13T05:55:26.562Z",
+   "seq": 30,
+   "run_id": "starter-fork-join-20260913-055526-6568f1",
+   "type": "item.started",
+   "node": "verify",
+   "item": 0,
+   "data": {}
+  },
+  {
+   "ts": "2026-09-13T05:55:26.572Z",
+   "seq": 31,
+   "run_id": "starter-fork-join-20260913-055526-6568f1",
+   "type": "call.started",
+   "node": "verify",
+   "item": 0,
+   "data": {
+    "attempt": 1,
+    "model": "claude-haiku-4-5",
+    "bridge": "mock",
+    "role": "verify"
+   }
+  },
+  {
+   "ts": "2026-09-13T05:55:26.581Z",
+   "seq": 32,
+   "run_id": "starter-fork-join-20260913-055526-6568f1",
+   "type": "item.started",
+   "node": "verify",
+   "item": 1,
+   "data": {}
+  },
+  {
+   "ts": "2026-09-13T05:55:26.592Z",
+   "seq": 33,
+   "run_id": "starter-fork-join-20260913-055526-6568f1",
+   "type": "call.started",
+   "node": "verify",
+   "item": 1,
+   "data": {
+    "attempt": 1,
+    "model": "claude-haiku-4-5",
+    "bridge": "mock",
+    "role": "verify"
+   }
+  },
+  {
+   "ts": "2026-09-13T05:55:26.600Z",
+   "seq": 34,
+   "run_id": "starter-fork-join-20260913-055526-6568f1",
+   "type": "item.started",
+   "node": "verify",
+   "item": 2,
+   "data": {}
+  },
+  {
+   "ts": "2026-09-13T05:55:26.610Z",
+   "seq": 35,
+   "run_id": "starter-fork-join-20260913-055526-6568f1",
+   "type": "call.started",
+   "node": "verify",
+   "item": 2,
+   "data": {
+    "attempt": 1,
+    "model": "claude-haiku-4-5",
+    "bridge": "mock",
+    "role": "verify"
+   }
+  },
+  {
+   "ts": "2026-09-13T05:55:26.657Z",
+   "seq": 36,
+   "run_id": "starter-fork-join-20260913-055526-6568f1",
+   "type": "call.finished",
+   "node": "verify",
+   "item": 0,
+   "data": {
+    "attempt": 1,
+    "ok": true,
+    "duration_ms": 81,
+    "cost_usd": 0.00178,
+    "model": "claude-haiku-4-5",
+    "source": "mock",
+    "repairs": 0
+   }
+  },
+  {
+   "ts": "2026-09-13T05:55:26.671Z",
+   "seq": 37,
+   "run_id": "starter-fork-join-20260913-055526-6568f1",
+   "type": "item.completed",
+   "node": "verify",
+   "item": 0,
+   "data": {
+    "duration_ms": 109
+   }
+  },
+  {
+   "ts": "2026-09-13T05:55:26.686Z",
+   "seq": 38,
+   "run_id": "starter-fork-join-20260913-055526-6568f1",
+   "type": "item.started",
+   "node": "verify",
+   "item": 3,
+   "data": {}
+  },
+  {
+   "ts": "2026-09-13T05:55:26.697Z",
+   "seq": 39,
+   "run_id": "starter-fork-join-20260913-055526-6568f1",
+   "type": "call.started",
+   "node": "verify",
+   "item": 3,
+   "data": {
+    "attempt": 1,
+    "model": "claude-haiku-4-5",
+    "bridge": "mock",
+    "role": "verify"
+   }
+  },
+  {
+   "ts": "2026-09-13T05:55:26.709Z",
+   "seq": 40,
+   "run_id": "starter-fork-join-20260913-055526-6568f1",
+   "type": "call.finished",
+   "node": "verify",
+   "item": 1,
+   "data": {
+    "attempt": 1,
+    "ok": true,
+    "duration_ms": 114,
+    "cost_usd": 0.001781,
+    "model": "claude-haiku-4-5",
+    "source": "mock",
+    "repairs": 0
+   }
+  },
+  {
+   "ts": "2026-09-13T05:55:26.723Z",
+   "seq": 41,
+   "run_id": "starter-fork-join-20260913-055526-6568f1",
+   "type": "item.completed",
+   "node": "verify",
+   "item": 1,
+   "data": {
+    "duration_ms": 141
+   }
+  },
+  {
+   "ts": "2026-09-13T05:55:26.739Z",
+   "seq": 42,
+   "run_id": "starter-fork-join-20260913-055526-6568f1",
+   "type": "item.started",
+   "node": "verify",
+   "item": 4,
+   "data": {}
+  },
+  {
+   "ts": "2026-09-13T05:55:26.748Z",
+   "seq": 43,
+   "run_id": "starter-fork-join-20260913-055526-6568f1",
+   "type": "call.started",
+   "node": "verify",
+   "item": 4,
+   "data": {
+    "attempt": 1,
+    "model": "claude-haiku-4-5",
+    "bridge": "mock",
+    "role": "verify"
+   }
+  },
+  {
+   "ts": "2026-09-13T05:55:26.761Z",
+   "seq": 44,
+   "run_id": "starter-fork-join-20260913-055526-6568f1",
+   "type": "call.finished",
+   "node": "verify",
+   "item": 2,
+   "data": {
+    "attempt": 1,
+    "ok": true,
+    "duration_ms": 147,
+    "cost_usd": 0.00178,
+    "model": "claude-haiku-4-5",
+    "source": "mock",
+    "repairs": 0
+   }
+  },
+  {
+   "ts": "2026-09-13T05:55:26.775Z",
+   "seq": 45,
+   "run_id": "starter-fork-join-20260913-055526-6568f1",
+   "type": "item.completed",
+   "node": "verify",
+   "item": 2,
+   "data": {
+    "duration_ms": 174
+   }
+  },
+  {
+   "ts": "2026-09-13T05:55:26.790Z",
+   "seq": 46,
+   "run_id": "starter-fork-join-20260913-055526-6568f1",
+   "type": "item.started",
+   "node": "verify",
+   "item": 5,
+   "data": {}
+  },
+  {
+   "ts": "2026-09-13T05:55:26.799Z",
+   "seq": 47,
+   "run_id": "starter-fork-join-20260913-055526-6568f1",
+   "type": "call.started",
+   "node": "verify",
+   "item": 5,
+   "data": {
+    "attempt": 1,
+    "model": "claude-haiku-4-5",
+    "bridge": "mock",
+    "role": "verify"
+   }
+  },
+  {
+   "ts": "2026-09-13T05:55:26.810Z",
+   "seq": 48,
+   "run_id": "starter-fork-join-20260913-055526-6568f1",
+   "type": "call.finished",
+   "node": "verify",
+   "item": 3,
+   "data": {
+    "attempt": 1,
+    "ok": true,
+    "duration_ms": 112,
+    "cost_usd": 0.00178,
+    "model": "claude-haiku-4-5",
+    "source": "mock",
+    "repairs": 0
+   }
+  },
+  {
+   "ts": "2026-09-13T05:55:26.826Z",
+   "seq": 49,
+   "run_id": "starter-fork-join-20260913-055526-6568f1",
+   "type": "item.completed",
+   "node": "verify",
+   "item": 3,
+   "data": {
+    "duration_ms": 139
+   }
+  },
+  {
+   "ts": "2026-09-13T05:55:26.842Z",
+   "seq": 50,
+   "run_id": "starter-fork-join-20260913-055526-6568f1",
+   "type": "item.started",
+   "node": "verify",
+   "item": 6,
+   "data": {}
+  },
+  {
+   "ts": "2026-09-13T05:55:26.853Z",
+   "seq": 51,
+   "run_id": "starter-fork-join-20260913-055526-6568f1",
+   "type": "call.started",
+   "node": "verify",
+   "item": 6,
+   "data": {
+    "attempt": 1,
+    "model": "claude-haiku-4-5",
+    "bridge": "mock",
+    "role": "verify"
+   }
+  },
+  {
+   "ts": "2026-09-13T05:55:26.866Z",
+   "seq": 52,
+   "run_id": "starter-fork-join-20260913-055526-6568f1",
+   "type": "call.finished",
+   "node": "verify",
+   "item": 4,
+   "data": {
+    "attempt": 1,
+    "ok": true,
+    "duration_ms": 114,
+    "cost_usd": 0.00178,
+    "model": "claude-haiku-4-5",
+    "source": "mock",
+    "repairs": 0
+   }
+  },
+  {
+   "ts": "2026-09-13T05:55:26.881Z",
+   "seq": 53,
+   "run_id": "starter-fork-join-20260913-055526-6568f1",
+   "type": "item.completed",
+   "node": "verify",
+   "item": 4,
+   "data": {
+    "duration_ms": 143
+   }
+  },
+  {
+   "ts": "2026-09-13T05:55:26.902Z",
+   "seq": 54,
+   "run_id": "starter-fork-join-20260913-055526-6568f1",
+   "type": "item.started",
+   "node": "verify",
+   "item": 7,
+   "data": {}
+  },
+  {
+   "ts": "2026-09-13T05:55:26.912Z",
+   "seq": 55,
+   "run_id": "starter-fork-join-20260913-055526-6568f1",
+   "type": "call.started",
+   "node": "verify",
+   "item": 7,
+   "data": {
+    "attempt": 1,
+    "model": "claude-haiku-4-5",
+    "bridge": "mock",
+    "role": "verify"
+   }
+  },
+  {
+   "ts": "2026-09-13T05:55:26.922Z",
+   "seq": 56,
+   "run_id": "starter-fork-join-20260913-055526-6568f1",
+   "type": "call.finished",
+   "node": "verify",
+   "item": 5,
+   "data": {
+    "attempt": 1,
+    "ok": true,
+    "duration_ms": 121,
+    "cost_usd": 0.00178,
+    "model": "claude-haiku-4-5",
+    "source": "mock",
+    "repairs": 0
+   }
+  },
+  {
+   "ts": "2026-09-13T05:55:26.938Z",
+   "seq": 57,
+   "run_id": "starter-fork-join-20260913-055526-6568f1",
+   "type": "item.completed",
+   "node": "verify",
+   "item": 5,
+   "data": {
+    "duration_ms": 147
+   }
+  },
+  {
+   "ts": "2026-09-13T05:55:26.953Z",
+   "seq": 58,
+   "run_id": "starter-fork-join-20260913-055526-6568f1",
+   "type": "item.started",
+   "node": "verify",
+   "item": 8,
+   "data": {}
+  },
+  {
+   "ts": "2026-09-13T05:55:26.963Z",
+   "seq": 59,
+   "run_id": "starter-fork-join-20260913-055526-6568f1",
+   "type": "call.started",
+   "node": "verify",
+   "item": 8,
+   "data": {
+    "attempt": 1,
+    "model": "claude-haiku-4-5",
+    "bridge": "mock",
+    "role": "verify"
+   }
+  },
+  {
+   "ts": "2026-09-13T05:55:26.975Z",
+   "seq": 60,
+   "run_id": "starter-fork-join-20260913-055526-6568f1",
+   "type": "call.finished",
+   "node": "verify",
+   "item": 6,
+   "data": {
+    "attempt": 1,
+    "ok": true,
+    "duration_ms": 120,
+    "cost_usd": 0.001781,
+    "model": "claude-haiku-4-5",
+    "source": "mock",
+    "repairs": 0
+   }
+  },
+  {
+   "ts": "2026-09-13T05:55:26.990Z",
+   "seq": 61,
+   "run_id": "starter-fork-join-20260913-055526-6568f1",
+   "type": "item.completed",
+   "node": "verify",
+   "item": 6,
+   "data": {
+    "duration_ms": 147
+   }
+  },
+  {
+   "ts": "2026-09-13T05:55:27.007Z",
+   "seq": 62,
+   "run_id": "starter-fork-join-20260913-055526-6568f1",
+   "type": "call.finished",
+   "node": "verify",
+   "item": 7,
+   "data": {
+    "attempt": 1,
+    "ok": true,
+    "duration_ms": 93,
+    "cost_usd": 0.00178,
+    "model": "claude-haiku-4-5",
+    "source": "mock",
+    "repairs": 0
+   }
+  },
+  {
+   "ts": "2026-09-13T05:55:27.022Z",
+   "seq": 63,
+   "run_id": "starter-fork-join-20260913-055526-6568f1",
+   "type": "item.completed",
+   "node": "verify",
+   "item": 7,
+   "data": {
+    "duration_ms": 120
+   }
+  },
+  {
+   "ts": "2026-09-13T05:55:27.054Z",
+   "seq": 64,
+   "run_id": "starter-fork-join-20260913-055526-6568f1",
+   "type": "call.finished",
+   "node": "verify",
+   "item": 8,
+   "data": {
+    "attempt": 1,
+    "ok": true,
+    "duration_ms": 89,
+    "cost_usd": 0.00178,
+    "model": "claude-haiku-4-5",
+    "source": "mock",
+    "repairs": 0
+   }
+  },
+  {
+   "ts": "2026-09-13T05:55:27.070Z",
+   "seq": 65,
+   "run_id": "starter-fork-join-20260913-055526-6568f1",
+   "type": "item.completed",
+   "node": "verify",
+   "item": 8,
+   "data": {
+    "duration_ms": 114
+   }
+  },
+  {
+   "ts": "2026-09-13T05:55:27.084Z",
+   "seq": 66,
+   "run_id": "starter-fork-join-20260913-055526-6568f1",
+   "type": "fanout.finished",
+   "node": "verify",
+   "item": null,
+   "data": {
+    "total": 9,
+    "completed": 9,
+    "failed": 0,
+    "quorum": 0.0
+   }
+  },
+  {
+   "ts": "2026-09-13T05:55:27.095Z",
+   "seq": 67,
+   "run_id": "starter-fork-join-20260913-055526-6568f1",
+   "type": "verify.kill",
+   "node": "verify",
+   "item": 2,
+   "data": {
+    "reasons": [
+     "mock verifier: could not confirm the source supports the claim"
+    ],
+    "confidence": 0.923
+   }
+  },
+  {
+   "ts": "2026-09-13T05:55:27.104Z",
+   "seq": 68,
+   "run_id": "starter-fork-join-20260913-055526-6568f1",
+   "type": "verify.finished",
+   "node": "verify",
+   "item": null,
+   "data": {
+    "total": 9,
+    "killed": 1,
+    "kill_rate": 0.111
+   }
+  },
+  {
+   "ts": "2026-09-13T05:55:27.121Z",
+   "seq": 69,
+   "run_id": "starter-fork-join-20260913-055526-6568f1",
+   "type": "node.completed",
+   "node": "verify",
+   "item": null,
+   "data": {
+    "duration_ms": 575,
+    "cost_usd": 0.016022,
+    "items": {
+     "total": 9,
+     "completed": 9
+    }
+   }
+  },
+  {
+   "ts": "2026-09-13T05:55:27.137Z",
+   "seq": 70,
+   "run_id": "starter-fork-join-20260913-055526-6568f1",
+   "type": "node.started",
+   "node": "answer",
+   "item": null,
+   "data": {
+    "kind": "agent",
+    "repair_round": null
+   }
+  },
+  {
+   "ts": "2026-09-13T05:55:27.147Z",
+   "seq": 71,
+   "run_id": "starter-fork-join-20260913-055526-6568f1",
+   "type": "call.started",
+   "node": "answer",
+   "item": null,
+   "data": {
+    "attempt": 1,
+    "model": "claude-sonnet-5",
+    "bridge": "mock",
+    "role": "agent"
+   }
+  },
+  {
+   "ts": "2026-09-13T05:55:27.258Z",
+   "seq": 72,
+   "run_id": "starter-fork-join-20260913-055526-6568f1",
+   "type": "call.finished",
+   "node": "answer",
+   "item": null,
+   "data": {
+    "attempt": 1,
+    "ok": true,
+    "duration_ms": 107,
+    "cost_usd": 0.00419,
+    "model": "claude-sonnet-5",
+    "source": "mock",
+    "repairs": 0
+   }
+  },
+  {
+   "ts": "2026-09-13T05:55:27.280Z",
+   "seq": 73,
+   "run_id": "starter-fork-join-20260913-055526-6568f1",
+   "type": "node.completed",
+   "node": "answer",
+   "item": null,
+   "data": {
+    "duration_ms": 142,
+    "cost_usd": 0.00419,
+    "items": null
+   }
+  },
+  {
+   "ts": "2026-09-13T05:55:27.301Z",
+   "seq": 74,
+   "run_id": "starter-fork-join-20260913-055526-6568f1",
+   "type": "gate.waiting",
+   "node": "approve",
+   "item": null,
+   "data": {
+    "title": "Record this answer?",
+    "prompt": "Read the answer. Then approve or reject.",
+    "show": {
+     "answer": {
+      "answer": "mock answer from answer: claim signal verifier market graph latency verifier evidence claim",
+      "used_claims": [
+       "mock used_claims[0] from answer: claim evidence claim"
+      ],
+      "uncertainties": [
+       "mock uncertainties[0] from answer: graph claim topology"
+      ]
+     },
+     "killed_findings": [
+      {
+       "index": 2,
+       "item": {
+        "claim": "mock claim from work: budget budget verifier",
+        "evidence": "mock evidence from work: budget reducer market",
+        "confidence": 0.35
+       },
+       "reasons": [
+        "mock verifier: could not confirm the source supports the claim"
+       ],
+       "confidence": 0.923
+      }
+     ]
+    },
+    "approve_effect": "The system records the answer (placeholder side effect).",
+    "reject_effect": "The system records nothing. The run stops.",
+    "timeout_ms": null
+   }
+  },
+  {
+   "ts": "2026-09-13T05:55:27.317Z",
+   "seq": 75,
+   "run_id": "starter-fork-join-20260913-055526-6568f1",
+   "type": "run.paused",
+   "node": null,
+   "item": null,
+   "data": {
+    "waiting": [
+     "approve"
+    ]
+   }
+  }
+ ]
+}

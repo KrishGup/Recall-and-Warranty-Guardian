@@ -1,0 +1,147 @@
+{
+  "_about": "Demo household for `guardian seed`. Every recall these items can match is a real record from the live CPSC, NHTSA and openFDA feeds as of 2026-09-13: Boon NURSH bottles (CPSC 26530, UPC 669028116546), Cade California Electronic finger lights (CPSC 26761), Hampton Bay Halwin ceiling fan (CPSC 26702, UPC 840059614922), and three NHTSA campaigns filed against 2019 Subaru Outbacks. The other items exist so the sweep has clear and adjudicated-no rows too. Purchase details and the VIN are illustrative.",
+  "household": { "id": "hh_okafor", "name": "The Okafor household", "created_at": "2026-06-01T12:00:00Z" },
+  "prefs": {
+    "budget": "weekly",
+    "value_threshold": 200,
+    "quiet_categories": ["Kitchen", "Tools"],
+    "phone": "+1 (415) 555-0134",
+    "forwarding_address": "receipts@guardian.house",
+    "sensitivities": { "infant": true, "pregnancy": false, "elderly": false, "allergens": [] },
+    "auto_request_standard": false
+  },
+  "items": [
+    {
+      "id": "itm_boon_nursh",
+      "name": "NURSH 8 oz reusable silicone pouch bottles, 3-pack",
+      "brand": "Boon",
+      "upc": "669028116546",
+      "category": "Juvenile",
+      "purchase_date": "2026-02-11",
+      "price": 19.97,
+      "retailer": "Walmart",
+      "receipt_text": "WALMART SUPERCENTER #2280  SAN LEANDRO CA\nST# 2280 OP# 009012 TE# 14 TR# 06611\nBOON NURSH 8OZ 3PK   669028116546   19.97 X\nSUBTOTAL 19.97  TAX 1.85  TOTAL 21.82\nVISA TEND 21.82  ACCOUNT # **** **** **** 4471\n02/11/26 18:42:07"
+    },
+    {
+      "id": "itm_finger_lights",
+      "name": "LED projecting finger light toys, 50-pack",
+      "brand": "Cade California Electronic",
+      "category": "Toys",
+      "purchase_date": "2026-06-02",
+      "price": 9.99,
+      "retailer": "Amazon",
+      "receipt_text": "Amazon.com order confirmation\nOrder # 113-8827731-2245011  Placed June 2, 2026\nCade California Electronic Finger Flashlights, LED Projecting Finger Light Toys, 50 pcs, 4 colors, Party Favors\nQty 1  $9.99\nShipping address: 1120 Estudillo Ave, San Leandro, CA 94577"
+    },
+    {
+      "id": "itm_hampton_fan",
+      "name": "Halwin 52-inch indoor/outdoor ceiling fan",
+      "brand": "Hampton Bay",
+      "upc": "840059614922",
+      "category": "Home",
+      "purchase_date": "2024-03-16",
+      "price": 179.0,
+      "retailer": "The Home Depot",
+      "warranty_months": 12,
+      "receipt_text": "THE HOME DEPOT #0632  SAN LEANDRO CA\n840059614922  HAMPTON BAY HALWIN 52 IN  179.00\n03/16/24 11:08"
+    },
+    {
+      "id": "itm_subaru_outback",
+      "name": "Outback Limited",
+      "brand": "Subaru",
+      "category": "Vehicle",
+      "purchase_date": "2021-06-02",
+      "price": 27400,
+      "retailer": "CarMax",
+      "vin": "4S4BSANC2K3372741",
+      "warranty_months": 60,
+      "notes": "Bought used. Factory powertrain coverage counted from purchase for the demo."
+    },
+    {
+      "id": "itm_vitamix",
+      "name": "Ascent A2500 blender",
+      "brand": "Vitamix",
+      "model_number": "A2500",
+      "category": "Kitchen",
+      "purchase_date": "2016-10-01",
+      "price": 449.95,
+      "retailer": "Williams Sonoma",
+      "warranty_months": 120,
+      "receipt_text": "Williams Sonoma  Order W2016-10-01-7741\nVitamix Ascent Series A2500 Blender, Black  $449.95\n10-year full warranty included"
+    },
+    {
+      "id": "itm_frigidaire_dehum",
+      "name": "50-pint dehumidifier",
+      "brand": "Frigidaire",
+      "model_number": "FFAD5033W1",
+      "category": "Appliance",
+      "purchase_date": "2023-07-21",
+      "price": 249.0,
+      "retailer": "The Home Depot"
+    },
+    {
+      "id": "itm_babyletto_crib",
+      "name": "Hudson 3-in-1 convertible crib",
+      "brand": "Babyletto",
+      "model_number": "M4901",
+      "category": "Juvenile",
+      "purchase_date": "2024-01-09",
+      "price": 399.0,
+      "retailer": "Target",
+      "warranty_months": 12
+    },
+    {
+      "id": "itm_graco_stroller",
+      "name": "Modes Nest stroller",
+      "brand": "Graco",
+      "model_number": "2137765",
+      "category": "Juvenile",
+      "purchase_date": "2024-03-14",
+      "price": 379.99,
+      "retailer": "Target",
+      "warranty_months": 12
+    },
+    {
+      "id": "itm_similac_formula",
+      "name": "360 Total Care infant formula, 6 × 12.4 oz",
+      "brand": "Similac",
+      "category": "Food",
+      "purchase_date": "2026-08-30",
+      "price": 189.99,
+      "retailer": "Costco",
+      "notes": "Lot 37-Q, best by 2027-08"
+    },
+    {
+      "id": "itm_ninja_airfryer",
+      "name": "Foodi 6-in-1 8-qt 2-basket air fryer",
+      "brand": "Ninja",
+      "model_number": "DZ201",
+      "category": "Kitchen",
+      "purchase_date": "2025-11-28",
+      "price": 159.99,
+      "retailer": "Best Buy",
+      "warranty_months": 12
+    },
+    {
+      "id": "itm_dewalt_drill",
+      "name": "20V MAX cordless drill/driver kit",
+      "brand": "DeWalt",
+      "model_number": "DCD771C2",
+      "category": "Tools",
+      "purchase_date": "2025-05-10",
+      "price": 99.0,
+      "retailer": "The Home Depot",
+      "warranty_months": 36
+    },
+    {
+      "id": "itm_roku_stick",
+      "name": "Streaming Stick 4K",
+      "brand": "Roku",
+      "model_number": "3820R",
+      "category": "Electronics",
+      "purchase_date": "2025-12-20",
+      "price": 49.99,
+      "retailer": "Amazon",
+      "warranty_months": 12
+    }
+  ]
+}

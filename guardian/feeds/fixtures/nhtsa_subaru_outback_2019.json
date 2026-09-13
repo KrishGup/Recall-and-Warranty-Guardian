@@ -1,0 +1,54 @@
+{
+ "Count": 3,
+ "Message": "Results returned successfully",
+ "results": [
+  {
+   "Manufacturer": "Subaru of America, Inc.",
+   "NHTSACampaignNumber": "19V493000",
+   "parkIt": false,
+   "parkOutSide": false,
+   "overTheAirUpdate": false,
+   "ReportReceivedDate": "26/06/2019",
+   "Component": "STRUCTURE",
+   "Summary": "Subaru of America, Inc. (Subaru) is recalling certain 2019 Legacy and Outback vehicles.  Spot welds located on the duct below the cowl panel may have been improperly applied, impacting the vehicle's body strength.",
+   "Consequence": "In the event of a crash, the reduced strength of the vehicle body may increase the risk of injury.",
+   "Remedy": "Subaru will notify owners, and dealers will inspect the vehicles and repair or repurchase the vehicle, as necessary, free of charge.  The recall began July 26, 2019.  Owners may contact Subaru customer service at 1-844-373-6614.  Subaru's number for this recall is WUH-93.",
+   "Notes": "Owners may also contact the National Highway Traffic Safety Administration Vehicle Safety Hotline at 1-888-327-4236 (TTY 1-800-424-9153), or go to www.safercar.gov.",
+   "ModelYear": "2019",
+   "Make": "SUBARU",
+   "Model": "OUTBACK"
+  },
+  {
+   "Manufacturer": "Subaru of America, Inc.",
+   "NHTSACampaignNumber": "21V587000",
+   "parkIt": false,
+   "parkOutSide": false,
+   "overTheAirUpdate": false,
+   "ReportReceivedDate": "29/07/2021",
+   "Component": "FUEL SYSTEM, GASOLINE:DELIVERY:FUEL PUMP",
+   "Summary": "Subaru of America, Inc. (Subaru) is recalling certain 2019-2020 Ascent, 2018 Forester, 2018-2020 Impreza, Legacy, Outback, 2018-2019 BRZ, WRX, and Toyota 86 vehicles.  The low-pressure fuel pump inside the fuel tank may fail.",
+   "Consequence": "Fuel pump failure can cause an engine stall while driving, increasing the risk of a crash.",
+   "Remedy": "Dealers will replace the low-pressure fuel pump, free of charge.  Owner notification letters were mailed September 24, 2021.  Subaru and Toyota owners may call customer service at 1-844-373-6614.  Subaru's number for this recall is WRG-21.",
+   "Notes": "Owners may also contact the National Highway Traffic Safety Administration Vehicle Safety Hotline at 1-888-327-4236 (TTY 1-800-424-9153), or go to www.nhtsa.gov.",
+   "ModelYear": "2019",
+   "Make": "SUBARU",
+   "Model": "OUTBACK"
+  },
+  {
+   "Manufacturer": "Subaru of America, Inc.",
+   "NHTSACampaignNumber": "20V218000",
+   "parkIt": false,
+   "parkOutSide": false,
+   "overTheAirUpdate": false,
+   "ReportReceivedDate": "16/04/2020",
+   "Component": "FUEL SYSTEM, GASOLINE:DELIVERY:FUEL PUMP",
+   "Summary": "Subaru of America, Inc. (Subaru) is recalling certain 2019 Impreza, Outback, Legacy, and Ascent vehicles.  The low pressure fuel pump may become inoperative.",
+   "Consequence": "If the low pressure fuel pump fails, the engine may stall without the ability to restart the vehicle, increasing the risk of a crash.",
+   "Remedy": "Subaru will notify owners, and dealers will replace the low pressure fuel pump, free of charge.  The recall began June 4, 2020.  Owners may contact Subaru customer service at 1-844-373-6614.  Subaru's number for this recall is WRD-20.",
+   "Notes": "Owners may also contact the National Highway Traffic Safety Administration Vehicle Safety Hotline at 1-888-327-4236 (TTY 1-800-424-9153), or go to www.safercar.gov.",
+   "ModelYear": "2019",
+   "Make": "SUBARU",
+   "Model": "OUTBACK"
+  }
+ ]
+}

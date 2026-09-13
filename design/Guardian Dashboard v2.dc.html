@@ -1,0 +1,618 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Roboto+Slab:wght@400;500;600;700&family=Lora:ital,wght@0,400;0,500;0,600;1,400&family=Habibi&display=swap" rel="stylesheet">
+<style>
+html,body{margin:0;padding:0;background:#F7F4F3}
+*{box-sizing:border-box}
+a{color:#2274A5}a:hover{color:#1A5B82}
+button,input{font:inherit}
+button,a,[role=row],[role=separator]{transition:background-color .15s ease,border-color .15s ease,color .15s ease,filter .15s ease,box-shadow .15s ease}
+@keyframes gPulse{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.35);opacity:.7}}
+@media (prefers-reduced-motion: reduce){*{transition:none!important;animation:none!important}}
+</style>
+</helmet>
+<div dir="{{ dir }}" lang="en" style="height:100vh; --bg:{{ t.bg }}; --surface:{{ t.surface }}; --ink:{{ t.ink }}; --ink2:{{ t.ink2 }}; --line:{{ t.line }}; --primary:{{ t.primary }}; --primaryInk:{{ t.primaryInk }}; --critical:{{ t.critical }}; --criticalBg:{{ t.criticalBg }}; --ok:{{ t.ok }}; --tint:{{ t.tint }}; --cols:{{ t.cols }}; --th:{{ t.th }}; --cellLabel:{{ t.cellLabel }}; --sidenav:{{ t.sidenav }}; --tabs:{{ t.tabs }}; --desk:{{ t.desk }}; background:var(--bg,#F7F4F3); color:var(--ink,#000F08); font-family:Lora,Georgia,serif; font-size:15px; line-height:1.5; display:flex; flex-direction:column; overflow:hidden">
+
+  <a href="#main" style="position:absolute; top:-48px; inset-inline-start:8px; background:#FCBA04; color:#000F08; padding:8px 12px; border-radius:4px; z-index:80; font-family:Habibi,serif" style-focus="top:8px; outline:2px solid #2274A5; outline-offset:2px">Skip to content</a>
+
+  <header role="banner" style="background:#000F08; color:#F7F4F3; height:52px; flex:0 0 auto; display:flex; align-items:center; gap:10px; padding-inline:16px; z-index:30">
+    <a href="#" onClick="{{ logoClick }}" aria-label="Guardian home. Click to run a sweep now." title="Run a sweep now" style="display:flex; align-items:center; gap:10px; min-width:0; text-decoration:none; color:#F7F4F3" style-focus="outline:2px solid #FCBA04; outline-offset:4px; border-radius:4px">
+      {{ logo }}
+      <span style="font-family:'Roboto Slab',serif; font-weight:600; font-size:17px; white-space:nowrap">Guardian</span>
+    </a>
+    <span style="font-family:Habibi,serif; font-size:12px; color:#B9C3BD; display:var(--desk,inline); white-space:nowrap">{{ agentLabel }}</span>
+    <div style="flex:1"></div>
+    <span style="font-family:Habibi,serif; font-size:13px; display:var(--desk,flex); align-items:center; gap:8px; white-space:nowrap; margin-inline-end:6px"><span aria-hidden="true" style="width:8px; height:8px; border-radius:50%; background:{{ statusDot }}"></span>{{ sweepLabel }}</span>
+    <button type="button" onClick="{{ toggleScheme }}" aria-pressed="{{ isDark }}" style="display:var(--desk,inline-flex); align-items:center; height:36px; padding-inline:12px; border:1px solid rgba(247,244,243,0.35); background:transparent; color:#F7F4F3; border-radius:18px; cursor:pointer; font-family:Habibi,serif; font-size:13px; white-space:nowrap" style-hover="background:rgba(247,244,243,0.12)" style-focus="outline:2px solid #FCBA04; outline-offset:2px">{{ schemeLabel }}</button>
+    <button type="button" onClick="{{ toggleDir }}" aria-label="Toggle text direction" style="display:var(--desk,inline-flex); align-items:center; height:36px; padding-inline:12px; border:1px solid rgba(247,244,243,0.35); background:transparent; color:#F7F4F3; border-radius:18px; cursor:pointer; font-family:Habibi,serif; font-size:13px" style-hover="background:rgba(247,244,243,0.12)" style-focus="outline:2px solid #FCBA04; outline-offset:2px">{{ dirLabel }}</button>
+    <button type="button" onClick="{{ toggleHelp }}" aria-pressed="{{ helpOpen }}" aria-label="Toggle info panel" style="display:inline-flex; align-items:center; gap:6px; height:36px; padding-inline:12px; border:1px solid rgba(247,244,243,0.35); background:{{ helpBtnBg }}; color:#F7F4F3; border-radius:18px; cursor:pointer; font-family:Habibi,serif; font-size:13px" style-hover="background:rgba(247,244,243,0.12)" style-focus="outline:2px solid #FCBA04; outline-offset:2px"><span aria-hidden="true" style="width:16px; height:16px; border-radius:50%; border:1.5px solid #F7F4F3; display:inline-flex; align-items:center; justify-content:center; font-size:10px; font-family:'Roboto Slab',serif; font-weight:700">i</span>Info</button>
+  </header>
+
+  <div style="display:flex; flex:1; min-height:0; position:relative">
+    <nav aria-label="Main" style="width:{{ navW }}; flex:0 0 auto; border-inline-end:1px solid var(--line,#D9D4D2); background:var(--surface,#fff); padding:14px 12px; display:var(--sidenav,flex); flex-direction:column; gap:2px; overflow-y:auto; overflow-x:hidden; position:relative">
+      <div role="separator" aria-label="Resize navigation" aria-orientation="vertical" aria-valuemin="200" aria-valuemax="400" aria-valuenow="{{ navWNum }}" tabIndex="0" onPointerDown="{{ startNavDrag }}" onKeyDown="{{ navKey }}" style="position:absolute; inset-block:0; inset-inline-end:0; width:12px; cursor:col-resize; touch-action:none; z-index:2; display:flex; align-items:center; justify-content:center" style-hover="background:var(--tint,#EDE9E7)" style-focus="outline:2px solid var(--primary,#2274A5); outline-offset:-2px"><span aria-hidden="true" style="width:4px; height:40px; border-radius:2px; background:var(--line,#D9D4D2)"></span></div>
+      <div style="font-family:Habibi,serif; font-size:12px; letter-spacing:0.08em; text-transform:uppercase; color:var(--ink2,#4A5551); padding:6px 12px 8px">Household</div>
+      <sc-for list="{{ navItems }}" as="n" hint-placeholder-count="5">
+        <a href="#" aria-current="{{ n.current }}" onClick="{{ n.go }}" style="display:flex; align-items:center; justify-content:space-between; gap:8px; min-height:42px; padding:6px 12px; border-radius:8px; text-decoration:none; color:{{ n.color }}; background:{{ n.bg }}; font-family:Habibi,serif; font-size:15px; border-inline-start:3px solid {{ n.bar }}" style-hover="background:var(--tint,#EDE9E7)" style-focus="outline:2px solid var(--primary,#2274A5); outline-offset:-2px">
+          <span>{{ n.label }}</span>
+          <sc-if value="{{ n.count }}" hint-placeholder-val="{{ false }}"><span style="min-width:22px; height:22px; padding-inline:7px; border-radius:11px; background:var(--critical,#960200); color:#fff; font-size:12px; display:inline-flex; align-items:center; justify-content:center; font-family:'Roboto Slab',serif">{{ n.count }}</span></sc-if>
+        </a>
+      </sc-for>
+      <div style="font-family:Habibi,serif; font-size:12px; letter-spacing:0.08em; text-transform:uppercase; color:var(--ink2,#4A5551); padding:18px 12px 8px">Technical</div>
+      <sc-for list="{{ techItems }}" as="n" hint-placeholder-count="1">
+        <a href="#" aria-current="{{ n.current }}" onClick="{{ n.go }}" style="display:flex; align-items:center; justify-content:space-between; gap:8px; min-height:42px; padding:6px 12px; border-radius:8px; text-decoration:none; color:{{ n.color }}; background:{{ n.bg }}; font-family:Habibi,serif; font-size:15px; border-inline-start:3px solid {{ n.bar }}" style-hover="background:var(--tint,#EDE9E7)" style-focus="outline:2px solid var(--primary,#2274A5); outline-offset:-2px"><span>{{ n.label }}</span></a>
+      </sc-for>
+      <div style="flex:1"></div>
+      <div style="padding:12px; border-top:1px solid var(--line,#D9D4D2); font-size:13px; color:var(--ink2,#4A5551)">Forward receipts to<br><button type="button" onClick="{{ copy }}" title="Copy address" style="border:0; background:none; padding:4px 0; font-family:ui-monospace,monospace; font-size:11.5px; color:var(--primary,#2274A5); cursor:pointer; text-align:start; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%; display:block" style-hover="text-decoration:underline" style-focus="outline:2px solid var(--primary,#2274A5); outline-offset:2px">receipts@guardian.house</button></div>
+    </nav>
+
+    <div style="flex:1; min-width:0; display:flex; flex-direction:column; min-height:0">
+      <main id="main" tabIndex="-1" style="outline:none; flex:1; min-height:0; overflow-y:auto; padding:16px clamp(12px,3vw,40px) 40px; padding-bottom:{{ mainPadBottom }}">
+        <div style="width:100%">
+
+          <nav aria-label="Breadcrumb" style="font-family:Habibi,serif; font-size:13px; color:var(--ink2,#4A5551); margin-bottom:12px; display:flex; gap:6px; flex-wrap:wrap"><a href="#" onClick="{{ goHome }}" style="color:var(--primary,#2274A5)">Guardian</a><span aria-hidden="true">/</span><span aria-current="page">{{ pageTitle }}</span></nav>
+
+          <sc-if value="{{ showFlash }}" hint-placeholder-val="{{ false }}">
+            <div role="alert" style="background:var(--critical,#960200); color:#fff; border-radius:12px; padding:12px 16px; display:flex; gap:12px; align-items:center; flex-wrap:wrap; margin-bottom:16px">
+              <span aria-hidden="true" style="width:22px; height:22px; border-radius:50%; border:2px solid #fff; display:inline-flex; align-items:center; justify-content:center; font-family:'Roboto Slab',serif; font-weight:700; font-size:13px; flex:0 0 auto">!</span>
+              <div style="flex:1; min-width:200px"><strong style="font-family:'Roboto Slab',serif">Critical recall matches an item you own.</strong> Graco Modes Nest stroller, bought at Target on 2024‑03‑14. Remedy is drafted; one decision is needed.</div>
+              <button type="button" onClick="{{ goDecisions }}" style="min-height:40px; padding-inline:16px; border-radius:20px; border:2px solid #fff; background:#fff; color:#960200; font-family:Habibi,serif; font-size:14px; cursor:pointer" style-hover="background:#F7F4F3" style-focus="outline:2px solid #FCBA04; outline-offset:2px">Review decision</button>
+            </div>
+          </sc-if>
+
+          <!-- HOME -->
+          <sc-if value="{{ isHome }}" hint-placeholder-val="{{ true }}">
+            <div style="display:flex; justify-content:space-between; align-items:flex-end; gap:12px; flex-wrap:wrap; margin-bottom:20px">
+              <div>
+                <h1 style="font-family:'Roboto Slab',serif; font-weight:600; font-size:clamp(24px,3vw,30px); margin:0; line-height:1.2">{{ greeting }}</h1>
+                <p style="margin:4px 0 0; color:var(--ink2,#4A5551)">{{ homeSub }}</p>
+              </div>
+              <div style="display:flex; gap:8px; flex-wrap:wrap">
+                <button type="button" onClick="{{ copy }}" style="min-height:40px; padding-inline:18px; border-radius:20px; border:2px solid var(--primary,#2274A5); background:transparent; color:var(--primary,#2274A5); font-family:Habibi,serif; font-size:14px; cursor:pointer" style-hover="background:var(--tint,#EDE9E7)" style-focus="outline:2px solid var(--primary,#2274A5); outline-offset:2px">Copy forwarding address</button>
+                <button type="button" onClick="{{ goInventory }}" style="min-height:40px; padding-inline:18px; border-radius:20px; border:2px solid var(--primary,#2274A5); background:var(--primary,#2274A5); color:var(--primaryInk,#fff); font-family:Habibi,serif; font-size:14px; cursor:pointer" style-hover="filter:brightness(0.9)" style-focus="outline:2px solid var(--primary,#2274A5); outline-offset:2px">Add item</button>
+              </div>
+            </div>
+
+            <section aria-labelledby="quiet-h" style="background:var(--surface,#fff); border:1px solid var(--line,#D9D4D2); border-radius:16px; padding:clamp(20px,3vw,32px); display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:clamp(20px,3vw,40px); align-items:center; margin-bottom:16px">
+              <div>
+                <h2 id="quiet-h" style="font-family:Habibi,serif; font-size:13px; letter-spacing:0.08em; text-transform:uppercase; color:var(--ink2,#4A5551); margin:0 0 8px; font-weight:400">Quiet score</h2>
+                <div style="display:flex; align-items:baseline; gap:12px; flex-wrap:wrap">
+                  <span style="font-family:'Roboto Slab',serif; font-weight:700; font-size:clamp(56px,9vw,88px); line-height:1">{{ quietDays }}</span>
+                  <span style="font-size:18px; color:var(--ink2,#4A5551); max-width:220px; line-height:1.3">days since Guardian last needed you</span>
+                </div>
+                <p style="margin:16px 0 0; color:var(--ink2,#4A5551); font-style:italic">The agent's best output is silence.</p>
+              </div>
+              <div style="display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px">
+                <button type="button" onClick="{{ goInventory }}" style="text-align:start; border:1px solid var(--line,#D9D4D2); border-radius:12px; padding:14px 16px; min-height:104px; display:flex; flex-direction:column; justify-content:space-between; gap:6px; background:transparent; color:inherit; cursor:pointer; font:inherit" style-hover="border-color:var(--primary,#2274A5)" style-focus="outline:2px solid var(--primary,#2274A5); outline-offset:2px"><div style="font-family:Habibi,serif; font-size:12px; text-transform:uppercase; letter-spacing:0.06em; color:var(--ink2,#4A5551)">Items watched</div><div style="font-family:'Roboto Slab',serif; font-size:28px; font-weight:600; line-height:1.2">312</div></button>
+                <button type="button" onClick="{{ goActivity }}" style="text-align:start; border:1px solid var(--line,#D9D4D2); border-radius:12px; padding:14px 16px; min-height:104px; display:flex; flex-direction:column; justify-content:space-between; gap:6px; background:transparent; color:inherit; cursor:pointer; font:inherit" style-hover="border-color:var(--primary,#2274A5)" style-focus="outline:2px solid var(--primary,#2274A5); outline-offset:2px"><div style="font-family:Habibi,serif; font-size:12px; text-transform:uppercase; letter-spacing:0.06em; color:var(--ink2,#4A5551)">Sweeps run</div><div style="font-family:'Roboto Slab',serif; font-size:28px; font-weight:600; line-height:1.2">187</div></button>
+                <button type="button" onClick="{{ goActivity }}" style="text-align:start; border:1px solid var(--line,#D9D4D2); border-radius:12px; padding:14px 16px; min-height:104px; display:flex; flex-direction:column; justify-content:space-between; gap:6px; background:transparent; color:inherit; cursor:pointer; font:inherit" style-hover="border-color:var(--primary,#2274A5)" style-focus="outline:2px solid var(--primary,#2274A5); outline-offset:2px"><div style="font-family:Habibi,serif; font-size:12px; text-transform:uppercase; letter-spacing:0.06em; color:var(--ink2,#4A5551)">Recalls screened, 30 days</div><div style="font-family:'Roboto Slab',serif; font-size:28px; font-weight:600; line-height:1.2">214</div></button>
+                <button type="button" onClick="{{ goDecisions }}" style="text-align:start; border:1px solid var(--line,#D9D4D2); border-radius:12px; padding:14px 16px; min-height:104px; display:flex; flex-direction:column; justify-content:space-between; gap:6px; background:{{ pendingBg }}; color:inherit; cursor:pointer; font:inherit" style-hover="border-color:var(--primary,#2274A5)" style-focus="outline:2px solid var(--primary,#2274A5); outline-offset:2px"><div style="font-family:Habibi,serif; font-size:12px; text-transform:uppercase; letter-spacing:0.06em; color:var(--ink2,#4A5551)">Decisions pending</div><div style="font-family:'Roboto Slab',serif; font-size:28px; font-weight:600; line-height:1.2">{{ pendingCount }}</div></button>
+              </div>
+            </section>
+
+            <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:16px">
+              <section aria-labelledby="act-h" style="background:var(--surface,#fff); border:1px solid var(--line,#D9D4D2); border-radius:16px; overflow:hidden">
+                <div style="display:flex; justify-content:space-between; align-items:center; padding:14px 20px; border-bottom:1px solid var(--line,#D9D4D2); gap:8px">
+                  <h2 id="act-h" style="font-family:'Roboto Slab',serif; font-size:18px; font-weight:600; margin:0">Last night's sweep</h2>
+                  <a href="#" onClick="{{ goActivity }}" style="font-family:Habibi,serif; font-size:14px">All activity</a>
+                </div>
+                <ol style="list-style:none; margin:0; padding:8px 20px">
+                  <sc-for list="{{ recentActivity }}" as="a" hint-placeholder-count="4">
+                    <li style="display:flex; gap:14px; padding:10px 0; border-bottom:1px solid var(--line,#D9D4D2)">
+                      <time style="font-family:'Roboto Slab',serif; font-size:13px; color:var(--ink2,#4A5551); flex:0 0 44px">{{ a.time }}</time>
+                      <div style="flex:1; min-width:0"><div>{{ a.text }}</div><div style="display:flex; align-items:center; gap:6px; font-family:Habibi,serif; font-size:13px; color:{{ a.color }}; margin-top:2px"><span aria-hidden="true" style="width:8px; height:8px; border-radius:50%; background:{{ a.color }}"></span>{{ a.result }}</div></div>
+                    </li>
+                  </sc-for>
+                </ol>
+              </section>
+              <section aria-labelledby="war-h" style="background:var(--surface,#fff); border:1px solid var(--line,#D9D4D2); border-radius:16px; overflow:hidden">
+                <div style="display:flex; justify-content:space-between; align-items:center; padding:14px 20px; border-bottom:1px solid var(--line,#D9D4D2); gap:8px">
+                  <h2 id="war-h" style="font-family:'Roboto Slab',serif; font-size:18px; font-weight:600; margin:0">Warranties ending soon</h2>
+                  <a href="#" onClick="{{ goInventory }}" style="font-family:Habibi,serif; font-size:14px">Inventory</a>
+                </div>
+                <ul style="list-style:none; margin:0; padding:8px 20px">
+                  <sc-for list="{{ endingSoon }}" as="w" hint-placeholder-count="3">
+                    <li style="padding:12px 0; border-bottom:1px solid var(--line,#D9D4D2)">
+                      <div style="display:flex; justify-content:space-between; gap:8px; flex-wrap:wrap"><button type="button" onClick="{{ w.open }}" style="border:0; background:none; padding:0; font:inherit; font-weight:500; color:var(--primary,#2274A5); cursor:pointer; text-align:start" style-hover="text-decoration:underline" style-focus="outline:2px solid var(--primary,#2274A5); outline-offset:2px">{{ w.name }}</button><span style="font-family:'Roboto Slab',serif; font-size:13px; color:var(--ink2,#4A5551)">ends {{ w.ends }}</span></div>
+                      <div role="progressbar" aria-label="Warranty elapsed" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ w.pct }}" style="height:6px; border-radius:3px; background:var(--tint,#EDE9E7); margin-top:8px; overflow:hidden"><div style="height:100%; width:{{ w.pct }}%; background:{{ w.color }}; border-radius:3px"></div></div>
+                      <div style="font-size:13px; color:var(--ink2,#4A5551); margin-top:6px">{{ w.note }}</div>
+                    </li>
+                  </sc-for>
+                </ul>
+              </section>
+            </div>
+          </sc-if>
+
+          <!-- DECISIONS -->
+          <sc-if value="{{ isDecisions }}" hint-placeholder-val="{{ false }}">
+            <h1 style="font-family:'Roboto Slab',serif; font-weight:600; font-size:clamp(24px,3vw,30px); margin:0 0 4px; line-height:1.2">Decisions <span style="color:var(--ink2,#4A5551); font-weight:400">({{ pendingCount }} pending)</span></h1>
+            <p style="margin:0 0 20px; color:var(--ink2,#4A5551)">The same cards your phone points to. One tap, then the agent finishes the job.</p>
+            <div style="display:flex; gap:16px; flex-wrap:wrap; align-items:flex-start">
+
+            <sc-if value="{{ hasPending }}" hint-placeholder-val="{{ true }}">
+              <article aria-labelledby="dec-h" style="background:var(--surface,#fff); border:1px solid var(--line,#D9D4D2); border-top:6px solid var(--critical,#960200); border-radius:16px; overflow:hidden; flex:1 1 560px; min-width:0">
+                <div style="padding:20px 24px 0">
+                  <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:10px">
+                    <span style="display:inline-flex; align-items:center; gap:6px; background:var(--critical,#960200); color:#fff; font-family:Habibi,serif; font-size:12px; letter-spacing:0.06em; text-transform:uppercase; padding:4px 10px; border-radius:12px"><span aria-hidden="true" style="width:14px; height:14px; border-radius:50%; border:1.5px solid #fff; display:inline-flex; align-items:center; justify-content:center; font-size:9px; font-weight:700">!</span>Critical hazard</span>
+                    <span style="font-family:Habibi,serif; font-size:13px; color:var(--ink2,#4A5551)">CPSC recall 25‑000 · surfaced 03:04 today · expires in 71 h</span>
+                  </div>
+                  <h2 id="dec-h" style="font-family:'Roboto Slab',serif; font-size:22px; font-weight:600; margin:0 0 6px; line-height:1.3">Graco Modes Nest stroller — hinge can pinch or amputate a fingertip</h2>
+                  <p style="margin:0 0 18px; color:var(--ink2,#4A5551)">Remedy: free repair kit from the manufacturer. Guardian has drafted the request and attached your Target receipt.</p>
+                </div>
+                <dl style="display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:14px 24px; margin:0; padding:16px 24px; background:var(--tint,#EDE9E7)">
+                  <div><dt style="font-family:Habibi,serif; font-size:12px; text-transform:uppercase; letter-spacing:0.06em; color:var(--ink2,#4A5551)">Purchased</dt><dd style="margin:2px 0 0; font-weight:500">2024‑03‑14, Target</dd></div>
+                  <div><dt style="font-family:Habibi,serif; font-size:12px; text-transform:uppercase; letter-spacing:0.06em; color:var(--ink2,#4A5551)">Model</dt><dd style="margin:2px 0 0; font-weight:500">2137765 · UPC match</dd></div>
+                  <div><dt style="font-family:Habibi,serif; font-size:12px; text-transform:uppercase; letter-spacing:0.06em; color:var(--ink2,#4A5551)">Match confidence</dt><dd style="margin:2px 0 0; font-weight:500">Certain (stage 1, exact key)</dd></div>
+                  <div><dt style="font-family:Habibi,serif; font-size:12px; text-transform:uppercase; letter-spacing:0.06em; color:var(--ink2,#4A5551)">Sold window</dt><dd style="margin:2px 0 0; font-weight:500">2023‑09 to 2025‑02</dd></div>
+                </dl>
+                <div style="padding:12px 24px 0; display:flex; gap:16px; flex-wrap:wrap">
+                  <button type="button" onClick="{{ toggleRationale }}" aria-expanded="{{ rationaleOpen }}" style="background:none; border:0; padding:6px 0; color:var(--primary,#2274A5); font-family:Habibi,serif; font-size:14px; cursor:pointer; display:flex; align-items:center; gap:8px; min-height:44px" style-focus="outline:2px solid var(--primary,#2274A5); outline-offset:2px"><span aria-hidden="true" style="display:inline-block; transform:{{ chevron }}; transition:transform 120ms">▸</span>Why Guardian thinks this is yours</button>
+                  <button type="button" onClick="{{ openStroller }}" style="background:none; border:0; padding:6px 0; color:var(--primary,#2274A5); font-family:Habibi,serif; font-size:14px; cursor:pointer; min-height:44px" style-hover="text-decoration:underline" style-focus="outline:2px solid var(--primary,#2274A5); outline-offset:2px">Open item and receipt</button>
+                </div>
+                <sc-if value="{{ rationaleOpen }}" hint-placeholder-val="{{ false }}">
+                  <p style="margin:0 24px 8px; padding:12px 16px; border-inline-start:3px solid var(--primary,#2274A5); background:var(--tint,#EDE9E7); border-radius:0 8px 8px 0; font-size:14px">UPC 047406171224 on your receipt equals a UPC listed in the recall's product table. Purchase date falls inside the sold window. No LLM adjudication was needed; the matcher marked it <em>certain</em> deterministically.</p>
+                </sc-if>
+                <div style="display:flex; gap:10px; flex-wrap:wrap; padding:16px 24px 24px; border-top:1px solid var(--line,#D9D4D2); margin-top:12px">
+                  <button type="button" onClick="{{ approve }}" style="min-height:44px; padding-inline:20px; border-radius:22px; border:2px solid #960200; background:#960200; color:#fff; font-family:Habibi,serif; font-size:15px; cursor:pointer; flex:1 1 200px" style-hover="filter:brightness(0.9)" style-focus="outline:2px solid var(--primary,#2274A5); outline-offset:2px">Request free repair kit</button>
+                  <button type="button" onClick="{{ dismiss }}" style="min-height:44px; padding-inline:18px; border-radius:22px; border:2px solid var(--line,#D9D4D2); background:transparent; color:var(--ink,#000F08); font-family:Habibi,serif; font-size:15px; cursor:pointer" style-hover="background:var(--tint,#EDE9E7)" style-focus="outline:2px solid var(--primary,#2274A5); outline-offset:2px">No longer own it</button>
+                  <button type="button" onClick="{{ dismiss }}" style="min-height:44px; padding-inline:18px; border-radius:22px; border:2px solid var(--line,#D9D4D2); background:transparent; color:var(--ink,#000F08); font-family:Habibi,serif; font-size:15px; cursor:pointer" style-hover="background:var(--tint,#EDE9E7)" style-focus="outline:2px solid var(--primary,#2274A5); outline-offset:2px">Not mine</button>
+                  <button type="button" onClick="{{ snooze }}" style="min-height:44px; padding-inline:18px; border-radius:22px; border:0; background:transparent; color:var(--primary,#2274A5); font-family:Habibi,serif; font-size:15px; cursor:pointer" style-hover="text-decoration:underline" style-focus="outline:2px solid var(--primary,#2274A5); outline-offset:2px">Ask me tomorrow</button>
+                </div>
+              </article>
+            </sc-if>
+
+            <sc-if value="{{ justResolved }}" hint-placeholder-val="{{ false }}">
+              <section aria-labelledby="res-h" style="background:var(--surface,#fff); border:1px solid var(--line,#D9D4D2); border-top:6px solid var(--ok,#2E7D4F); border-radius:16px; padding:20px 24px; flex:1 1 560px; min-width:0">
+                <h2 id="res-h" style="font-family:'Roboto Slab',serif; font-size:20px; font-weight:600; margin:0 0 4px">{{ resolvedTitle }}</h2>
+                <p style="margin:0 0 16px; color:var(--ink2,#4A5551)">{{ resolvedSub }}</p>
+                <ol style="list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:0">
+                  <sc-for list="{{ resolvedSteps }}" as="st" hint-placeholder-count="4">
+                    <li style="display:grid; grid-template-columns:24px minmax(0,1fr); gap:12px; align-items:start">
+                      <div style="display:flex; flex-direction:column; align-items:center; height:100%"><span aria-hidden="true" style="width:14px; height:14px; border-radius:50%; background:{{ st.color }}; border:2px solid {{ st.color }}; margin-top:5px; flex:0 0 auto"></span><span aria-hidden="true" style="width:2px; flex:1; background:{{ st.lineColor }}; min-height:14px"></span></div>
+                      <div style="padding-bottom:14px"><div style="font-weight:500">{{ st.text }}</div><div style="font-family:'Roboto Slab',serif; font-size:13px; color:var(--ink2,#4A5551)">{{ st.when }}</div></div>
+                    </li>
+                  </sc-for>
+                </ol>
+                <a href="#" onClick="{{ goActivity }}" style="font-family:Habibi,serif; font-size:14px">See it in the activity log</a>
+              </section>
+            </sc-if>
+
+            <sc-if value="{{ noPending }}" hint-placeholder-val="{{ false }}">
+              <div style="background:var(--surface,#fff); border:1px dashed var(--line,#D9D4D2); border-radius:16px; padding:40px 24px; text-align:center; flex:1 1 560px; min-width:0; align-self:stretch; display:flex; flex-direction:column; justify-content:center">
+                <div aria-hidden="true" style="width:56px; height:56px; border-radius:50%; background:var(--ok,#2E7D4F); margin:0 auto 16px; display:flex; align-items:center; justify-content:center; color:#fff; font-family:'Roboto Slab',serif; font-size:26px">✓</div>
+                <h2 style="font-family:'Roboto Slab',serif; font-size:22px; font-weight:600; margin:0 0 6px">Nothing needs you</h2>
+                <p style="margin:0 auto; color:var(--ink2,#4A5551); max-width:420px">The last sweep found nothing that applies to your household. The next one runs at 03:00.</p>
+              </div>
+            </sc-if>
+
+            <section aria-labelledby="past-h" style="flex:1 1 320px; min-width:0"><h2 id="past-h" style="font-family:'Roboto Slab',serif; font-size:18px; font-weight:600; margin:0 0 10px">Past decisions</h2>
+            <ul style="list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:8px">
+              <sc-for list="{{ pastDecisions }}" as="pd" hint-placeholder-count="3">
+                <li style="background:var(--surface,#fff); border:1px solid var(--line,#D9D4D2); border-radius:12px; padding:12px 16px; display:flex; gap:12px; align-items:center; flex-wrap:wrap" style-hover="border-color:var(--primary,#2274A5)">
+                  <span aria-hidden="true" style="width:10px; height:10px; border-radius:50%; background:{{ pd.color }}; flex:0 0 auto"></span>
+                  <div style="flex:1; min-width:200px"><div style="font-weight:500">{{ pd.title }}</div><div style="font-size:13px; color:var(--ink2,#4A5551)">{{ pd.detail }}</div></div>
+                  <span style="font-family:Habibi,serif; font-size:13px; color:{{ pd.color }}">{{ pd.outcome }}</span>
+                  <time style="font-family:'Roboto Slab',serif; font-size:13px; color:var(--ink2,#4A5551)">{{ pd.date }}</time>
+                </li>
+              </sc-for>
+            </ul></section>
+            </div>
+          </sc-if>
+
+          <!-- INVENTORY -->
+          <sc-if value="{{ isInventory }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex; justify-content:space-between; align-items:flex-end; gap:12px; flex-wrap:wrap; margin-bottom:16px">
+              <div>
+                <h1 style="font-family:'Roboto Slab',serif; font-weight:600; font-size:clamp(24px,3vw,30px); margin:0; line-height:1.2">Inventory <span style="color:var(--ink2,#4A5551); font-weight:400">(312)</span></h1>
+                <p style="margin:4px 0 0; color:var(--ink2,#4A5551)">Built from forwarded receipts, photos, and VINs. Select an item to see its receipt, warranty, and matches.</p>
+              </div>
+              <button type="button" onClick="{{ addItem }}" style="min-height:40px; padding-inline:18px; border-radius:20px; border:2px solid var(--primary,#2274A5); background:var(--primary,#2274A5); color:var(--primaryInk,#fff); font-family:Habibi,serif; font-size:14px; cursor:pointer" style-hover="filter:brightness(0.9)" style-focus="outline:2px solid var(--primary,#2274A5); outline-offset:2px">Add item</button>
+            </div>
+            <section aria-labelledby="inv-h" style="background:var(--surface,#fff); border:1px solid var(--line,#D9D4D2); border-radius:16px; overflow:hidden">
+              <h2 id="inv-h" style="position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0)">Inventory table</h2>
+              <div style="display:flex; gap:10px; flex-wrap:wrap; padding:14px 16px; border-bottom:1px solid var(--line,#D9D4D2); align-items:center">
+                <label style="flex:1 1 220px; display:flex; flex-direction:column; gap:4px"><span style="position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0)">Find items</span><input type="search" placeholder="Find items" style="min-height:40px; padding-inline:14px; border:2px solid var(--line,#D9D4D2); border-radius:8px; background:var(--bg,#F7F4F3); color:var(--ink,#000F08); width:100%" style-focus="outline:2px solid var(--primary,#2274A5); outline-offset:1px; border-color:var(--primary,#2274A5)"></label>
+                <div role="group" aria-label="Filters" style="display:flex; gap:8px; flex-wrap:wrap">
+                  <sc-for list="{{ filters }}" as="f" hint-placeholder-count="3">
+                    <button type="button" aria-pressed="{{ f.on }}" onClick="{{ f.toggle }}" style="min-height:40px; padding-inline:14px; border-radius:20px; border:2px solid {{ f.border }}; background:{{ f.bg }}; color:{{ f.color }}; font-family:Habibi,serif; font-size:13px; cursor:pointer" style-hover="border-color:var(--primary,#2274A5)" style-focus="outline:2px solid var(--primary,#2274A5); outline-offset:2px">{{ f.label }}</button>
+                  </sc-for>
+                </div>
+              </div>
+              <div role="table" aria-label="Items">
+                <div role="row" style="display:var(--th,grid); grid-template-columns:var(--cols,2fr 1fr 1fr 1.4fr 1.2fr); gap:12px; padding:10px 16px; background:var(--tint,#EDE9E7); font-family:Habibi,serif; font-size:12px; text-transform:uppercase; letter-spacing:0.06em; color:var(--ink2,#4A5551)">
+                  <span role="columnheader">Item</span><span role="columnheader">Category</span><span role="columnheader">Purchased</span><span role="columnheader">Warranty</span><span role="columnheader">Recall status</span>
+                </div>
+                <sc-for list="{{ items }}" as="it" hint-placeholder-count="6">
+                  <div role="row" aria-selected="{{ it.selected }}" style="display:grid; grid-template-columns:var(--cols,2fr 1fr 1fr 1.4fr 1.2fr); gap:8px 12px; padding:12px 16px; border-bottom:1px solid var(--line,#D9D4D2); align-items:center; background:{{ it.rowBg }}; border-inline-start:3px solid {{ it.rowBar }}; cursor:pointer" onClick="{{ it.open }}" style-hover="background:var(--tint,#EDE9E7)">
+                    <div role="cell" style="display:flex; gap:12px; align-items:center; min-width:0">
+                      <span aria-hidden="true" style="width:40px; height:40px; border-radius:8px; flex:0 0 auto; background:repeating-linear-gradient(135deg,var(--tint,#EDE9E7) 0 4px,var(--surface,#fff) 4px 8px); border:1px solid var(--line,#D9D4D2)"></span>
+                      <div style="min-width:0"><button type="button" onClick="{{ it.open }}" style="border:0; background:none; padding:0; font:inherit; font-weight:500; color:var(--primary,#2274A5); cursor:pointer; text-align:start; min-height:24px" style-hover="text-decoration:underline" style-focus="outline:2px solid var(--primary,#2274A5); outline-offset:2px">{{ it.name }}</button><div style="font-size:13px; color:var(--ink2,#4A5551)">{{ it.brand }} · {{ it.model }}</div></div>
+                    </div>
+                    <div role="cell"><span style="display:var(--cellLabel,none); font-family:Habibi,serif; font-size:11px; text-transform:uppercase; color:var(--ink2,#4A5551); margin-inline-end:8px">Category</span>{{ it.cat }}</div>
+                    <div role="cell" style="font-family:'Roboto Slab',serif; font-size:14px"><span style="display:var(--cellLabel,none); font-family:Habibi,serif; font-size:11px; text-transform:uppercase; color:var(--ink2,#4A5551); margin-inline-end:8px">Purchased</span>{{ it.date }}</div>
+                    <div role="cell">
+                      <span style="display:var(--cellLabel,none); font-family:Habibi,serif; font-size:11px; text-transform:uppercase; color:var(--ink2,#4A5551); margin-inline-end:8px">Warranty</span>
+                      <span style="font-size:13px">{{ it.wlabel }}</span>
+                      <div role="progressbar" aria-label="Warranty elapsed" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ it.pct }}" style="height:6px; border-radius:3px; background:var(--tint,#EDE9E7); margin-top:6px; overflow:hidden; max-width:220px"><div style="height:100%; width:{{ it.pct }}%; background:{{ it.wcolor }}; border-radius:3px"></div></div>
+                    </div>
+                    <div role="cell" style="display:flex; align-items:center; gap:8px; font-family:Habibi,serif; font-size:14px; color:{{ it.scolor }}"><span style="display:var(--cellLabel,none); font-size:11px; text-transform:uppercase; color:var(--ink2,#4A5551)">Recall</span><span aria-hidden="true" style="width:10px; height:10px; border-radius:50%; background:{{ it.scolor }}; flex:0 0 auto"></span>{{ it.status }}</div>
+                  </div>
+                </sc-for>
+              </div>
+              <div style="display:flex; justify-content:space-between; align-items:center; padding:12px 16px; font-family:Habibi,serif; font-size:13px; color:var(--ink2,#4A5551); flex-wrap:wrap; gap:8px"><span>1–6 of 312</span><div style="display:flex; gap:6px"><button type="button" aria-label="Previous page" disabled style="width:40px; height:40px; border-radius:8px; border:1px solid var(--line,#D9D4D2); background:transparent; color:var(--ink2,#4A5551); opacity:0.5">‹</button><button type="button" aria-label="Next page" style="width:40px; height:40px; border-radius:8px; border:1px solid var(--line,#D9D4D2); background:transparent; color:var(--ink,#000F08); cursor:pointer" style-focus="outline:2px solid var(--primary,#2274A5); outline-offset:2px">›</button></div></div>
+            </section>
+          </sc-if>
+
+          <!-- ACTIVITY -->
+          <sc-if value="{{ isActivity }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex; justify-content:space-between; align-items:flex-end; gap:12px; flex-wrap:wrap; margin-bottom:20px">
+              <div><h1 style="font-family:'Roboto Slab',serif; font-weight:600; font-size:clamp(24px,3vw,30px); margin:0 0 4px; line-height:1.2">Activity</h1><p style="margin:0; color:var(--ink2,#4A5551)">Every sweep is logged, including the ones that found nothing.</p></div>
+              <a href="#" onClick="{{ goFlow }}" style="font-family:Habibi,serif; font-size:14px">How last night ran →</a>
+            </div>
+            <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(380px,1fr)); gap:16px; align-items:start"><sc-for list="{{ nights }}" as="night" hint-placeholder-count="3">
+              <section aria-label="{{ night.date }}" style="background:var(--surface,#fff); border:1px solid var(--line,#D9D4D2); border-radius:16px; overflow:hidden">
+                <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; padding:12px 20px; border-bottom:1px solid var(--line,#D9D4D2)">
+                  <h2 style="font-family:'Roboto Slab',serif; font-size:16px; font-weight:600; margin:0">{{ night.date }}</h2>
+                  <span style="display:inline-flex; align-items:center; gap:6px; font-family:Habibi,serif; font-size:13px; color:{{ night.color }}"><span aria-hidden="true" style="width:8px; height:8px; border-radius:50%; background:{{ night.color }}"></span>{{ night.summary }}</span>
+                </div>
+                <ol style="list-style:none; margin:0; padding:4px 20px">
+                  <sc-for list="{{ night.rows }}" as="r" hint-placeholder-count="3">
+                    <li style="display:grid; grid-template-columns:52px minmax(0,1fr); gap:12px; padding:10px 0; border-bottom:1px solid var(--line,#D9D4D2)">
+                      <time style="font-family:'Roboto Slab',serif; font-size:13px; color:var(--ink2,#4A5551); padding-top:2px">{{ r.time }}</time>
+                      <div><span style="display:inline-block; font-family:Habibi,serif; font-size:11px; letter-spacing:0.06em; text-transform:uppercase; padding:2px 8px; border-radius:10px; border:1px solid var(--line,#D9D4D2); color:var(--ink2,#4A5551); margin-inline-end:8px; vertical-align:middle">{{ r.src }}</span><span style="vertical-align:middle">{{ r.text }}</span></div>
+                    </li>
+                  </sc-for>
+                </ol>
+              </section>
+            </sc-for></div>
+          </sc-if>
+
+          <!-- AGENT FLOW (technical, wireframe) -->
+          <sc-if value="{{ isFlow }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex; justify-content:space-between; align-items:flex-end; gap:12px; flex-wrap:wrap; margin-bottom:16px">
+              <div><h1 style="font-family:'Roboto Slab',serif; font-weight:600; font-size:clamp(24px,3vw,30px); margin:0 0 4px; line-height:1.2">Agent flow</h1><p style="margin:0; color:var(--ink2,#4A5551)">Tonight's run as the Strands graph saw it. Deterministic code in grey, agents in blue, the human in amber.</p></div>
+              <a href="Guardian Agent Flow.dc.html" style="display:inline-flex; align-items:center; min-height:40px; padding-inline:18px; border-radius:20px; border:2px solid var(--primary,#2274A5); background:var(--primary,#2274A5); color:var(--primaryInk,#fff); font-family:Habibi,serif; font-size:14px; text-decoration:none" style-hover="filter:brightness(0.9)" style-focus="outline:2px solid var(--primary,#2274A5); outline-offset:2px">Open full trace view →</a>
+            </div>
+            <section aria-label="Graph" style="background:var(--surface,#fff); border:1px solid var(--line,#D9D4D2); border-radius:16px; padding:20px; overflow-x:auto; margin-bottom:16px">
+              <ol style="list-style:none; margin:0; padding:0; display:flex; align-items:stretch; gap:0; min-width:max-content">
+                <sc-for list="{{ flowNodes }}" as="fn" hint-placeholder-count="6">
+                  <li style="display:flex; align-items:center">
+                    <button type="button" onClick="{{ fn.select }}" aria-pressed="{{ fn.selected }}" style="width:196px; text-align:start; border:2px solid {{ fn.border }}; border-radius:12px; padding:12px 14px; background:{{ fn.bg }}; color:var(--ink,#000F08); cursor:pointer; font:inherit; display:flex; flex-direction:column; gap:6px" style-hover="border-color:var(--primary,#2274A5)" style-focus="outline:2px solid var(--primary,#2274A5); outline-offset:2px">
+                      <span style="display:inline-flex; align-self:flex-start; font-family:Habibi,serif; font-size:11px; letter-spacing:0.06em; text-transform:uppercase; padding:2px 8px; border-radius:10px; background:{{ fn.kindBg }}; color:{{ fn.kindInk }}">{{ fn.kind }}</span>
+                      <span style="font-family:'Roboto Slab',serif; font-weight:600; font-size:15px">{{ fn.name }}</span>
+                      <span style="font-size:13px; color:var(--ink2,#4A5551)">{{ fn.meta }}</span>
+                      <span style="display:flex; align-items:center; gap:6px; font-family:Habibi,serif; font-size:13px; color:{{ fn.statusColor }}"><span aria-hidden="true" style="width:8px; height:8px; border-radius:50%; background:{{ fn.statusColor }}"></span>{{ fn.status }}</span>
+                    </button>
+                    <sc-if value="{{ fn.hasNext }}" hint-placeholder-val="{{ true }}"><span aria-hidden="true" style="width:36px; height:2px; background:var(--line,#D9D4D2); display:block; position:relative"><span style="position:absolute; inset-inline-end:-2px; top:-4px; width:10px; height:10px; border-top:2px solid var(--line,#D9D4D2); border-inline-end:2px solid var(--line,#D9D4D2); transform:{{ arrowRot }}"></span></span></sc-if>
+                  </li>
+                </sc-for>
+              </ol>
+            </section>
+            <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:16px">
+              <section aria-labelledby="node-h" style="background:var(--surface,#fff); border:1px solid var(--line,#D9D4D2); border-radius:16px; padding:18px 20px">
+                <h2 id="node-h" style="font-family:'Roboto Slab',serif; font-size:18px; font-weight:600; margin:0 0 4px">{{ flowSel.name }}</h2>
+                <p style="margin:0 0 14px; color:var(--ink2,#4A5551); font-size:14px">{{ flowSel.desc }}</p>
+                <dl style="display:grid; grid-template-columns:repeat(auto-fit,minmax(130px,1fr)); gap:12px; margin:0 0 14px">
+                  <div><dt style="font-family:Habibi,serif; font-size:12px; text-transform:uppercase; letter-spacing:0.06em; color:var(--ink2,#4A5551)">Duration</dt><dd style="margin:2px 0 0; font-family:'Roboto Slab',serif">{{ flowSel.duration }}</dd></div>
+                  <div><dt style="font-family:Habibi,serif; font-size:12px; text-transform:uppercase; letter-spacing:0.06em; color:var(--ink2,#4A5551)">Tokens</dt><dd style="margin:2px 0 0; font-family:'Roboto Slab',serif">{{ flowSel.tokens }}</dd></div>
+                  <div><dt style="font-family:Habibi,serif; font-size:12px; text-transform:uppercase; letter-spacing:0.06em; color:var(--ink2,#4A5551)">Cost</dt><dd style="margin:2px 0 0; font-family:'Roboto Slab',serif">{{ flowSel.cost }}</dd></div>
+                </dl>
+                <div style="font-family:Habibi,serif; font-size:12px; text-transform:uppercase; letter-spacing:0.06em; color:var(--ink2,#4A5551); margin-bottom:6px">Structured output</div>
+                <pre dir="ltr" style="margin:0; padding:12px 14px; border-radius:8px; background:var(--tint,#EDE9E7); font-family:ui-monospace,monospace; font-size:12.5px; line-height:1.5; overflow-x:auto; white-space:pre-wrap; text-align:left">{{ flowSel.output }}</pre>
+              </section>
+              <section aria-labelledby="plan-h" style="background:var(--surface,#fff); border:1px dashed var(--line,#D9D4D2); border-radius:16px; padding:18px 20px">
+                <h2 id="plan-h" style="font-family:'Roboto Slab',serif; font-size:18px; font-weight:600; margin:0 0 8px">What this view will show</h2>
+                <ul style="margin:0; padding-inline-start:18px; color:var(--ink2,#4A5551); font-size:14px; display:flex; flex-direction:column; gap:6px">
+                  <li>Live trace from AgentCore Observability for any night, not just tonight.</li>
+                  <li>Per-node structured output (MatchVerdict, SurfacePlan, ActionReport) with the interrupt highlighted and the hours it waited.</li>
+                  <li>Memory reads and writes: which preference or household fact changed the plan.</li>
+                  <li>Token and cost totals per run against the credit.</li>
+                  <li>Replay: re-run the matcher on one candidate pair after a photo arrives.</li>
+                </ul>
+              </section>
+            </div>
+          </sc-if>
+
+          <!-- SETTINGS -->
+          <sc-if value="{{ isSettings }}" hint-placeholder-val="{{ false }}">
+            <h1 style="font-family:'Roboto Slab',serif; font-weight:600; font-size:clamp(24px,3vw,30px); margin:0 0 4px; line-height:1.2">Settings</h1>
+            <p style="margin:0 0 20px; color:var(--ink2,#4A5551)">Also changeable by replying in plain language, like "only bother me about the kids' stuff."</p>
+            <form onSubmit="{{ preventSubmit }}" style="display:grid; grid-template-columns:repeat(auto-fit,minmax(340px,1fr)); gap:16px; align-items:start">
+              <section aria-labelledby="s1" style="background:var(--surface,#fff); border:1px solid var(--line,#D9D4D2); border-radius:16px; padding:20px 24px">
+                <h2 id="s1" style="font-family:'Roboto Slab',serif; font-size:18px; font-weight:600; margin:0 0 4px">Interruptions</h2>
+                <p style="margin:0 0 16px; color:var(--ink2,#4A5551); font-size:14px">Critical hazards always come through. This governs everything else.</p>
+                <fieldset style="border:0; padding:0; margin:0 0 18px">
+                  <legend style="font-family:Habibi,serif; font-size:13px; margin-bottom:8px">Notification budget</legend>
+                  <div style="display:flex; flex-direction:column; gap:4px">
+                    <sc-for list="{{ budgets }}" as="b" hint-placeholder-count="3">
+                      <label style="display:flex; align-items:center; gap:12px; min-height:44px; padding:6px 12px; border-radius:8px; border:2px solid {{ b.border }}; cursor:pointer; background:{{ b.bg }}" style-hover="border-color:var(--primary,#2274A5)">
+                        <input type="radio" name="budget" checked="{{ b.on }}" onChange="{{ b.pick }}" style="width:20px; height:20px; accent-color:#2274A5; margin:0" style-focus="outline:2px solid var(--primary,#2274A5); outline-offset:2px">
+                        <span><span style="font-weight:500">{{ b.label }}</span><span style="display:block; font-size:13px; color:var(--ink2,#4A5551)">{{ b.desc }}</span></span>
+                      </label>
+                    </sc-for>
+                  </div>
+                </fieldset>
+                <label style="display:flex; flex-direction:column; gap:6px; max-width:320px">
+                  <span style="font-family:Habibi,serif; font-size:13px">Value threshold for warranty check‑ins</span>
+                  <span style="display:flex; align-items:center; border:2px solid var(--line,#D9D4D2); border-radius:8px; overflow:hidden; background:var(--bg,#F7F4F3)"><span style="padding-inline:12px; color:var(--ink2,#4A5551); font-family:'Roboto Slab',serif">$</span><input type="number" defaultValue="200" min="0" step="10" aria-describedby="thr-help" style="flex:1; min-height:40px; border:0; background:transparent; color:var(--ink,#000F08); padding-inline:4px 12px; font-family:'Roboto Slab',serif; width:100%" style-focus="outline:2px solid var(--primary,#2274A5); outline-offset:-2px"></span>
+                  <span id="thr-help" style="font-size:13px; color:var(--ink2,#4A5551)">Items below this expire quietly.</span>
+                </label>
+              </section>
+              <section aria-labelledby="s2" style="background:var(--surface,#fff); border:1px solid var(--line,#D9D4D2); border-radius:16px; padding:20px 24px">
+                <h2 id="s2" style="font-family:'Roboto Slab',serif; font-size:18px; font-weight:600; margin:0 0 4px">Quiet categories</h2>
+                <p style="margin:0 0 12px; color:var(--ink2,#4A5551); font-size:14px">Standard‑hazard recalls in these categories go to the digest only.</p>
+                <div role="group" aria-label="Quiet categories" style="display:flex; gap:8px; flex-wrap:wrap">
+                  <sc-for list="{{ cats }}" as="c" hint-placeholder-count="6">
+                    <button type="button" aria-pressed="{{ c.on }}" onClick="{{ c.toggle }}" style="min-height:40px; padding-inline:14px; border-radius:20px; border:2px solid {{ c.border }}; background:{{ c.bg }}; color:{{ c.color }}; font-family:Habibi,serif; font-size:13px; cursor:pointer; display:inline-flex; align-items:center; gap:6px" style-hover="border-color:var(--primary,#2274A5)" style-focus="outline:2px solid var(--primary,#2274A5); outline-offset:2px"><span aria-hidden="true">{{ c.mark }}</span>{{ c.label }}</button>
+                  </sc-for>
+                </div>
+              </section>
+              <section aria-labelledby="s3" style="background:var(--surface,#fff); border:1px solid var(--line,#D9D4D2); border-radius:16px; padding:20px 24px">
+                <h2 id="s3" style="font-family:'Roboto Slab',serif; font-size:18px; font-weight:600; margin:0 0 12px">Channels</h2>
+                <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:16px">
+                  <div style="display:flex; flex-direction:column; gap:6px">
+                    <span style="font-family:Habibi,serif; font-size:13px">Forwarding address</span>
+                    <div style="display:flex; gap:8px; align-items:stretch">
+                      <code aria-label="Forwarding address" dir="ltr" style="flex:1; display:flex; align-items:center; padding-inline:12px; min-height:40px; border:2px solid var(--line,#D9D4D2); border-radius:8px; background:var(--bg,#F7F4F3); font-family:ui-monospace,monospace; font-size:13px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap">receipts@guardian.house</code>
+                      <button type="button" onClick="{{ copy }}" style="min-height:40px; padding-inline:14px; border-radius:20px; border:2px solid var(--primary,#2274A5); background:transparent; color:var(--primary,#2274A5); font-family:Habibi,serif; font-size:13px; cursor:pointer; white-space:nowrap" style-hover="background:var(--tint,#EDE9E7)" style-focus="outline:2px solid var(--primary,#2274A5); outline-offset:2px">Copy</button>
+                    </div>
+                  </div>
+                  <label style="display:flex; flex-direction:column; gap:6px">
+                    <span style="font-family:Habibi,serif; font-size:13px">Phone for critical alerts</span>
+                    <input type="tel" defaultValue="+1 (415) 555‑0134" dir="ltr" style="min-height:40px; padding-inline:12px; border:2px solid var(--line,#D9D4D2); border-radius:8px; background:var(--bg,#F7F4F3); color:var(--ink,#000F08); font-family:'Roboto Slab',serif; text-align:start" style-focus="outline:2px solid var(--primary,#2274A5); outline-offset:1px; border-color:var(--primary,#2274A5)">
+                  </label>
+                </div>
+              </section>
+              <section aria-labelledby="s4" style="background:var(--surface,#fff); border:1px solid var(--line,#D9D4D2); border-radius:16px; padding:20px 24px">
+                <h2 id="s4" style="font-family:'Roboto Slab',serif; font-size:18px; font-weight:600; margin:0 0 12px">Appearance</h2>
+                <div style="display:flex; gap:8px; flex-wrap:wrap">
+                  <button type="button" onClick="{{ toggleScheme }}" aria-pressed="{{ isDark }}" style="min-height:40px; padding-inline:14px; border-radius:20px; border:2px solid var(--line,#D9D4D2); background:transparent; color:var(--ink,#000F08); font-family:Habibi,serif; font-size:13px; cursor:pointer" style-hover="border-color:var(--primary,#2274A5)" style-focus="outline:2px solid var(--primary,#2274A5); outline-offset:2px">Switch to {{ schemeLabel }} mode</button>
+                  <button type="button" onClick="{{ toggleDir }}" style="min-height:40px; padding-inline:14px; border-radius:20px; border:2px solid var(--line,#D9D4D2); background:transparent; color:var(--ink,#000F08); font-family:Habibi,serif; font-size:13px; cursor:pointer" style-hover="border-color:var(--primary,#2274A5)" style-focus="outline:2px solid var(--primary,#2274A5); outline-offset:2px">Text direction: {{ dirLabel }}</button>
+                </div>
+              </section>
+              <div style="grid-column:1 / -1; display:flex; gap:10px; justify-content:flex-end; flex-wrap:wrap">
+                <button type="button" style="min-height:44px; padding-inline:18px; border-radius:22px; border:2px solid var(--line,#D9D4D2); background:transparent; color:var(--ink,#000F08); font-family:Habibi,serif; font-size:15px; cursor:pointer" style-hover="background:var(--tint,#EDE9E7)" style-focus="outline:2px solid var(--primary,#2274A5); outline-offset:2px">Cancel</button>
+                <button type="submit" style="min-height:44px; padding-inline:22px; border-radius:22px; border:2px solid var(--primary,#2274A5); background:var(--primary,#2274A5); color:var(--primaryInk,#fff); font-family:Habibi,serif; font-size:15px; cursor:pointer" style-hover="filter:brightness(0.9)" style-focus="outline:2px solid var(--primary,#2274A5); outline-offset:2px">Save changes</button>
+              </div>
+            </form>
+          </sc-if>
+        </div>
+      </main>
+
+      <!-- SPLIT PANEL: item detail (resizable) -->
+      <sc-if value="{{ splitOpen }}" hint-placeholder-val="{{ false }}">
+        <section aria-label="Item detail" style="flex:0 0 auto; height:{{ splitH }}; max-height:85vh; background:var(--surface,#fff); border-top:1px solid var(--line,#D9D4D2); display:flex; flex-direction:column; position:{{ splitPos }}; inset-inline:0; bottom:0; z-index:45; box-shadow:0 -8px 24px rgba(0,15,8,0.12); border-radius:{{ splitRadius }}">
+          <div role="separator" aria-label="Resize item detail panel" aria-orientation="horizontal" aria-valuemin="160" aria-valuemax="700" aria-valuenow="{{ splitHNum }}" tabIndex="0" onPointerDown="{{ startSplitDrag }}" onKeyDown="{{ splitKey }}" style="height:22px; display:flex; align-items:center; justify-content:center; cursor:row-resize; touch-action:none; flex:0 0 auto" style-focus="outline:2px solid var(--primary,#2274A5); outline-offset:-2px"><span aria-hidden="true" style="width:56px; height:5px; border-radius:3px; background:var(--line,#D9D4D2)"></span></div>
+          <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; padding:0 20px 10px; border-bottom:1px solid var(--line,#D9D4D2)">
+            <div style="min-width:0"><h2 style="font-family:'Roboto Slab',serif; font-size:18px; font-weight:600; margin:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap">{{ sel.name }}</h2><div style="font-size:13px; color:var(--ink2,#4A5551)">{{ sel.brand }} · {{ sel.model }} · {{ sel.cat }}</div></div>
+            <button type="button" onClick="{{ closeSplit }}" aria-label="Close item detail" style="width:40px; height:40px; border-radius:50%; border:0; background:transparent; color:var(--ink,#000F08); font-size:22px; cursor:pointer; flex:0 0 auto" style-hover="background:var(--tint,#EDE9E7)" style-focus="outline:2px solid var(--primary,#2274A5); outline-offset:2px">×</button>
+          </div>
+          <div style="flex:1; min-height:0; overflow-y:auto; padding:16px 20px; display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:20px; align-content:start">
+            <div>
+              <div style="font-family:Habibi,serif; font-size:12px; text-transform:uppercase; letter-spacing:0.06em; color:var(--ink2,#4A5551); margin-bottom:8px">Receipt</div>
+              <div aria-label="Receipt image placeholder" style="aspect-ratio:4/3; border-radius:10px; border:1px solid var(--line,#D9D4D2); background:repeating-linear-gradient(135deg,var(--tint,#EDE9E7) 0 6px,var(--surface,#fff) 6px 12px); display:flex; align-items:center; justify-content:center; font-family:ui-monospace,monospace; font-size:12px; color:var(--ink2,#4A5551)">receipt thumbnail · {{ sel.retailer }}</div>
+              <div style="display:flex; gap:8px; margin-top:10px; flex-wrap:wrap"><button type="button" style="min-height:36px; padding-inline:12px; border-radius:18px; border:2px solid var(--line,#D9D4D2); background:transparent; color:var(--ink,#000F08); font-family:Habibi,serif; font-size:13px; cursor:pointer" style-hover="background:var(--tint,#EDE9E7)" style-focus="outline:2px solid var(--primary,#2274A5); outline-offset:2px">Open original email</button><button type="button" style="min-height:36px; padding-inline:12px; border-radius:18px; border:2px solid var(--line,#D9D4D2); background:transparent; color:var(--ink,#000F08); font-family:Habibi,serif; font-size:13px; cursor:pointer" style-hover="background:var(--tint,#EDE9E7)" style-focus="outline:2px solid var(--primary,#2274A5); outline-offset:2px">Add label photo</button></div>
+            </div>
+            <div>
+              <div style="font-family:Habibi,serif; font-size:12px; text-transform:uppercase; letter-spacing:0.06em; color:var(--ink2,#4A5551); margin-bottom:8px">Warranty</div>
+              <div style="display:flex; justify-content:space-between; gap:8px"><span style="font-weight:500">{{ sel.wlabel }}</span><span style="font-family:'Roboto Slab',serif; font-size:13px; color:var(--ink2,#4A5551)">{{ sel.pct }}% elapsed</span></div>
+              <div role="progressbar" aria-label="Warranty elapsed" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ sel.pct }}" style="height:8px; border-radius:4px; background:var(--tint,#EDE9E7); margin-top:8px; overflow:hidden"><div style="height:100%; width:{{ sel.pct }}%; background:{{ sel.wcolor }}; border-radius:4px"></div></div>
+              <p style="margin:8px 0 12px; font-size:13px; color:var(--ink2,#4A5551)">{{ sel.wnote }}</p>
+              <dl style="margin:0; display:grid; grid-template-columns:auto 1fr; gap:6px 14px; font-size:14px">
+                <dt style="color:var(--ink2,#4A5551)">Purchased</dt><dd style="margin:0; font-family:'Roboto Slab',serif">{{ sel.date }}</dd>
+                <dt style="color:var(--ink2,#4A5551)">Retailer</dt><dd style="margin:0">{{ sel.retailer }}</dd>
+                <dt style="color:var(--ink2,#4A5551)">Paid</dt><dd style="margin:0; font-family:'Roboto Slab',serif">{{ sel.price }}</dd>
+              </dl>
+              <button type="button" onClick="{{ reportProblem }}" style="margin-top:14px; min-height:40px; padding-inline:16px; border-radius:20px; border:2px solid var(--primary,#2274A5); background:transparent; color:var(--primary,#2274A5); font-family:Habibi,serif; font-size:14px; cursor:pointer" style-hover="background:var(--tint,#EDE9E7)" style-focus="outline:2px solid var(--primary,#2274A5); outline-offset:2px">Something's wrong with it</button>
+            </div>
+            <div>
+              <div style="font-family:Habibi,serif; font-size:12px; text-transform:uppercase; letter-spacing:0.06em; color:var(--ink2,#4A5551); margin-bottom:8px">Recall checks</div>
+              <div style="display:flex; align-items:center; gap:8px; font-family:Habibi,serif; font-size:14px; color:{{ sel.scolor }}; margin-bottom:8px"><span aria-hidden="true" style="width:10px; height:10px; border-radius:50%; background:{{ sel.scolor }}"></span>{{ sel.status }}</div>
+              <p style="margin:0 0 10px; font-size:14px">{{ sel.rationale }}</p>
+              <p style="margin:0; font-size:13px; color:var(--ink2,#4A5551)">Checked against {{ sel.sources }} in {{ sel.sweeps }} nightly sweeps since intake.</p>
+            </div>
+          </div>
+        </section>
+      </sc-if>
+    </div>
+
+    <!-- HELP PANEL (resizable) -->
+    <sc-if value="{{ helpOpen }}" hint-placeholder-val="{{ false }}">
+      <aside aria-label="Info" style="width:{{ helpW }}; flex:0 0 auto; max-width:100vw; background:var(--surface,#fff); border-inline-start:1px solid var(--line,#D9D4D2); display:flex; position:{{ helpPos }}; inset:0; inset-inline-start:{{ helpInsetStart }}; z-index:50">
+        <div role="separator" aria-label="Resize info panel" aria-orientation="vertical" aria-valuemin="240" aria-valuemax="560" aria-valuenow="{{ helpWNum }}" tabIndex="0" onPointerDown="{{ startHelpDrag }}" onKeyDown="{{ helpKey }}" style="width:14px; flex:0 0 auto; cursor:col-resize; touch-action:none; display:var(--desk,flex); align-items:center; justify-content:center" style-hover="background:var(--tint,#EDE9E7)" style-focus="outline:2px solid var(--primary,#2274A5); outline-offset:-2px"><span aria-hidden="true" style="width:4px; height:40px; border-radius:2px; background:var(--line,#D9D4D2)"></span></div>
+        <div style="flex:1; min-width:0; display:flex; flex-direction:column">
+          <div style="display:flex; justify-content:space-between; align-items:center; padding:14px 16px 10px; border-bottom:1px solid var(--line,#D9D4D2)"><h2 style="font-family:'Roboto Slab',serif; font-size:16px; font-weight:600; margin:0">{{ help.title }}</h2><button type="button" onClick="{{ toggleHelp }}" aria-label="Close info panel" style="width:40px; height:40px; border-radius:50%; border:0; background:transparent; color:var(--ink,#000F08); font-size:22px; cursor:pointer" style-hover="background:var(--tint,#EDE9E7)" style-focus="outline:2px solid var(--primary,#2274A5); outline-offset:2px">×</button></div>
+          <div style="padding:16px; overflow-y:auto; font-size:14px; display:flex; flex-direction:column; gap:12px">
+            <p style="margin:0">{{ help.body }}</p>
+            <sc-for list="{{ help.points }}" as="hp" hint-placeholder-count="3">
+              <div style="padding:10px 12px; border-radius:8px; background:var(--tint,#EDE9E7)"><div style="font-family:Habibi,serif; font-size:13px; margin-bottom:2px">{{ hp.k }}</div><div style="color:var(--ink2,#4A5551); font-size:13px">{{ hp.v }}</div></div>
+            </sc-for>
+          </div>
+        </div>
+      </aside>
+    </sc-if>
+  </div>
+
+  <!-- MOBILE TAB BAR -->
+  <nav aria-label="Main" style="display:var(--tabs,none); flex:0 0 auto; height:60px; background:var(--surface,#fff); border-top:1px solid var(--line,#D9D4D2); z-index:30; padding-bottom:env(safe-area-inset-bottom)">
+    <sc-for list="{{ navItems }}" as="n" hint-placeholder-count="5">
+      <a href="#" aria-current="{{ n.current }}" onClick="{{ n.go }}" style="flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px; text-decoration:none; color:{{ n.color }}; font-family:Habibi,serif; font-size:11px; min-height:60px; position:relative; border-top:3px solid {{ n.bar }}" style-focus="outline:2px solid var(--primary,#2274A5); outline-offset:-2px">
+        <span aria-hidden="true" style="width:22px; height:22px; border-radius:{{ n.iconRadius }}; border:2px solid currentColor; display:flex; align-items:center; justify-content:center"><span style="width:6px; height:6px; border-radius:50%; background:{{ n.iconDot }}"></span></span>
+        <span>{{ n.label }}</span>
+        <sc-if value="{{ n.count }}" hint-placeholder-val="{{ false }}"><span style="position:absolute; top:8px; inset-inline-start:calc(50% + 6px); min-width:18px; height:18px; padding-inline:5px; border-radius:9px; background:var(--critical,#960200); color:#fff; font-size:11px; display:inline-flex; align-items:center; justify-content:center; font-family:'Roboto Slab',serif">{{ n.count }}</span></sc-if>
+      </a>
+    </sc-for>
+  </nav>
+
+  <sc-if value="{{ toast }}" hint-placeholder-val="{{ false }}">
+    <div role="status" aria-live="polite" style="position:fixed; bottom:{{ toastBottom }}; inset-inline-start:50%; transform:translateX(-50%); background:var(--ink,#000F08); color:var(--bg,#F7F4F3); padding:12px 20px; border-radius:24px; font-family:Habibi,serif; font-size:14px; z-index:70; box-shadow:0 8px 24px rgba(0,15,8,0.25); max-width:calc(100vw - 32px)">{{ toast }}</div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;scenario&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;critical&quot;,&quot;quiet&quot;],&quot;default&quot;:&quot;critical&quot;,&quot;tsType&quot;:&quot;'critical' | 'quiet'&quot;,&quot;section&quot;:&quot;State&quot;},&quot;colorScheme&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;light&quot;,&quot;dark&quot;],&quot;default&quot;:&quot;light&quot;,&quot;tsType&quot;:&quot;'light' | 'dark'&quot;,&quot;section&quot;:&quot;Appearance&quot;},&quot;direction&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;ltr&quot;,&quot;rtl&quot;],&quot;default&quot;:&quot;ltr&quot;,&quot;tsType&quot;:&quot;'ltr' | 'rtl'&quot;,&quot;section&quot;:&quot;Appearance&quot;}}">
+class Component extends DCLogic {
+  state = { page: 'home', narrow: false, dark: null, dir: null, resolved: null, rationaleOpen: false, toast: '', budget: 1, filters: [false,false,false], cats: [false,true,false,false,true,false], selected: null, helpOpen: false, helpW: 320, splitH: 300, flowSel: 3, navW: 248, working: false, coverOpen: false };
+  componentDidMount() {
+    this._mq = window.matchMedia('(max-width: 860px)');
+    const on = () => this.setState({ narrow: this._mq.matches });
+    on(); this._mq.addEventListener('change', on); this._off = () => this._mq.removeEventListener('change', on);
+    this._c = setTimeout(() => this.setState({ coverOpen: true }), 400);
+  }
+  componentWillUnmount() { this._off && this._off(); clearTimeout(this._t); clearTimeout(this._c); clearTimeout(this._w); }
+  runSweep() {
+    if (this.state.working) return;
+    this.setState({ working: true, coverOpen: true }); this.say('Sweep started. Guardian is checking 312 items against tonight\'s feeds.');
+    clearTimeout(this._w); this._w = setTimeout(() => { this.setState({ working: false }); this.say('Sweep finished. Nothing new.'); }, 4500);
+  }
+  logo(status, dark) {
+    const col = { pending:'#E0463A', working:'#3FBF7F', idle:'#FCBA04' }[status];
+    const open = this.state.coverOpen || status !== 'idle';
+    const bg = '#000F08', cover = '#F7F4F3';
+    return React.createElement('span', { 'aria-hidden': true, style: { position:'relative', width:28, height:28, borderRadius:'50%', background:cover, display:'inline-block', overflow:'hidden', flex:'0 0 auto' } },
+      React.createElement('span', { style: { position:'absolute', inset:0, borderRadius:'50%', background:bg } }),
+      React.createElement('span', { style: { position:'absolute', width:9, height:9, borderRadius:'50%', background:col, left:9.5, top:9.5, transition:'background-color .4s', animation: status === 'working' ? 'gPulse 1.1s ease-in-out infinite' : 'none', boxShadow:'0 0 0 2px ' + bg } }),
+      React.createElement('span', { style: { position:'absolute', inset:0, borderRadius:'50%', background:cover, transformOrigin:'100% 50%', transform: open ? 'translateX(58%) rotate(28deg)' : 'translateX(30%) rotate(0deg)', transition:'transform .8s cubic-bezier(.2,.8,.2,1)' } })
+    );
+  }
+  say(msg) { this.setState({ toast: msg }); clearTimeout(this._t); this._t = setTimeout(() => this.setState({ toast: '' }), 3000); }
+  drag(e, onMove) {
+    e.preventDefault(); const sx = e.clientX, sy = e.clientY, sw = this.state.helpW, sh = this.state.splitH;
+    const move = (ev) => onMove(ev.clientX - sx, ev.clientY - sy, sw, sh);
+    const up = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); };
+    window.addEventListener('pointermove', move); window.addEventListener('pointerup', up);
+  }
+  renderVals() {
+    const p = this.props, s = this.state;
+    const dark = s.dark ?? (p.colorScheme === 'dark');
+    const dir = s.dir ?? (p.direction || 'ltr');
+    const rtl = dir === 'rtl';
+    const pending = (s.resolved || (p.scenario || 'critical') === 'quiet') ? 0 : 1;
+    const narrow = s.narrow;
+    const light = { bg:'#F7F4F3', surface:'#FFFFFF', ink:'#000F08', ink2:'#4A5551', line:'#DDD7D4', primary:'#2274A5', primaryInk:'#FFFFFF', critical:'#960200', criticalBg:'#F8E6E4', ok:'#2E7D4F', tint:'#EFEBE9' };
+    const darkT = { bg:'#0A130E', surface:'#131F18', ink:'#F7F4F3', ink2:'#B9C3BD', line:'#2C3B33', primary:'#6FB3E3', primaryInk:'#000F08', critical:'#E4746A', criticalBg:'#3A1512', ok:'#5DBB86', tint:'#1C2A22' };
+    const t = Object.assign({}, dark ? darkT : light, { cols: narrow ? '1fr' : '2fr 1fr 1fr 1.4fr 1.2fr', th: narrow ? 'none' : 'grid', cellLabel: narrow ? 'inline' : 'none', sidenav: narrow ? 'none' : 'flex', tabs: narrow ? 'flex' : 'none', desk: narrow ? 'none' : 'flex' });
+    const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+    const go = (page) => (e) => { e && e.preventDefault(); this.setState({ page, helpOpen: narrow ? false : s.helpOpen, selected: (page === 'inventory' || page === 'home') ? s.selected : null }); const m = document.getElementById('main'); if (m) { m.scrollTop = 0; m.focus({ preventScroll: true }); } };
+    const mk = (id, label, i) => { const cur = s.page === id; return { label, go: go(id), current: cur ? 'page' : undefined, color: cur ? t.primary : t.ink, bg: cur ? t.tint : 'transparent', bar: cur ? t.primary : 'transparent', count: id === 'decisions' && pending ? pending : false, iconRadius: ['50%','6px','4px','50% 50% 4px 4px','12px'][i] || '4px', iconDot: cur ? t.primary : 'transparent' }; };
+    const navItems = [['home','Home'],['decisions','Decisions'],['inventory','Inventory'],['activity','Activity'],['settings','Settings']].map(([id,l],i) => mk(id,l,i));
+    const techItems = [mk('flow','Agent flow',5)];
+    const titles = { home:'Home', decisions:'Decisions', inventory:'Inventory', activity:'Activity', settings:'Settings', flow:'Agent flow' };
+    const wcol = (pct) => pct >= 90 ? t.critical : pct >= 70 ? '#B8860B' : t.ok;
+    const raw = [
+      { id:0, name:'Modes Nest stroller', brand:'Graco', model:'2137765', cat:'Juvenile', date:'2024‑03‑14', retailer:'Target', price:'$379.99', pct:78, wlabel:'12 mo · ends 2025‑03', wnote:'Term read from receipt. Manufacturer registration URL stored.', status: pending ? 'Critical match' : 'Resolved', scolor: pending ? t.critical : t.ok, rationale: pending ? 'UPC on receipt equals a UPC in CPSC recall 25‑000. Purchase date inside sold window. Marked certain at stage 1.' : 'Remedy requested for CPSC recall 25‑000. Follow‑up scheduled.', sources:'CPSC', sweeps:187 },
+      { id:1, name:'Subaru Outback 2019', brand:'Subaru', model:'VIN …84H2', cat:'Vehicle', date:'2021‑06‑02', retailer:'Carmax', price:'$27,400', pct:100, wlabel:'Powertrain 60 mo · ended', wnote:'Factory term expired 2024‑06. No extended plan found.', status:'Clear · 3 campaigns checked', scolor:t.ok, rationale:'Three NHTSA campaigns exist for this make and model; none cover model year 2019.', sources:'NHTSA', sweeps:187 },
+      { id:2, name:'50‑pint dehumidifier', brand:'Frigidaire', model:'FFAD5033W1', cat:'Appliance', date:'2023‑07‑21', retailer:'Home Depot', price:'$249.00', pct:62, wlabel:'12 mo · estimate', wnote:'Category default: receipt had no warranty line. Shown as an estimate.', status:'Adjudicated no', scolor:t.ink2, rationale:'Lexical candidate for a Frigidaire recall. Label photo showed date code 2023‑W29, outside the recalled range. Matcher verdict: no, confidence 0.93.', sources:'CPSC', sweeps:140 },
+      { id:3, name:'Ascent A2500 blender', brand:'Vitamix', model:'A2500', cat:'Kitchen', date:'2016‑10‑01', retailer:'Williams Sonoma', price:'$449.95', pct:96, wlabel:'120 mo · ends 2026‑10‑01', wnote:'Ends in 18 days and exceeds your $200 threshold. Guardian will ask once whether anything is wrong.', status:'Clear', scolor:t.ok, rationale:'No candidates in 187 sweeps.', sources:'CPSC', sweeps:187 },
+      { id:4, name:'Convertible crib', brand:'Babyletto', model:'M4901', cat:'Juvenile', date:'2024‑01‑09', retailer:'Target', price:'$399.00', pct:40, wlabel:'12 mo · receipt', wnote:'Term read from receipt.', status:'Clear', scolor:t.ok, rationale:'Two lexical candidates over time, both dropped by the date‑window filter before any LLM call.', sources:'CPSC', sweeps:187 },
+      { id:5, name:'Infant formula, 6 × 12.4 oz', brand:'Similac', model:'Lot 37‑Q', cat:'Food', date:'2026‑08‑30', retailer:'Costco', price:'$189.99', pct:15, wlabel:'n/a', wnote:'Consumables have no warranty; watched for FDA enforcement by lot code.', status:'Clear', scolor:t.ok, rationale:'Lot code compared against FDA food enforcement reports weekly.', sources:'openFDA', sweeps:14 },
+    ];
+    const openItem = (id) => () => this.setState({ selected: id, page: narrow ? s.page : s.page });
+    const items = raw.map(i => Object.assign(i, { wcolor: wcol(i.pct), open: openItem(i.id), selected: s.selected === i.id, rowBg: s.selected === i.id ? t.tint : 'transparent', rowBar: s.selected === i.id ? t.primary : 'transparent' }));
+    const sel = s.selected != null ? items[s.selected] : items[0];
+    const filters = ['Category','Warranty status','Recall status'].map((label, i) => ({ label, on: s.filters[i], toggle: () => { const f = s.filters.slice(); f[i] = !f[i]; this.setState({ filters: f }); }, border: s.filters[i] ? t.primary : t.line, bg: s.filters[i] ? t.primary : 'transparent', color: s.filters[i] ? t.primaryInk : t.ink }));
+    const cats = ['Juvenile','Kitchen','Appliance','Vehicle','Tools','Food'].map((label, i) => ({ label, on: s.cats[i], mark: s.cats[i] ? '✓' : '+', toggle: () => { const c = s.cats.slice(); c[i] = !c[i]; this.setState({ cats: c }); }, border: s.cats[i] ? t.primary : t.line, bg: s.cats[i] ? t.primary : 'transparent', color: s.cats[i] ? t.primaryInk : t.ink }));
+    const budgets = [['Critical only','Never interrupt for standard hazards or warranty windows.'],['Once a week','Default. One unsolicited message per week at most.'],['Daily digest','A short email every morning after the sweep.']].map(([label, desc], i) => ({ label, desc, on: s.budget === i, pick: () => this.setState({ budget: i }), border: s.budget === i ? t.primary : t.line, bg: s.budget === i ? t.tint : 'transparent' }));
+    const recentActivity = [
+      { time:'03:02', text:'Pulled 4 new CPSC recalls', result: pending ? '1 candidate · certain' : '0 candidates', color: pending ? t.critical : t.ok },
+      { time:'03:02', text:'Checked 2019 Subaru Outback against NHTSA', result:'0 campaigns', color:t.ok },
+      { time:'03:03', text:'Pulled 61 FDA enforcement reports', result:'1 candidate · adjudicated no (different lot range)', color:t.ink2 },
+      { time:'03:04', text: pending ? 'Drafted remedy request, sent SMS, paused for decision' : 'Sweep complete', result: pending ? 'Waiting on you' : 'Nothing to report', color: pending ? t.critical : t.ok },
+    ];
+    const nights = [
+      { date:'Tonight · Sep 13', summary: pending ? '1 decision pending' : 'Quiet', color: pending ? t.critical : t.ok, rows: recentActivity.map(a => ({ time:a.time, src: a.text.includes('FDA') ? 'FDA' : a.text.includes('NHTSA') ? 'NHTSA' : a.text.includes('CPSC') ? 'CPSC' : 'Triage', text: a.text + ' — ' + a.result })) },
+      { date:'Sep 12', summary:'Quiet', color:t.ok, rows:[{time:'03:01',src:'CPSC',text:'Pulled 2 new recalls — 0 candidates'},{time:'03:01',src:'NHTSA',text:'0 new campaigns for 1 vehicle'},{time:'11:40',src:'Intake',text:'Receipt from Target parsed: Babyletto crib sheet set, $34, warranty n/a'}] },
+      { date:'Sep 11', summary:'Quiet', color:t.ok, rows:[{time:'03:01',src:'CPSC',text:'Pulled 5 new recalls — 2 lexical candidates, both dropped by date window'},{time:'03:02',src:'Warranty',text:'Vitamix A2500 ends within 30 days and exceeds $200 — question queued within budget'}] },
+    ];
+    const endingSoon = [
+      { name:'Vitamix Ascent A2500', ends:'2026‑10‑01', pct:96, color:t.critical, note:'Guardian will ask "anything wrong with it?" on Sep 17.', open: openItem(3) },
+      { name:'Frigidaire dehumidifier', ends:'2026‑07 (estimate)', pct:62, color:t.ok, note:'Term from category default; receipt had no warranty line.', open: openItem(2) },
+      { name:'Babyletto crib', ends:'2027‑01‑09', pct:40, color:t.ok, note:'12‑month term read from receipt.', open: openItem(4) },
+    ];
+    const pastDecisions = [
+      { title:'Frigidaire dehumidifier — label photo requested', detail:'You sent the photo; matcher returned no (date code outside range).', outcome:'Closed · not affected', color:t.ok, date:'Aug 02' },
+      { title:'Subaru Outback — NHTSA campaign 24V‑311', detail:'Standard hazard, auto‑requested per your preference. Dealer appointment confirmed.', outcome:'Remedy done', color:t.ok, date:'May 19' },
+      { title:'Vitamix A2500 — warranty check‑in', detail:'You replied "it\'s fine." No claim drafted.', outcome:'Snoozed', color:t.ink2, date:'Sep 2025' },
+    ];
+    const resolvedSteps = s.resolved === 'approved' ? [
+      { text:'You approved: request free repair kit', when:'Just now', color:t.ok, lineColor:t.ok },
+      { text:'Remedy request emailed to Graco with receipt attached', when:'Just now · via SES', color:t.ok, lineColor:t.ok },
+      { text:'Follow‑up check scheduled', when:'Sep 27 · 10 business days', color:t.line, lineColor:t.line },
+      { text:'Guardian nudges once if Graco is silent', when:'Only if needed', color:t.line, lineColor:'transparent' },
+    ] : [
+      { text:'You answered: ' + (s.resolved === 'snoozed' ? 'ask me tomorrow' : 'not applicable'), when:'Just now', color:t.ok, lineColor:t.ok },
+      { text: s.resolved === 'snoozed' ? 'Guardian will resurface this at 08:00 tomorrow' : 'Match closed and logged; item status updated', when: s.resolved === 'snoozed' ? 'Sep 14' : 'Just now', color:t.line, lineColor:'transparent' },
+    ];
+    const kinds = { code:{ bg:t.tint, ink:t.ink2 }, agent:{ bg:t.primary, ink:t.primaryInk }, human:{ bg:'#FCBA04', ink:'#000F08' } };
+    const flowRaw = [
+      { name:'Feeds refresh', kind:'code', meta:'Lambda · CPSC, NHTSA, openFDA', status:'Done · 4.1 s', duration:'4.1 s', tokens:'0', cost:'$0.000', desc:'Deterministic. Pulls new records by date window, normalizes them into RecallRecord rows, snapshots raw JSON to S3.', output:'{ "cpsc": 4, "nhtsa": 0, "fda": 61, "upserted": 65 }' },
+      { name:'Candidate generation', kind:'code', meta:'Stages 1–3 · UPC, VIN, fuzzy, date window', status:'Done · 0.3 s', duration:'0.3 s', tokens:'0', cost:'$0.000', desc:'Exact keys, then brand + token_set_ratio ≥ 80, then the sold‑window filter. Only survivors reach a model.', output:'{ "certain": 1, "candidates": 1, "unlikely": 3 }' },
+      { name:'matcher', kind:'agent', meta:'Claude Opus 5 · 1 ambiguous pair', status:'Done · 6.8 s', duration:'6.8 s', tokens:'2,140', cost:'$0.041', desc:'Adjudicates only the ambiguous pair (FDA lot range). The stroller was already certain and skipped the model.', output:'{ "is_match": "no", "confidence": 0.93,\n  "rationale": "Lot 37-Q outside recalled range 12-A..21-F",\n  "missing_info": [] }' },
+      { name:'triage', kind:'agent', meta:'Claude Opus 5 · budget + severity', status: pending ? 'Interrupted · waiting on you' : 'Resumed · done', duration: pending ? '2.9 s, then paused' : '2.9 s + 7 h 41 m wait', tokens:'1,380', cost:'$0.027', desc:'Reads preferences from Memory, classifies severity (critical: amputation), checks the notification budget, drafts the SMS, and raises the guardian-decision interrupt.', output:'{ "channel": "sms_now", "severity": "critical",\n  "message": "The Graco stroller you bought at Target…",\n  "options": ["request_remedy","no_longer_own","details"] }' },
+      { name:'Household', kind:'human', meta:'SMS reply or signed link', status: pending ? 'Pending · 71 h left' : 'Answered', duration: pending ? '—' : '7 h 41 m', tokens:'0', cost:'$0.000', desc:'The graph is paused across Runtime invocations. State lives in the AgentCore Memory session; the decision row holds enough to rebuild the plan if a session is lost.', output: pending ? '(awaiting interruptResponse)' : '{ "interruptResponse": { "response": { "choice": "request_remedy" } } }' },
+      { name:'remedy', kind:'agent', meta:'Claude Opus 5 · SES send + follow‑up', status: pending ? 'Not started' : 'Done · 5.2 s', duration: pending ? '—' : '5.2 s', tokens: pending ? '—' : '960', cost: pending ? '—' : '$0.018', desc:'Runs only after a recorded approval (hook‑level interrupt guards the node). Sends the request, attaches the receipt, schedules the 10‑day follow‑up, logs the action.', output: pending ? '(not run)' : '{ "type": "email_sent", "to": "recalls@gracobaby.com",\n  "attachments": ["receipt-2024-03-14.pdf"],\n  "next_check_at": "2026-09-27" }' },
+    ];
+    const flowNodes = flowRaw.map((n, i) => ({ name:n.name, kind: n.kind === 'code' ? 'Code' : n.kind === 'agent' ? 'Agent' : 'Human', kindBg: kinds[n.kind].bg, kindInk: kinds[n.kind].ink, meta:n.meta, status:n.status, statusColor: /Interrupted|Pending/.test(n.status) ? '#B8860B' : /Not started/.test(n.status) ? t.ink2 : t.ok, selected: s.flowSel === i, border: s.flowSel === i ? t.primary : t.line, bg: s.flowSel === i ? t.tint : 'transparent', select: () => this.setState({ flowSel: i }), hasNext: i < flowRaw.length - 1 }));
+    const helpMap = {
+      home: { title:'About this page', body:'Home proves the agent worked while nobody watched. The quiet score counts days since Guardian last needed a decision from you.', points:[{k:'Quiet score',v:'Resets to 0 when a decision is surfaced. Critical hazards reset it; digest items do not.'},{k:'Sweeps',v:'One per night at 03:00 local, plus a weekly openFDA full‑window refresh.'},{k:'Forwarding',v:'Forward any receipt or order confirmation to the address. Card numbers are stripped before anything is stored.'}] },
+      decisions: { title:'Decisions', body:'Each card is one confirmed match or warranty question that policy says is worth your time. Answering here or by SMS does the same thing.', points:[{k:'Request remedy',v:'Guardian sends the drafted request with your receipt and follows up in 10 business days.'},{k:'No longer own it / Not mine',v:'Closes the match, updates the item, and trains the matcher\'s alias table for your household.'},{k:'Expiry',v:'Links expire after 72 hours; the card stays here until you answer.'}] },
+      inventory: { title:'Inventory', body:'Every item Guardian watches, built from receipts, photos, and VINs. Select a name to open its detail panel.', points:[{k:'Warranty bar',v:'Elapsed share of the term. "Estimate" means the term came from a category default, not the receipt.'},{k:'Recall status',v:'Clear, adjudicated no (the model said no, with reasons), or a match state.'},{k:'Add label photo',v:'A photo of the model/date‑code label makes ambiguous candidates resolvable.'}] },
+      activity: { title:'Activity', body:'The full log, including nights that found nothing. This is the evidence behind the quiet score.', points:[{k:'Sources',v:'CPSC, NHTSA, and openFDA nightly; FSIS optional.'},{k:'Adjudicated no',v:'A candidate the model rejected. The rationale is kept so you can audit it.'}] },
+      settings: { title:'Settings', body:'These mirror the preferences stored in Guardian\'s memory. Plain‑language replies by SMS update the same values.', points:[{k:'Budget',v:'Caps unsolicited interruptions. Critical hazards always bypass it.'},{k:'Threshold',v:'Warranty check‑ins only for items above this price.'}] },
+      flow: { title:'Agent flow', body:'A technical view of one nightly run. Grey nodes are deterministic code; blue nodes call a model; amber is the human interrupt.', points:[{k:'Why it is cheap',v:'Only ambiguous candidates reach a model. Most nights cost cents.'},{k:'Interrupts',v:'Tool‑level in triage and warranty; hook‑level guard on remedy so nothing sends without a recorded approval.'}] },
+    };
+    const splitOpen = s.selected != null;
+    const agentStatus = s.working ? 'working' : pending ? 'pending' : 'idle';
+    const navW = clamp(s.navW, 200, 400);
+    const splitMax = Math.max(160, Math.round((typeof window !== 'undefined' ? window.innerHeight : 900) * 0.5));
+    const helpW = clamp(s.helpW, 240, 560), splitH = clamp(s.splitH, 160, splitMax);
+    return {
+      t, dir, isDark: dark, schemeLabel: dark ? 'Light' : 'Dark', dirLabel: rtl ? 'LTR' : 'RTL',
+      toggleScheme: () => this.setState({ dark: !dark }), toggleDir: () => this.setState({ dir: rtl ? 'ltr' : 'rtl' }),
+      navItems, techItems, goHome: go('home'), goDecisions: go('decisions'), goInventory: go('inventory'), goActivity: go('activity'), goFlow: go('flow'),
+      pageTitle: titles[s.page],
+      isHome: s.page === 'home', isDecisions: s.page === 'decisions', isInventory: s.page === 'inventory', isActivity: s.page === 'activity', isSettings: s.page === 'settings', isFlow: s.page === 'flow',
+      greeting: pending ? 'One thing needs you' : 'All quiet', homeSub: pending ? 'A critical recall matched an item you own. Everything else ran on its own.' : 'What the agent did while you were away.',
+      showFlash: pending > 0 && s.page !== 'decisions', hasPending: pending > 0, noPending: pending === 0 && !s.resolved, justResolved: !!s.resolved, pendingCount: pending, pendingBg: pending ? t.criticalBg : 'transparent',
+      quietDays: pending ? 0 : (s.resolved ? 0 : 42),
+      resolvedTitle: s.resolved === 'approved' ? 'Remedy requested' : s.resolved === 'snoozed' ? 'Snoozed until tomorrow' : 'Match closed', resolvedSub: s.resolved === 'approved' ? 'Guardian takes it from here. You will only hear back if Graco goes quiet.' : 'Logged. Nothing else to do.', resolvedSteps,
+      rationaleOpen: s.rationaleOpen, chevron: s.rationaleOpen ? 'rotate(90deg)' : (rtl ? 'rotate(180deg)' : 'none'), toggleRationale: () => this.setState({ rationaleOpen: !s.rationaleOpen }),
+      approve: () => { this.setState({ resolved: 'approved' }); this.say('Remedy requested. Guardian will follow up in 10 business days.'); },
+      dismiss: () => { this.setState({ resolved: 'dismissed' }); this.say('Noted. Match dismissed and logged.'); },
+      snooze: () => { this.setState({ resolved: 'snoozed' }); this.say('Guardian will ask again tomorrow at 08:00.'); },
+      openStroller: openItem(0), pastDecisions,
+      recentActivity, endingSoon, items, filters, nights, budgets, cats,
+      addItem: () => this.say('Add item: paste a receipt, upload a label photo, or enter a VIN.'),
+      reportProblem: () => this.say('Tell Guardian what happened; it drafts the claim and asks once before sending.'),
+      copy: () => { navigator.clipboard && navigator.clipboard.writeText('receipts@guardian.house'); this.say('Forwarding address copied.'); },
+      preventSubmit: (e) => { e.preventDefault(); this.say('Preferences saved to Guardian memory.'); },
+      toast: s.toast, toastBottom: narrow ? '76px' : '20px', mainPadBottom: narrow && splitOpen ? '40vh' : '40px',
+      splitOpen, sel, splitH: narrow ? '60vh' : splitH + 'px', splitHNum: splitH, splitPos: narrow ? 'fixed' : 'relative', splitRadius: narrow ? '16px 16px 0 0' : '0',
+      closeSplit: () => this.setState({ selected: null }),
+      startSplitDrag: (e) => this.drag(e, (dx, dy, sw, sh) => this.setState({ splitH: clamp(sh - dy, 160, splitMax) })),
+      splitKey: (e) => { if (e.key === 'ArrowUp' || e.key === 'ArrowDown') { e.preventDefault(); this.setState({ splitH: clamp(splitH + (e.key === 'ArrowUp' ? 24 : -24), 160, splitMax) }); } },
+      helpOpen: s.helpOpen, helpBtnBg: s.helpOpen ? 'rgba(252,186,4,0.25)' : 'transparent', toggleHelp: () => this.setState({ helpOpen: !s.helpOpen }),
+      help: helpMap[s.page], helpW: narrow ? '100%' : helpW + 'px', helpWNum: helpW, helpPos: narrow ? 'fixed' : 'relative', helpInsetStart: narrow ? '0' : 'auto',
+      startHelpDrag: (e) => this.drag(e, (dx, dy, sw) => this.setState({ helpW: clamp(rtl ? sw + dx : sw - dx, 240, 560) })),
+      helpKey: (e) => { const grow = rtl ? 'ArrowRight' : 'ArrowLeft', shrink = rtl ? 'ArrowLeft' : 'ArrowRight'; if (e.key === grow || e.key === shrink) { e.preventDefault(); this.setState({ helpW: clamp(helpW + (e.key === grow ? 24 : -24), 240, 560) }); } },
+      flowNodes, flowSel: flowRaw[s.flowSel], arrowRot: rtl ? 'rotate(-135deg)' : 'rotate(45deg)',
+      logo: this.logo(agentStatus, dark), logoClick: (e) => { e.preventDefault(); if (s.page !== 'home') go('home')(); this.runSweep(); },
+      statusDot: { pending:'#E0463A', working:'#3FBF7F', idle:'#FCBA04' }[agentStatus], sweepLabel: s.working ? 'Sweep running' : 'Last sweep 03:04 today',
+      agentLabel: agentStatus === 'working' ? 'Sweeping now…' : agentStatus === 'pending' ? 'Needs you' : 'Quiet',
+      navW: navW + 'px', navWNum: navW,
+      startNavDrag: (e) => { e.preventDefault(); const sx = e.clientX, sw = navW; const move = (ev) => this.setState({ navW: clamp(sw + (rtl ? -(ev.clientX - sx) : (ev.clientX - sx)), 200, 400) }); const up = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); }; window.addEventListener('pointermove', move); window.addEventListener('pointerup', up); },
+      navKey: (e) => { const grow = rtl ? 'ArrowLeft' : 'ArrowRight', shrink = rtl ? 'ArrowRight' : 'ArrowLeft'; if (e.key === grow || e.key === shrink) { e.preventDefault(); this.setState({ navW: clamp(navW + (e.key === grow ? 24 : -24), 200, 400) }); } },
+    };
+  }
+}
+</script>
+</body>
+</html>
