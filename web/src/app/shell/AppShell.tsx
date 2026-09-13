@@ -313,7 +313,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           </nav>
 
           <div className="g-col">
-            <main id="main" tabIndex={-1} className="g-main" style={narrow && selectedItemId ? { paddingBottom: '40vh' } : undefined}>
+            <main id="main" tabIndex={-1} className={`g-main${page === 'flow' ? ' g-main--flow' : ''}`} style={narrow && selectedItemId ? { paddingBottom: '40vh' } : undefined}>
               <nav aria-label="Breadcrumb" className="g-crumb">
                 <Link to="/">Guardian</Link>
                 <span aria-hidden="true">/</span>

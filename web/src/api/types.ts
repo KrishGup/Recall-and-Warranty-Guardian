@@ -457,7 +457,7 @@ export interface GrenRun {
   }
   nodes: Record<string, GrenNodeRecord>
   analysis: GrenAnalysis
-  metrics: GrenMetrics
+  metrics: GrenMetrics | null // null for a blueprint (a graph that has not run)
   tasks: unknown[]
   spec_yaml: string
   in_process: boolean
@@ -489,4 +489,26 @@ export interface GrenArtifact {
   show?: unknown
   approve_effect?: string | null
   reject_effect?: string | null
+}
+
+/** One graph file gren can run (GET /gren/api/graphs). */
+export interface GrenGraphInfo {
+  path: string
+  file?: string
+  name: string
+  description?: string | null
+  goal?: string | null
+  nodes: number
+  ok: boolean
+  errors: number
+  warnings: number
+  budget?: { max_cost_usd?: number; max_wall_ms?: number; max_width?: number } | null
+  error?: string
+}
+
+/** A graph file parsed and analysed (GET /gren/api/graph?path=). */
+export interface GrenGraphFile {
+  spec: GrenSpec
+  analysis: GrenAnalysis
+  yaml: string
 }

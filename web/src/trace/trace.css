@@ -213,3 +213,10 @@
   .tr-topbar { gap: 8px; padding-inline: 12px; }
   .tr-pill--primary { padding-inline: 10px; }
 }
+
+/* embedded in the dashboard's Agent flow page: a bordered container instead of the full-screen root */
+.tr-embed { flex: 1; min-height: 420px; display: flex; flex-direction: column; color: var(--ink); font-family: var(--font-body); font-size: 14px; line-height: 1.45; }
+.tr-frame { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.tr-embed > .tr-frame { border: 1px solid var(--line); border-radius: 16px; overflow: hidden; background: var(--bg); }
+.tr-side-head--sub { border-top: 1px solid var(--line); margin-top: 6px; }
+.tr-run--bp .tr-run-title { font-weight: 500; }

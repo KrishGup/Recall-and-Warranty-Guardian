@@ -1,10 +1,7 @@
 // Guardian API client. Same-origin: in dev, Vite proxies /api and /gren to the FastAPI server on 8787;
 // in production FastAPI serves the built app and both APIs from one origin.
 import { useEffect, useRef } from 'react'
-import type {
-  ActivityNight, AnswerResult, Decision, DecisionChoice, Decisions, GrenArtifact, GrenEvent, GrenRun, GrenRunSummary, GuardianEvent, IntakeResult, Item,
-  ItemDetail, ItemsPage, ItemsQuery, NewItem, Preferences, Summary,
-} from './types'
+import type { ActivityNight, AnswerResult, Decision, DecisionChoice, Decisions, GrenArtifact, GrenEvent, GrenGraphFile, GrenGraphInfo, GrenRun, GrenRunSummary, GuardianEvent, IntakeResult, Item, ItemDetail, ItemsPage, ItemsQuery, NewItem, Preferences, Summary } from './types'
 
 export class ApiError extends Error {
   status: number
@@ -66,6 +63,8 @@ export interface ApiShape {
     fork(id: string, from: string[]): Promise<{ run_id: string }>
     resume(id: string): Promise<{ run_id: string }>
     cancel(id: string): Promise<{ ok: boolean }>
+    graphs(): Promise<GrenGraphInfo[]>
+    graph(path: string): Promise<GrenGraphFile>
   }
 }
 
@@ -92,6 +91,8 @@ const real: ApiShape = {
     fork: (id, from) => send('POST', '/gren/api/run/fork', { id, from }),
     resume: id => send('POST', '/gren/api/run/resume', { id }),
     cancel: id => send('POST', '/gren/api/run/cancel', { id }),
+    graphs: () => get('/gren/api/graphs'),
+    graph: path => get(`/gren/api/graph?path=${enc(path)}`),
   },
 }
 

@@ -479,6 +479,10 @@ const impl: ApiShape = {
     fork: async () => ({ run_id: RUN_ID }),
     resume: async () => ({ run_id: RUN_ID }),
     cancel: async () => ({ ok: true }),
+    graphs: async () => [],
+    graph: async () => {
+      throw new Error('no graph blueprints in mock mode')
+    },
   },
 }
 

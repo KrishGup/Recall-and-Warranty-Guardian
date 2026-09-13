@@ -2,6 +2,7 @@
 // Owns the viewport (view transform, dragged positions, critical-path toggle); selection lives in TraceView.
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from 'react'
 import { fmt } from '../api/client'
+import { isBlueprint } from './blueprint'
 import type { GrenNodeRecord, GrenRun } from '../api/types'
 import { FONTS, kindColors, type Theme } from '../theme/tokens'
 import {
@@ -200,7 +201,7 @@ export function Canvas({ run, runId, graph, rtl, theme, narrow, sel, onSelect, f
 
   const kinds = kindColors(theme)
   const recs = run?.nodes ?? {}
-  const st = runStatus(theme, run?.run.status)
+  const st = isBlueprint(run) ? { ...runStatus(theme, 'created'), label: 'Blueprint · not run yet', pulse: false } : runStatus(theme, run?.run.status)
   const gates = waitingGates(run)
   const legendVisible = !narrow && size.h >= 300 && size.w >= 760
   const hoverEdge: GEdge | null = hover && graph.edges[hover.i] ? graph.edges[hover.i] : null
