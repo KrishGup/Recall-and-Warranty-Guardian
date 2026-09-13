@@ -11,3 +11,4 @@
 - **Worktrees (`.worktrees/`) contain a junction to `.venv`/`node_modules`. NEVER `git worktree remove --force` them** - it deletes the real folder. Use `graphs/reducers/git-worktree-remove.py` or `cmd /c rmdir <worktree>\.venv` first.
 - v1 (TypeScript, tag `v1.0.0`) is frozen under `v1/` for reference; do not edit it.
 - Design rules: `docs/SPEC.md`, `docs/ARCHITECTURE.md` (Strands mapping), `docs/AWS.md`; `gren analyze` is the source of truth for what is enforced.
+- Handoff state, verified vs unverified items and open work: `docs/HANDOFF.md`. Version history: `CHANGELOG.md`.

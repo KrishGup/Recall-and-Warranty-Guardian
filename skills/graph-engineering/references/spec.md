@@ -61,7 +61,7 @@ Common fields: `id`, `description`, `input`, `when` (condition), `after` (orderi
   map: $nodes.scope.output.lanes     # fan-out: one call per element, $item/$index in scope
   max_width: 5
   tools: [Read, WebSearch]           # tool names (Claude Code vocabulary); mapped to strands_tools on bedrock/anthropic (default: no tools => pure reasoning)
-  max_turns: 12                      # tool nodes default to 60, pure nodes to 3 (claude-code)
+  max_turns: 12                      # claude-code: tool nodes default to 60, pure nodes to 4; on bedrock/anthropic only timeout_ms and the graph budget cap a call
   max_cost_usd: 0.4                  # hard USD cap for ONE call of this node (tool nodes can burn turns)
   cwd: $input.repo_path              # working directory for tool nodes (ref/template allowed)
   failure: { retries: 1, backoff_ms: 1500, timeout_ms: 300000, fallback: { model: sonnet }, on_failure: block, quorum: 0.6, repair_attempts: 1 }

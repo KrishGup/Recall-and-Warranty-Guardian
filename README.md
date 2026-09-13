@@ -12,7 +12,7 @@ reviews ------------------+--> dedupe (code) -> verify (kill) -> brief -> [HUMAN
       docs ---------------+
 ```
 
-Version 2 is a Python rebuild of gren on the Strands Agents SDK and AWS. Version 1 (TypeScript, its own scheduler) is frozen under `v1/` and tagged `v1.0.0`.
+Version 2 is a Python rebuild of gren on the Strands Agents SDK and AWS. Version 1 (TypeScript, its own scheduler) is frozen under `v1/` and tagged `v1.0.0`. `docs/HANDOFF.md` lists what is verified, what is not, and the open items; `CHANGELOG.md` has the version history.
 
 ## Providers
 
