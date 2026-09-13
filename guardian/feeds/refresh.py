@@ -10,8 +10,14 @@ from . import cpsc, fda, nhtsa
 from .http import fixtures_mode
 
 
+FIRST_SWEEP_DAYS = 400  # a household's first sweep must see recalls older than the nightly window: its items were bought before tonight
+
+
 def refresh(store: Store, window_days: int = 45, today: date | None = None) -> dict[str, Any]:
     today = today or date.today()
+    first = not store.feeds_state().get("last_refresh")
+    if first:
+        window_days = max(window_days, FIRST_SWEEP_DAYS)
     start = today - timedelta(days=window_days)
     prefs = store.prefs()
     allergens = prefs.sensitivities.allergens
@@ -55,5 +61,5 @@ def refresh(store: Store, window_days: int = 45, today: date | None = None) -> d
     st["last_refresh"] = {"at": now_iso(), "window": {"from": start.isoformat(), "to": today.isoformat()}, "counts": counts, "new": len(new_ids), "errors": errors, "mode": "fixtures" if fixtures_mode() else "live"}
     store.save_feeds_state(st)
     return {"cpsc": counts["cpsc"], "nhtsa": counts["nhtsa"], "fda": counts["fda"], "fetched": len(records), "upserted": len(new_ids), "new_recall_ids": new_ids,
-            "window": {"from": start.isoformat(), "to": today.isoformat()}, "vehicles": len(seen_keys), "errors": errors, "mode": st["last_refresh"]["mode"],
+            "window": {"from": start.isoformat(), "to": today.isoformat(), "days": window_days, "first_sweep": first}, "vehicles": len(seen_keys), "errors": errors, "mode": st["last_refresh"]["mode"],
             "_stats": {"in": len(records), "out": len(new_ids)}}

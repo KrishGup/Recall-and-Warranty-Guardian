@@ -192,7 +192,8 @@ class Guardian:
         S = self.store
         if node == "feeds_refresh":
             live = out.get("mode") == "live"
-            S.log(Activity(source="CPSC", text=f"Pulled {out.get('cpsc', 0)} CPSC recalls for the last {(out.get('window') or {}).get('from', '')[:10]} to {(out.get('window') or {}).get('to', '')[:10]} window", result=("live feed" if live else "recorded fixtures"), tone="ok", run_id=rid))
+            win = out.get("window") or {}
+            S.log(Activity(source="CPSC", text=f"Pulled {out.get('cpsc', 0)} CPSC recalls for {win.get('from', '')[:10]} to {win.get('to', '')[:10]}" + (" (first sweep: full look-back)" if win.get("first_sweep") else ""), result=("live feed" if live else "recorded fixtures"), tone="ok", run_id=rid))
             S.log(Activity(source="NHTSA", text=f"Checked {out.get('vehicles', 0)} vehicle(s) against NHTSA campaigns", result=f"{out.get('nhtsa', 0)} campaigns", tone="ok", run_id=rid))
             S.log(Activity(source="FDA", text=f"Pulled {out.get('fda', 0)} openFDA food enforcement reports", result=f"{out.get('upserted', 0)} new records across all feeds", tone="ok", run_id=rid))
             for err in out.get("errors") or []:

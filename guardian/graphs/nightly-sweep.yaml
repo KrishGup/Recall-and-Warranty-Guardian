@@ -207,16 +207,20 @@ nodes:
     kill_threshold: 0.7
     min_survivors: 0
     repair: { node: triage, max_rounds: 1 }
-    input: { hazards: $nodes.verdicts.output.hazards }
+    input: { hazards: $nodes.verdicts.output.hazards, confirmed: $nodes.verdicts.output.confirmed, questions: $nodes.verdicts.output.questions }
     prompt: |
       Plan to verify: {{ json item }}
-      <input> lists, per recall id, the deterministic severity keyword pass and the hazard text.
+      <input>.hazards lists, per recall id, the deterministic severity keyword pass and the hazard text. <input>.confirmed lists the
+      confirmed matches with the household's item (brand, name, retailer, purchase_date, model, UPC) and the recall (native_id,
+      remedy_text, contact). <input>.questions lists the warranty questions.
       Kill the plan when any of these hold: (a) a decision or digest line carries a severity that contradicts the keyword pass or the
       hazard text (a hazard naming death, serious injury, fire, burns, choking, strangulation, amputation, laceration, lead,
       electrocution, ingestion or FDA Class I must be critical, and a critical match must be a decision on channel sms_now, never a
-      digest line); (b) a message states an item, retailer, date, recall id or remedy that is not in the plan's own fields; (c) a
-      message is longer than 320 characters or lacks the numbered reply options; (d) channel is "none" while decisions exist.
-      Otherwise pass. Each reason must name the decision or digest index and the exact problem.
+      digest line); (b) a message states an item, retailer, purchase date, recall number or remedy that contradicts the confirmed
+      match for that item_id in <input>.confirmed (facts that agree with the confirmed match are correct even though the plan does
+      not repeat them); (c) a message is longer than 320 characters or lacks the numbered reply options; (d) channel is "none"
+      while decisions exist; (e) a decision's item_id, match_id or recall_id does not appear in <input>.confirmed or
+      <input>.questions. Otherwise pass. Each reason must name the decision or digest index and the exact problem.
 
   - id: household_decision
     kind: gate

@@ -16,7 +16,7 @@ _UPC = re.compile(r"UPC\s*(?:code|codes|#|:|number)?\s*[:#]?\s*(\d(?:[\d-]{9,13}
 _LOT = re.compile(r"(?:lot|lot code|lot #|lot number|lots?)\s*[:#]?\s*([A-Z0-9][A-Z0-9\-/ ,]{2,40})", re.I)
 
 
-def fetch(start: date, end: date, kind: str = "food", limit: int = 100, max_pages: int = 5) -> list[dict[str, Any]]:
+def fetch(start: date, end: date, kind: str = "food", limit: int = 100, max_pages: int = 12) -> list[dict[str, Any]]:
     if fixtures_mode():
         return list(load_fixture("fda_food_window.json").get("results") or []) if kind == "food" else []
     out: list[dict[str, Any]] = []
