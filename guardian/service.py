@@ -344,19 +344,21 @@ class Guardian:
             return {"ok": True, "decision": self.decision_view(self.store.decision(d.id) or d), "run_id": d.run_id, "resumed": resumed}
 
     def _maybe_release_gate(self, d: Decision) -> bool:
-        """Release the gate once no decision of the plan is still pending. Snoozed decisions are left out of the
-        approval (they come back tomorrow); decisions already actioned by an earlier run of the plan are left out too.
-        If the run is no longer waiting (a late approval after a snooze or a restart), fork it from the gate."""
+        """An approval releases the gate at once: the remedy for what the household said yes to should not wait for
+        the answers to the other decisions of the night. The approval carries every answered-but-not-yet-actioned
+        decision; snoozed ones come back tomorrow, still-pending ones stay on the card. A later approval, after the run
+        has moved on, forks the run from the gate (same triage plan, only remedy and followup re-execute). Declines
+        alone release the gate as rejected only once nothing is pending, since there is nothing to send."""
         if not d.run_id or not d.gate:
             return False
         siblings = sorted([x for x in self.store.decisions() if x.run_id == d.run_id and x.gate == d.gate], key=lambda x: x.plan_index)
-        if any(x.state == "pending" for x in siblings):
-            return False
         actionable = [x for x in siblings if x.state == "answered" and not x.action]
         if not actionable:
             return False
         answers = [{"index": x.plan_index, "decision_id": x.id, "choice": (x.answer or {}).get("choice"), "by": (x.answer or {}).get("by")} for x in actionable]
         approved = any(a["choice"] in ("request_remedy", "report_problem") for a in answers)
+        if not approved and any(x.state == "pending" for x in siblings):
+            return False
         comment = json.dumps({"answers": answers})
         by = (d.answer or {}).get("by") or "household"
         try:
@@ -378,6 +380,9 @@ class Guardian:
         Fork the run from the gate: the triage plan and every upstream output are reused, only the gate, answers,
         remedy and followup re-execute, for the decisions in the approval comment."""
         old = d.run_id or ""
+        t0 = time.time()
+        while self.control.is_running(old) and time.time() - t0 < 300:
+            time.sleep(0.5)  # the original run is still sending an earlier approval; fork from a settled run
         new_rid = f"{old}-late-{datetime.now(timezone.utc).strftime('%H%M%S')}"
         for x in siblings:
             if not x.action:

@@ -65,6 +65,31 @@ def test_snooze_does_not_block_and_a_late_approval_forks_the_run(store, demo):
     assert any(a.text.startswith("Late approval") for a in store.activity()) and any(a.text == "Late-approval run complete" for a in store.activity())
 
 
+def test_first_approval_releases_at_once_and_the_second_forks(store, demo):
+    seed_store(store, demo)
+    g = _guardian(store)
+    rid = g.control.start(spec_yaml=yaml.safe_dump(_spec(TWO_DECISIONS)), input_={"window_days": 120}, bridge="mock", labels={"kind": "sweep"})
+    _wait(g, rid, {"paused"})
+    pending = {d["item_id"]: d for d in g.decisions()["pending"]}
+    boon, fan = pending["itm_boon_nursh"], pending["itm_hampton_fan"]
+    # approving the bottles must not wait for an answer about the fan
+    assert g.answer(boon["id"], "request_remedy", by="sms")["resumed"] is True
+    run = _wait(g, rid, {"completed", "failed"})
+    assert run["status"] == "completed", run.get("error")
+    assert g.run_store.load(rid).nodes["followup"]["output"]["sent"] == 1
+    assert store.decision(boon["id"]).action and store.decision(fan["id"]).state == "pending"
+    assert len(_emails(store)) == 1
+    # the fan is approved later, after the run moved on: the service forks from the gate
+    assert g.answer(fan["id"], "request_remedy", by="dashboard")["resumed"] is True
+    late = store.decision(fan["id"])
+    assert late.run_id != rid and late.run_id.startswith(rid)
+    run2 = _wait(g, late.run_id, {"completed", "failed"}, timeout=120)
+    assert run2["status"] == "completed", run2.get("error")
+    assert g.run_store.load(late.run_id).nodes["followup"]["output"]["sent"] == 1
+    assert len(_emails(store)) == 2 and store.decision(fan["id"]).action is not None
+    assert g.decisions()["pending"] == []
+
+
 def test_all_declined_releases_with_a_rejection(store, demo):
     seed_store(store, demo)
     g = _guardian(store)
