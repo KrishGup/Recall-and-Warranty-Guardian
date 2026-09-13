@@ -19,3 +19,4 @@ var/
 .DS_Store
 # design zips are extracted under design/
 *.zip
+!.env.example
