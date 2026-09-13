@@ -42,11 +42,27 @@ def default_bridge(explicit: str | None = None) -> BridgeChoice:
     return BridgeChoice(_auto(), "auto")
 
 
+_AWS_CHAIN: bool | None = None
+
+
 def _has_aws() -> bool:
-    if os.environ.get("AWS_ACCESS_KEY_ID") or os.environ.get("AWS_PROFILE") or os.environ.get("AWS_BEARER_TOKEN_BEDROCK"):
+    """Cheap checks first (env, profile, ~/.aws); then, once per process, the full botocore chain, which also finds
+    container and EC2 instance roles: on a deployed box nothing is in the environment or ~/.aws, the credentials come
+    from the instance metadata service. Off AWS that single probe costs about a second and is then remembered."""
+    global _AWS_CHAIN
+    if any(os.environ.get(k) for k in ("AWS_ACCESS_KEY_ID", "AWS_PROFILE", "AWS_BEARER_TOKEN_BEDROCK", "AWS_CONTAINER_CREDENTIALS_RELATIVE_URI", "AWS_CONTAINER_CREDENTIALS_FULL_URI", "AWS_WEB_IDENTITY_TOKEN_FILE")):
         return True
     home = os.path.expanduser("~")
-    return any(os.path.exists(os.path.join(home, ".aws", f)) for f in ("credentials", "config"))
+    if any(os.path.exists(os.path.join(home, ".aws", f)) for f in ("credentials", "config")):
+        return True
+    if _AWS_CHAIN is None:
+        try:
+            import boto3  # type: ignore
+
+            _AWS_CHAIN = boto3.session.Session().get_credentials() is not None
+        except Exception:  # noqa: BLE001 - no boto3, or the chain raised
+            _AWS_CHAIN = False
+    return _AWS_CHAIN
 
 
 def _auto() -> str:
@@ -71,7 +87,7 @@ class ModelRegistry:
         if name == "anthropic":
             return (bool(os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_AUTH_TOKEN")), "ANTHROPIC_API_KEY")
         if name == "bedrock":
-            return (_has_aws(), "AWS credentials (env, profile or ~/.aws)")
+            return (_has_aws(), "AWS credentials (env, profile, ~/.aws or an instance role)")
         if name == "claude-code":
             from .claude_code import find_claude_binary
 

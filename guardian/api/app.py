@@ -72,11 +72,29 @@ def create_guardian_app(data_dir: str | None = None, runs_dir: str | None = None
     app.state.guardian = guardian
     web_dist = web_dist or WEB_DIST
 
+    token = (os.environ.get("GUARDIAN_API_TOKEN") or "").strip()
+
     @app.middleware("http")
-    async def no_store(request: Request, call_next):  # type: ignore[no-untyped-def]
+    async def guard_and_no_store(request: Request, call_next):  # type: ignore[no-untyped-def]
+        """When GUARDIAN_API_TOKEN is set (any public deployment): reads stay open, anything that spends money or
+        changes state (POST/PUT/DELETE on /api or /gren/api) needs the token as `Authorization: Bearer`, a `?token=`
+        query (which also sets a cookie for the browser session), or that cookie."""
+        set_cookie = False
+        if token:
+            provided = request.query_params.get("token")
+            if provided == token:
+                set_cookie = True
+            else:
+                auth = request.headers.get("authorization", "")
+                provided = auth[7:] if auth.startswith("Bearer ") else request.cookies.get("guardian_token", "")
+            path = request.url.path
+            if request.method in ("POST", "PUT", "DELETE") and (path.startswith("/api/") or path.startswith("/gren/api/")) and provided != token:
+                return _err(401, "this deployment needs the access token for actions: open the dashboard link with ?token=<token> once, or send Authorization: Bearer <token>")
         resp = await call_next(request)
         if request.url.path.startswith("/api/"):
             resp.headers["cache-control"] = "no-store"
+        if set_cookie:
+            resp.set_cookie("guardian_token", token, httponly=True, samesite="lax", secure=request.url.scheme == "https", max_age=60 * 60 * 24 * 14)
         return resp
 
     @app.exception_handler(KeyError)

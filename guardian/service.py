@@ -73,11 +73,26 @@ class Guardian:
         self.remote: AgentRuntime | None = AgentRuntime.from_env()
         self._remote_busy = 0
         self._sync_targets = sync_targets_from_env(store.root, run_store.root)
-        if self.remote and self._sync_targets:
+        # GUARDIAN_STATE_SYNC=1 on a server whose disk may be replaced (EC2 redeploys, containers): this process owns the
+        # state, pulls the bucket copy once at start and pushes after every change (best effort: a failed push is logged).
+        # Remote (AgentCore) mode also pulls at start; there the runtime owns the state and pushes after each invocation.
+        self._state_sync = bool(self._sync_targets) and self.remote is None and os.environ.get("GUARDIAN_STATE_SYNC", "").strip().lower() in ("1", "true", "yes")
+        if self._sync_targets and (self.remote is not None or self._state_sync):
             try:
                 pull_all(self._sync_targets)
             except Exception as e:  # noqa: BLE001
                 self.log(f"initial state pull failed: {e}")
+
+    def persist(self) -> None:
+        """Push the local state to the bucket (GUARDIAN_STATE_SYNC=1 with a bucket configured); a no-op otherwise."""
+        if not self._state_sync:
+            return
+        try:
+            from .state_sync import push_all
+
+            push_all(self._sync_targets)
+        except Exception as e:  # noqa: BLE001
+            self.log(f"state push failed: {e}")
 
     # ------------------------------------------------------------------ construction
     @classmethod
@@ -281,6 +296,7 @@ class Guardian:
             if not run.get("forked_from"):
                 self._sweep_update(rid, status="paused")
             self._emit_local("sweep.paused", {"run_id": rid})
+            self.persist()
         elif t in ("run.completed", "run.failed", "run.cancelled"):
             status = t.split(".")[1]
             if kind == "intake":
@@ -355,6 +371,7 @@ class Guardian:
         self._sweep_update(rid, status=status, ended_at=now_iso(), summary=summary, cost_usd=float(run.get("totals", {}).get("cost_usd") or 0), recalls_pulled=int(feeds.get("upserted") or 0),
                            certain=int(matching.get("certain") or 0), candidates=int(matching.get("candidates") or 0), surfaced=n_dec)
         self._emit_local("sweep.finished", {"run_id": rid, "status": status})
+        self.persist()
 
     # ------------------------------------------------------------------ decisions
     def _surface(self, rid: str, data: dict[str, Any]) -> None:
@@ -440,6 +457,7 @@ class Guardian:
                 self.remote_call({"kind": "answer", "decision_id": d.id, "choice": choice, "by": by, "comment": comment})
                 return {"ok": True, "decision": self.decision_view(self.store.decision(d.id) or d), "run_id": d.run_id, "resumed": None, "remote": True}
             resumed = self._maybe_release_gate(d)
+            self.persist()
             return {"ok": True, "decision": self.decision_view(self.store.decision(d.id) or d), "run_id": d.run_id, "resumed": resumed}
 
     def _maybe_release_gate(self, d: Decision) -> bool:
@@ -711,7 +729,7 @@ class Guardian:
             "ending_soon": [{"item_id": e["item_id"], "name": e["name"], "ends_on": e["ends_on"], "pct": e["pct"], "note": e["note"]} for e in warranty_policy.ending_soon(items, 60)[:4]],
             "provider": {"bridge": bridge, "live": bool(avail) and bridge != "mock", "label": {"claude-code": "Claude Code (local, headless)", "bedrock": "Amazon Bedrock", "anthropic": "Anthropic API", "mock": "mock provider (no tokens)", "inbox": "inbox (orchestrator)"}.get(bridge, bridge) + ("" if avail else f" · unavailable: {reason}")},
             "spend": {"today_usd": self.spend_today(), "daily_budget_usd": self.daily_budget()},
-            "runtime": {"mode": "agentcore" if self.remote else "local", "arn": self.remote.arn if self.remote else None, "busy": bool(self._remote_busy), "state_bucket": os.environ.get("GUARDIAN_S3_BUCKET") or None},
+            "runtime": {"mode": "agentcore" if self.remote else "local", "arn": self.remote.arn if self.remote else None, "busy": bool(self._remote_busy), "state_bucket": os.environ.get("GUARDIAN_S3_BUCKET") or None, "state_sync": self._state_sync},
         }
 
     def preferences(self) -> Preferences:
@@ -720,6 +738,7 @@ class Guardian:
     def save_preferences(self, p: Preferences) -> Preferences:
         self.store.save_prefs(p)
         self.store.log(Activity(source="Household", text="Preferences saved", result=f"budget {p.budget} · threshold ${p.value_threshold:,.0f} · quiet {', '.join(p.quiet_categories) or 'none'}", tone="muted"))
+        self.persist()
         return p
 
     # ------------------------------------------------------------------ inventory
@@ -746,4 +765,5 @@ class Guardian:
         wv = warranty_policy.view(it)
         self.store.log(Activity(source="Intake", text=f"Added {it.brand} {it.name}".strip() + (f" ({it.vehicle.year} {it.vehicle.make} {it.vehicle.model} by VIN)" if it.vehicle else ""), result=f"warranty {wv['label']} · source {source}", tone="ok", item_id=it.id))
         self._emit_local("item.created", {"item_id": it.id})
+        self.persist()
         return self.item_view(it)

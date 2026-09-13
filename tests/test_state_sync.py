@@ -60,3 +60,25 @@ def test_pull_from_a_never_pushed_prefix_keeps_local_state(tmp_path):
     _write(root, "prefs.json", "{}")
     res = S3StateSync("bkt", "p", root, client=s3).pull()
     assert res["downloaded"] == 0 and res["deleted"] == 0 and os.path.exists(os.path.join(root, "prefs.json"))
+
+
+def test_guardian_pushes_after_changes_only_with_state_sync_on(tmp_path, monkeypatch, demo):
+    """A server with GUARDIAN_STATE_SYNC=1 mirrors its store to the bucket after every change; a developer's machine
+    with only GUARDIAN_S3_BUCKET in .env must never touch S3."""
+    from guardian import service as svc
+
+    s3 = FakeS3()
+    monkeypatch.setattr(svc, "sync_targets_from_env", lambda data_dir, runs_dir: [S3StateSync("bkt", "guardian/household", data_dir, client=s3)])
+    monkeypatch.setenv("GUARDIAN_DATA", str(tmp_path / "a"))
+    monkeypatch.setenv("GUARDIAN_RUNS", str(tmp_path / "a-runs"))
+    monkeypatch.delenv("GUARDIAN_STATE_SYNC", raising=False)
+    g, _ = svc.Guardian.build(data_dir=str(tmp_path / "a"), runs_dir=str(tmp_path / "a-runs"), bridge="mock", with_gren_app=False)
+    g.add_item(demo["items"][0], source="seed")
+    assert s3.objects == {} and g.summary()["runtime"]["state_sync"] is False
+    monkeypatch.setenv("GUARDIAN_STATE_SYNC", "1")
+    g, _ = svc.Guardian.build(data_dir=str(tmp_path / "b"), runs_dir=str(tmp_path / "b-runs"), bridge="mock", with_gren_app=False)
+    g.add_item(demo["items"][0], source="seed")
+    assert "guardian/household/items.json" in s3.objects and g.summary()["runtime"]["state_sync"] is True
+    # a fresh process (a replaced instance) starts from the bucket copy
+    g2, _ = svc.Guardian.build(data_dir=str(tmp_path / "c"), runs_dir=str(tmp_path / "c-runs"), bridge="mock", with_gren_app=False)
+    assert [i.id for i in g2.store.items()] == [demo["items"][0]["id"]]

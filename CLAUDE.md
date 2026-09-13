@@ -7,6 +7,7 @@
 - Providers come from gren: `bedrock` (AWS creds), `anthropic` (ANTHROPIC_API_KEY), `claude-code` (headless Claude Code login; the only one available on this machine), `mock` (`GREN_ALLOW_MOCK=1`). `GUARDIAN_FEEDS=fixtures` replays the recorded feeds.
 - The graphs are `guardian/graphs/nightly-sweep.yaml` and `intake.yaml`; validate with `.venv/Scripts/gren validate <yaml>` after any edit. Node ids are referenced by the tests, the service's activity formatter and the trace view: keep them stable. In YAML, quote `"yes"`/`"no"` in enums.
 - Design rules for the web app are in `design/README.md`: exactly three fonts (Roboto Slab, Lora, Habibi + monospace), five brand hexes and their listed derivatives, logical CSS properties for RTL, status never color-only. Tokens: `web/src/theme/tokens.ts`; API contract: `web/src/api/types.ts` (keep in sync with `guardian/api/app.py` and `service.py`).
+- Live deployment: `scripts/deploy_ec2.py up|update|status|logs|run|down` (EC2 + Caddy + sslip.io; `deploy/ec2/install.sh` runs on the box; the release zip and `config/env` live in the state bucket). `GUARDIAN_API_TOKEN` gates POST/PUT/DELETE when set; `GUARDIAN_STATE_SYNC=1` (server only) mirrors `var/` to S3. `deploy/agentcore` is the AgentCore path, blocked by account quotas at 0.
 - Do not commit anything under `var/`, the zips, or `web/dist`.
 - Handoff: `read_this_labubu.md`. Plan: `BUILD_PLAN.md` (sections after 3 are the Core tier; milestone 1 covers recalls + warranty windows, not advisories or settlements).
 

@@ -51,3 +51,25 @@ def test_sweep_runs_through_the_mounted_gren_api(tmp_path, demo):
     s = c.get("/api/summary").json()
     assert s["sweeps_run"] == 1 and s["last_sweep"]["run_id"] == rid and s["recalls_screened_30d"] > 0
     assert os.path.exists(os.path.join(str(tmp_path / "household"), "recalls.json"))  # the reducers wrote to the app's store, not the default one
+
+
+def test_public_deployment_token_gates_actions_but_not_reads(tmp_path, monkeypatch):
+    monkeypatch.setenv("GUARDIAN_API_TOKEN", "s3cret-token")
+    c = _client(tmp_path)
+    item = {"name": "Kettle", "brand": "Fellow", "category": "Kitchen", "purchase_date": "2026-01-02"}
+    assert c.get("/api/summary").status_code == 200  # reads stay open
+    assert c.post("/api/sweep", json={}).status_code == 401  # anything that spends or changes needs the token
+    assert c.put("/api/preferences", json={}).status_code == 401
+    assert c.post("/gren/api/runs/x/approve", json={}).status_code == 401  # the mounted gren API too
+    assert c.post("/api/items", json=item, headers={"authorization": "Bearer nope"}).status_code == 401
+    assert c.post("/api/items", json=item, headers={"authorization": "Bearer s3cret-token"}).status_code == 200
+    r = c.get("/?token=s3cret-token")  # the link you open once: sets the cookie the dashboard's calls then carry
+    assert r.status_code == 200 and c.cookies.get("guardian_token") == "s3cret-token"
+    assert c.post("/api/items", json={**item, "name": "Grinder"}).status_code == 200
+    assert c.get("/api/items").json()["total"] == 2
+
+
+def test_without_a_token_everything_is_open(tmp_path, monkeypatch):
+    monkeypatch.delenv("GUARDIAN_API_TOKEN", raising=False)
+    c = _client(tmp_path)
+    assert c.post("/api/items", json={"name": "Kettle", "purchase_date": "2026-01-02"}).status_code == 200
