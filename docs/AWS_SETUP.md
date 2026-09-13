@@ -119,6 +119,8 @@ GUARDIAN_S3_BUCKET=guardian-779457758734-state
 
 `guardian serve` then sends sweeps, answers and intake to the runtime and serves reads from the copy of the state it pulls back from S3. A public dashboard for judges is App Runner from the same code, or a Cloudflare Tunnel from the laptop for the video; add `GUARDIAN_API_TOKEN` before anything is public.
 
+The nightly trigger is an EventBridge Scheduler rule (03:00 household-local) that invokes the runtime with `{"kind":"sweep"}` through a small Lambda or a universal target on `bedrock-agentcore:InvokeAgentRuntime`; it is a follow-up after the first successful `agentcore invoke`, not part of the CLI project.
+
 ## 7. Fill-in sheet
 
 Copy `.env.example` to `.env` and fill the rows you have. Send the same values to Labubu privately (not in git, not in a public chat).
