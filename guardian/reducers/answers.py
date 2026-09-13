@@ -22,6 +22,8 @@ def reduce(input, args, ctx):
     approved, rejected = [], []
     for i, d in enumerate(decisions):
         a = by_index.get(i)
+        if a is None and answers:
+            continue  # answered comment: a decision not listed is snoozed or was actioned by an earlier run of this plan
         choice = str(a.get("choice")) if a else ("request_remedy" if gate.get("decision") == "approved" else "not_mine")
         rec = {**d, "index": i, "decision_id": (a or {}).get("decision_id"), "choice": choice, "answered_by": (a or {}).get("by") or gate.get("by") or "household"}
         (approved if choice in APPROVE else rejected).append(rec)

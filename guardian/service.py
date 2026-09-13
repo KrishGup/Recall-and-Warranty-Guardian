@@ -171,8 +171,9 @@ class Guardian:
         if kind not in ("sweep", "nightly-sweep", "intake"):
             return
         if t == "run.started" and kind != "intake":
-            self.store.upsert_sweep(SweepRecord(run_id=rid, started_at=now_iso(), status="running", bridge=str(run.get("bridge") or "")))
-            self._emit_local("sweep.started", {"run_id": rid})
+            if not run.get("forked_from"):
+                self.store.upsert_sweep(SweepRecord(run_id=rid, started_at=now_iso(), status="running", bridge=str(run.get("bridge") or "")))
+            self._emit_local("sweep.started", {"run_id": rid, "forked_from": run.get("forked_from")})
         elif t == "node.completed" and node:
             self._log_node(rid, str(node))
         elif t == "verify.kill" and node == "severity_check":
@@ -183,7 +184,8 @@ class Guardian:
         elif t in ("gate.approved", "gate.rejected") and node == "household_decision":
             self.store.log(Activity(source="Household", text=f"Household answered ({'approved' if t.endswith('approved') else 'declined'}) via {data.get('by') or 'dashboard'}", result="graph resumed", tone="ok", run_id=rid))
         elif t == "run.paused":
-            self._sweep_update(rid, status="paused")
+            if not run.get("forked_from"):
+                self._sweep_update(rid, status="paused")
             self._emit_local("sweep.paused", {"run_id": rid})
         elif t in ("run.completed", "run.failed", "run.cancelled"):
             status = t.split(".")[1]
@@ -245,6 +247,11 @@ class Guardian:
         feeds, matching = out.get("feeds") or {}, out.get("matching") or {}
         channel = out.get("channel")
         n_dec = len(out.get("decisions") or [])
+        if run.get("forked_from"):
+            sent = int(((out.get("actions") or {}).get("sent")) or 0) if isinstance(out.get("actions"), dict) else 0
+            self.store.log(Activity(source="Guardian", text="Late-approval run complete", result=(f"{sent} request(s) sent" if status == "completed" else f"{status}: {str(data.get('error') or run.get('error') or '')[:120]}") + f" · ${float(run.get('totals', {}).get('cost_usd') or 0):.3f}", tone="ok" if status == "completed" else "critical", run_id=rid))
+            self._emit_local("sweep.finished", {"run_id": rid, "status": status, "forked_from": run.get("forked_from")})
+            return
         if status == "completed":
             summary = "Quiet" if channel in (None, "none") else (f"{n_dec} decision(s) surfaced" if channel == "sms_now" else "digest only")
             self.store.log(Activity(source="Guardian", text="Sweep complete", result=("Nothing to report" if channel in (None, "none") else summary) + f" · ${float(run.get('totals', {}).get('cost_usd') or 0):.3f}", tone="ok", run_id=rid))
@@ -337,22 +344,67 @@ class Guardian:
             return {"ok": True, "decision": self.decision_view(self.store.decision(d.id) or d), "run_id": d.run_id, "resumed": resumed}
 
     def _maybe_release_gate(self, d: Decision) -> bool:
-        """When every decision of the run's plan is answered (snoozes keep the gate waiting), write the approval and resume."""
+        """Release the gate once no decision of the plan is still pending. Snoozed decisions are left out of the
+        approval (they come back tomorrow); decisions already actioned by an earlier run of the plan are left out too.
+        If the run is no longer waiting (a late approval after a snooze or a restart), fork it from the gate."""
         if not d.run_id or not d.gate:
             return False
         siblings = sorted([x for x in self.store.decisions() if x.run_id == d.run_id and x.gate == d.gate], key=lambda x: x.plan_index)
-        if any(x.state in ("pending", "snoozed") for x in siblings):
+        if any(x.state == "pending" for x in siblings):
             return False
-        answers = [{"index": x.plan_index, "decision_id": x.id, "choice": (x.answer or {}).get("choice"), "by": (x.answer or {}).get("by")} for x in siblings]
+        actionable = [x for x in siblings if x.state == "answered" and not x.action]
+        if not actionable:
+            return False
+        answers = [{"index": x.plan_index, "decision_id": x.id, "choice": (x.answer or {}).get("choice"), "by": (x.answer or {}).get("by")} for x in actionable]
         approved = any(a["choice"] in ("request_remedy", "report_problem") for a in answers)
         comment = json.dumps({"answers": answers})
-        self.control.approve(d.run_id, d.gate, "approved" if approved else "rejected", by=(d.answer or {}).get("by") or "household", comment=comment)
+        by = (d.answer or {}).get("by") or "household"
         try:
             st = self.run_store.load(d.run_id)
-            if not self.control.is_running(d.run_id) and st.run["status"] in ("paused", "created"):
-                self.control.resume(d.run_id, bridge=self.bridge)
         except FileNotFoundError:
-            pass
+            return False
+        gate_waiting = st.run["status"] == "paused" and (st.nodes.get(d.gate) or {}).get("status") == "waiting_approval"
+        if not gate_waiting:
+            if not approved:
+                return False  # declines were applied when they were answered; nothing to send
+            return self._late_approval(d, siblings, comment, by)
+        self.control.approve(d.run_id, d.gate, "approved" if approved else "rejected", by=by, comment=comment)
+        if not self.control.is_running(d.run_id):
+            self.control.resume(d.run_id, bridge=self.bridge)
+        return True
+
+    def _late_approval(self, d: Decision, siblings: list[Decision], comment: str, by: str) -> bool:
+        """The run already finished without this decision (the household snoozed it, or answered after a restart).
+        Fork the run from the gate: the triage plan and every upstream output are reused, only the gate, answers,
+        remedy and followup re-execute, for the decisions in the approval comment."""
+        old = d.run_id or ""
+        new_rid = f"{old}-late-{datetime.now(timezone.utc).strftime('%H%M%S')}"
+        for x in siblings:
+            if not x.action:
+                x.run_id = new_rid
+                self.store.upsert_decision(x)
+        try:
+            self.control.fork(old, [d.gate or "household_decision"], bridge=self.bridge, new_run_id=new_rid)
+        except Exception as e:  # noqa: BLE001
+            self.log(f"fork for late approval failed: {e}")
+            for x in siblings:
+                if x.run_id == new_rid:
+                    x.run_id = old
+                    self.store.upsert_decision(x)
+            return False
+        self.store.log(Activity(source="Guardian", text=f"Late approval: forked the sweep from the household gate so the remedy runs for {d.item_name}", result=new_rid, tone="muted", run_id=new_rid, decision_id=d.id))
+        t0 = time.time()
+        while time.time() - t0 < 60:
+            st = self.run_store.load(new_rid)
+            if st.run["status"] == "paused" and (st.nodes.get(d.gate or "") or {}).get("status") == "waiting_approval":
+                break
+            if st.run["status"] in ("completed", "failed", "cancelled"):
+                self.log(f"fork {new_rid} ended with {st.run['status']} before reaching the gate")
+                return False
+            time.sleep(0.2)
+        self.control.approve(new_rid, d.gate or "household_decision", "approved", by=by, comment=comment)
+        if not self.control.is_running(new_rid):
+            self.control.resume(new_rid, bridge=self.bridge)
         return True
 
     def resurface_snoozed(self) -> int:
