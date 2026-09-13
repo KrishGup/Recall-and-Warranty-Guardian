@@ -1,0 +1,21 @@
+# python
+.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+build/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+# node
+node_modules/
+web/dist/
+web/.vite/
+# guardian runtime state (runs, household store, outbox)
+var/
+*.log
+.env
+.env.*
+.DS_Store
+# design zips are extracted under design/
+*.zip
