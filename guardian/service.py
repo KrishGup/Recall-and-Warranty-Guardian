@@ -75,6 +75,10 @@ class Guardian:
         store = Store(data_dir)
         runs_root = os.path.abspath(runs_dir or os.environ.get("GUARDIAN_RUNS") or os.path.join("var", "runs"))
         run_store = RunStore(runs_root)
+        # The graph's code nodes resolve the store from the environment (they are plain modules loaded by gren), so the
+        # service publishes the paths it was built with; `--data` and `--runs` then apply to the whole run, not just the API.
+        os.environ["GUARDIAN_DATA"] = store.root
+        os.environ["GUARDIAN_RUNS"] = runs_root
         registry = ModelRegistry(runs_root=runs_root)
         log = (lambda m: None) if quiet else (lambda m: print(f"[guardian] {m}", flush=True))
         gren_app = None
@@ -97,8 +101,12 @@ class Guardian:
         return rid
 
     def wait(self, run_id: str, timeout_s: float = 600, poll_s: float = 0.25) -> dict[str, Any]:
+        """Block until the run finishes or pauses at a gate (an in-process run keeps its thread while it waits)."""
         t0 = time.time()
-        while self.control.is_running(run_id) and time.time() - t0 < timeout_s:
+        while time.time() - t0 < timeout_s:
+            run = self.run_store.load(run_id).run
+            if run["status"] == "paused" or not self.control.is_running(run_id):
+                return run
             time.sleep(poll_s)
         return self.run_store.load(run_id).run
 

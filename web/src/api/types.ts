@@ -87,6 +87,8 @@ export interface MatchCandidate {
 export interface ItemDetail extends Item {
   matches: MatchCandidate[]
   activity: ActivityRow[]
+  receipt_text?: string | null // raw forwarded/pasted receipt text when the item came from intake
+  notes?: string | null
 }
 
 export interface ItemsQuery {

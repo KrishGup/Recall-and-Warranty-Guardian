@@ -17,6 +17,7 @@ from guardian.store import Store  # noqa: E402
 def data_dir(tmp_path, monkeypatch):
     d = str(tmp_path / "household")
     monkeypatch.setenv("GUARDIAN_DATA", d)
+    monkeypatch.setenv("GUARDIAN_RUNS", str(tmp_path / "runs"))
     return d
 
 

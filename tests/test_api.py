@@ -12,8 +12,7 @@ def _client(tmp_path):
     return TestClient(app)
 
 
-def test_inventory_summary_decisions_and_preferences(tmp_path, demo, monkeypatch):
-    monkeypatch.setenv("GUARDIAN_DATA", str(tmp_path / "household"))
+def test_inventory_summary_decisions_and_preferences(tmp_path, demo):
     c = _client(tmp_path)
     r = c.post("/api/items/import", json={"items": demo["items"]})
     assert r.status_code == 200 and r.json()["created"] == len(demo["items"])
@@ -35,8 +34,8 @@ def test_inventory_summary_decisions_and_preferences(tmp_path, demo, monkeypatch
     assert c.get("/api/activity").json()["nights"][0]["rows"]
 
 
-def test_sweep_runs_through_the_mounted_gren_api(tmp_path, demo, monkeypatch):
-    monkeypatch.setenv("GUARDIAN_DATA", str(tmp_path / "household"))
+def test_sweep_runs_through_the_mounted_gren_api(tmp_path, demo):
+    # no GUARDIAN_DATA in the environment here: the app must publish its own data dir to the graph's reducers
     c = _client(tmp_path)
     c.post("/api/items/import", json={"items": [i for i in demo["items"] if i["id"] in ("itm_graco_stroller", "itm_roku_stick")]})
     rid = c.post("/api/sweep", json={"window_days": 120}).json()["run_id"]
@@ -51,3 +50,4 @@ def test_sweep_runs_through_the_mounted_gren_api(tmp_path, demo, monkeypatch):
     assert c.get("/gren/api/run/events", params={"id": rid}).json()
     s = c.get("/api/summary").json()
     assert s["sweeps_run"] == 1 and s["last_sweep"]["run_id"] == rid and s["recalls_screened_30d"] > 0
+    assert os.path.exists(os.path.join(str(tmp_path / "household"), "recalls.json"))  # the reducers wrote to the app's store, not the default one
