@@ -1,7 +1,7 @@
 # Guardian — working notes for Claude Code
 
 - Two packages: `guardian/` (this product) and `gren/` (the graph engine it runs on; a git subtree of X:/Code/26Projects/gren, remote `gren-local`; sync with `git subtree pull --prefix=gren gren-local main`, never copy files). gren's own notes: `gren/CLAUDE.md`, `gren/docs/HANDOFF.md`.
-- Python 3.11+, venv at `.venv` (`.venv/Scripts/python` on Windows): `pip install -e "./gren[dev]" -e ".[dev]"`. Tests: `GREN_ALLOW_MOCK=1 python -m pytest -q -p no:cacheprovider` (31 tests, mock provider, recorded feeds; about 15 s).
+- Python 3.11+, venv at `.venv` (`.venv/Scripts/python` on Windows): `pip install -e "./gren[dev]" -e ".[dev]"`. Tests: `GREN_ALLOW_MOCK=1 python -m pytest -q -p no:cacheprovider` (32 tests, mock provider, recorded feeds; about 15 s).
 - Run it: `guardian seed` → `guardian serve --port 8787` (API + gren API at /gren + built dashboard) and `cd web && npm run dev` (5173, proxies to 8787). `.claude/launch.json` has both. `guardian sweep` / `guardian answer <id> <choice>` / `guardian intake --file demo/receipt.txt` from a terminal.
 - Runtime state lives under `var/` (gitignored): `var/household` (JSON store, outbox) and `var/runs` (gren run store). `--data/--runs` or `GUARDIAN_DATA/GUARDIAN_RUNS` relocate both; the service publishes them to the graph reducers.
 - Providers come from gren: `bedrock` (AWS creds), `anthropic` (ANTHROPIC_API_KEY), `claude-code` (headless Claude Code login; the only one available on this machine), `mock` (`GREN_ALLOW_MOCK=1`). `GUARDIAN_FEEDS=fixtures` replays the recorded feeds.
