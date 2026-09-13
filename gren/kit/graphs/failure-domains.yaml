@@ -1,0 +1,67 @@
+# Failure domains demo. Run it with the mock bridge and injected failures to watch the policies work:
+#
+#   gren run graphs/failure-domains.yaml --bridge mock --mock-fail-rate 0.35 --mock-fail-nodes flaky_optional --input '{"items":["a","b","c","d","e","f"]}'
+#
+#   - workers:          retry once, then fall back to a stronger model; the join needs a 0.6 quorum; missing work is reported, not hidden
+#   - flaky_optional:   always fails -> on_failure: continue -> the join lists it as optional and runs anyway
+#   - critical:         on_failure: block -> if it fails after retries the whole run fails (it is critical)
+#   - summary:          receives explicit completion counts so the output degrades VISIBLY
+name: failure-domains
+version: 1
+description: Demonstrates retries, fallbacks, quorum joins, optional branches and blocking nodes.
+goal: A summary that states exactly how much of the work completed.
+
+input_schema:
+  type: object
+  required: [items]
+  properties:
+    items: { type: array, minItems: 2, items: { type: string } }
+
+budget: { max_cost_usd: 1.0, max_wall_ms: 300000, max_width: 4 }
+defaults: { model: haiku, effort: low }
+output: { from: summary }
+
+nodes:
+  - id: workers
+    kind: agent
+    map: $input.items
+    max_width: 4
+    failure: { retries: 1, backoff_ms: 200, quorum: 0.6, on_failure: block, fallback: { model: sonnet } }
+    prompt: "Process item {{ item }} (index {{ index }}). Return a short result."
+    output_schema:
+      type: object
+      required: [item, result]
+      properties: { item: { type: string }, result: { type: string } }
+
+  - id: flaky_optional
+    kind: agent
+    description: Non-critical enrichment - its failure must not stop the run.
+    failure: { retries: 0, on_failure: continue }
+    prompt: "Enrich these items with one tag each: {{ json input.items }}"
+    output_schema:
+      type: object
+      required: [tags]
+      properties: { tags: { type: array, items: { type: string } } }
+
+  - id: critical
+    kind: agent
+    description: Critical - if this cannot be produced, the run must stop rather than emit garbage.
+    failure: { retries: 2, backoff_ms: 200, on_failure: block, fallback: { model: sonnet } }
+    prompt: "Produce the checksum policy for {{ input.items.length }} items."
+    output_schema:
+      type: object
+      required: [policy]
+      properties: { policy: { type: string } }
+
+  - id: summary
+    kind: code
+    description: Explicit completion counts travel with the result - degrade visibly.
+    fn: identity
+    optional: [flaky_optional]
+    input:
+      completed: $nodes.workers.count
+      results: $nodes.workers.outputs
+      failed_items: $nodes.workers.items
+      enrichment: $nodes.flaky_optional.output
+      enrichment_status: $nodes.flaky_optional.status
+      policy: $nodes.critical.output.policy

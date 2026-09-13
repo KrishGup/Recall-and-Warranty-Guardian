@@ -1,0 +1,16 @@
+node_modules/
+dist/
+runs/
+out/
+.worktrees/
+*.log
+.env
+.DS_Store
+.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+build/
+.pytest_cache/
+gren/_data/
+kit/.venv/

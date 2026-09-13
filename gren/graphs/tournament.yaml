@@ -1,0 +1,75 @@
+# Tournament: N candidates (cheap, parallel) -> M independent judges (separate contexts) -> deterministic vote count.
+# Selection pressure that bad candidates must survive. No agent counts the votes - code does.
+name: tournament
+version: 1
+description: Generate competing headline candidates, judge them independently, pick the winner by vote count.
+goal: One headline chosen by independent judges, with the tally visible.
+
+input_schema:
+  type: object
+  required: [brief]
+  properties:
+    brief: { type: string, minLength: 10 }
+    styles: { type: array, minItems: 2, maxItems: 6, items: { type: string }, default: ["punchy", "curiosity gap", "plain and specific", "contrarian"] }
+    judges: { type: array, minItems: 1, maxItems: 5, items: { type: string }, default: ["a skeptical CTO", "a growth marketer", "a first-time reader"] }
+    criteria: { type: array, items: { type: string }, default: ["specific, no hype", "under 12 words", "true to the brief"] }
+
+budget: { max_cost_usd: 1.0, max_wall_ms: 600000, max_width: 4 }
+defaults: { effort: low, failure: { retries: 1, timeout_ms: 120000 } }
+output: { from: winner }
+
+nodes:
+  - id: candidates
+    kind: agent
+    model: haiku
+    map: $input.styles
+    max_width: 4
+    failure: { quorum: 0.5 }
+    prompt: |
+      Brief: {{ input.brief }}
+      Write ONE headline in the style "{{ item }}". Criteria: {{ json input.criteria }}
+      Return the headline and a one-sentence rationale.
+    output_schema:
+      type: object
+      required: [style, headline, rationale]
+      additionalProperties: false
+      properties:
+        style: { type: string }
+        headline: { type: string, minLength: 5, maxLength: 140 }
+        rationale: { type: string }
+
+  - id: judges
+    kind: agent
+    model: sonnet
+    map: $input.judges
+    max_width: 3
+    failure: { quorum: 0.67 }
+    input: { candidates: $nodes.candidates.outputs, criteria: $input.criteria, brief: $input.brief }
+    prompt: |
+      You are {{ item }}. Judge the candidate headlines in <input> against the criteria.
+      Pick exactly one winner by its index in the candidates array (0-based), give a full ranking, and name the deciding factor.
+    output_schema:
+      type: object
+      required: [winner, ranking, deciding_factor]
+      additionalProperties: false
+      properties:
+        winner: { type: integer, minimum: 0 }
+        ranking: { type: array, items: { type: integer, minimum: 0 } }
+        deciding_factor: { type: string }
+
+  - id: tally
+    kind: code
+    description: Votes are counted by code, never by a model.
+    fn: count_votes
+    input: { items: $nodes.judges.outputs }
+    args: { by: winner }
+
+  - id: winner
+    kind: code
+    fn: identity
+    input:
+      winner_index: $nodes.tally.output.winner
+      tally: $nodes.tally.output.ranked
+      candidates: $nodes.candidates.outputs
+      judges_completed: $nodes.judges.count
+      judge_rationales: $nodes.judges.outputs

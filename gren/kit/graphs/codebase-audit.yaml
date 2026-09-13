@@ -1,0 +1,285 @@
+# Codebase audit - router + parallel specialist diamond over a real repository, with tools and kill authority.
+#
+#   inventory (code) -> triage (haiku, Read/Grep) -> route (deterministic: single vs parallel)
+#     -> parallel: one sonnet auditor per module, isolated context, Read/Grep/Glob   |  single: one auditor
+#     -> merge/dedupe/normalize (code) -> verify each issue by opening the file (haiku, Read/Grep, kill authority)
+#     -> prioritise (code) -> fix plans (sonnet, parallel, Read) -> adversarial fix review (sonnet, repair -> fix plans)
+#     -> report (code) -> [HUMAN GATE] -> write report (side effect)
+#
+# "Never cite a source that was not opened": the verifier must open the file and find the evidence excerpt.
+name: codebase-audit
+version: 1
+description: Risk-routed, verified code audit with reviewed fix plans; depth scales with repository size.
+goal: A markdown audit report where every issue was confirmed in the file by an independent verifier and every fix plan survived adversarial review.
+
+input_schema:
+  type: object
+  required: [repo_path]
+  properties:
+    repo_path: { type: string }
+    include: { type: array, items: { type: string }, default: ["gren"] }
+    focus: { type: array, items: { type: string }, default: [correctness, security, reliability, maintainability] }
+    max_issues: { type: integer, minimum: 3, maximum: 30, default: 10 }
+
+budget: { max_cost_usd: 8.0, max_wall_ms: 3600000, max_width: 4 }
+frozen: [verifier_can_kill, width_budget]
+defaults:
+  model: haiku
+  effort: low
+  failure: { retries: 1, timeout_ms: 900000, repair_attempts: 1 }
+
+output:
+  file: $nodes.write_report.output.file
+  route: $nodes.route.output.route
+  verified_issues: $nodes.prioritize.output.items
+  dismissed_issues: $nodes.verify_issues.killed
+  fix_plans: $nodes.review_fixes.survivors
+  report_markdown: $nodes.report.output.markdown
+
+nodes:
+  - id: inventory
+    kind: code
+    description: Deterministic file inventory grouped into modules - no model needed to list files.
+    module: ./reducers/inventory.py
+    input: { repo_path: $input.repo_path, include: $input.include }
+    args: { max_files: 300, module_depth: 2 }
+
+  - id: triage
+    kind: agent
+    description: Cheap look at the inventory - which modules matter, how risky, what to focus on.
+    tools: [Read, Grep, Glob]
+    cwd: $input.repo_path
+    max_turns: 60
+    max_cost_usd: 0.6
+    input: { modules: $nodes.inventory.output.modules, largest_files: $nodes.inventory.output.largest_files, focus: $input.focus }
+    prompt: |
+      You are triaging a repository at {{ input.repo_path }} for an audit focused on {{ json input.focus }}.
+      <input> lists the modules (directories) with their files and sizes. Skim AT MOST 5 key files (entry points, largest
+      files) with Read/Grep - budget your tool calls, then answer. For every module in the inventory, return: the module name (exactly as
+      given), a risk level, one sentence why, and a focus hint for its auditor. Also write a 3-sentence description of the system.
+    output_schema:
+      type: object
+      required: [system_description, modules]
+      additionalProperties: false
+      properties:
+        system_description: { type: string }
+        modules:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required: [module, files, risk, why, focus_hint]
+            additionalProperties: false
+            properties:
+              module: { type: string }
+              files: { type: array, items: { type: string } }
+              risk: { type: string, enum: [low, medium, high] }
+              why: { type: string }
+              focus_hint: { type: string }
+
+  - id: route
+    kind: router
+    description: Small repositories get one auditor; larger ones get a parallel specialist per module.
+    routes:
+      - { when: { lt: ["$nodes.inventory.output.total_lines", 800] }, route: single, reason: "under 800 lines" }
+    default: parallel
+
+  - id: audit_modules
+    kind: agent
+    model: sonnet
+    effort: medium
+    description: One auditor per module in its own context window, reading the actual files.
+    when: { eq: ["$nodes.route.output.route", parallel] }
+    map: $nodes.triage.output.modules
+    max_width: 3
+    tools: [Read, Grep, Glob]
+    cwd: $input.repo_path
+    max_turns: 100
+    max_cost_usd: 1.5
+    failure: { retries: 1, quorum: 0.6, on_failure: block, fallback: { model: opus } }
+    input: { system: $nodes.triage.output.system_description, focus: $input.focus }
+    prompt: |
+      Audit the module "{{ item.module }}" (risk {{ item.risk }}: {{ item.why }}). Focus hint: {{ item.focus_hint }}
+      Files: {{ json item.files }}
+      System context and audit focus are in <input>. Read the files (Read/Grep) - do not guess from names.
+
+      Report every concrete issue you can point to in the code: file, line (if you can determine it), severity
+      (blocker | major | minor | nit), category (one of the focus areas or "performance"/"tests"/"docs"), a short title,
+      a description of the problem and its consequence, a VERBATIM evidence excerpt (1-6 lines copied from the file), and a
+      suggested fix. Do not report style preferences as issues. An empty list is a valid answer for a clean module.
+    output_schema: &audit_schema
+      type: object
+      required: [module, issues, summary]
+      additionalProperties: false
+      properties:
+        module: { type: string }
+        summary: { type: string }
+        issues:
+          type: array
+          maxItems: 12
+          items:
+            type: object
+            required: [file, line, severity, category, title, description, evidence, suggested_fix]
+            additionalProperties: false
+            properties:
+              file: { type: string }
+              line: { type: integer, minimum: 0 }
+              severity: { type: string, enum: [blocker, major, minor, nit] }
+              category: { type: string }
+              title: { type: string }
+              description: { type: string }
+              evidence: { type: string, minLength: 5 }
+              suggested_fix: { type: string }
+
+  - id: single_audit
+    kind: agent
+    model: sonnet
+    effort: medium
+    when: { eq: ["$nodes.route.output.route", single] }
+    tools: [Read, Grep, Glob]
+    cwd: $input.repo_path
+    max_turns: 100
+    max_cost_usd: 2.0
+    input: { system: $nodes.triage.output.system_description, modules: $nodes.triage.output.modules, focus: $input.focus }
+    prompt: |
+      Audit this small repository (modules and files in <input>). Read the files - do not guess from names.
+      Report every concrete issue with file, line, severity (blocker|major|minor|nit), category, title, description, a
+      VERBATIM evidence excerpt and a suggested fix. Set module to "all".
+    output_schema: *audit_schema
+
+  - id: flat_parallel
+    kind: code
+    fn: flatten
+    optional: [audit_modules]
+    input: { items: $nodes.audit_modules.outputs }
+    args: { path: issues }
+
+  - id: merge
+    kind: code
+    description: Join whichever path ran.
+    fn: merge
+    optional: [flat_parallel, single_audit]
+    input: { a: $nodes.flat_parallel.output.items, b: $nodes.single_audit.output.issues }
+
+  - id: dedupe
+    kind: code
+    fn: dedupe
+    input: { items: $nodes.merge.output.items }
+    args: { key: [file, title] }
+
+  - id: normalize
+    kind: code
+    fn: normalize_labels
+    input: { items: $nodes.dedupe.output.items }
+    args: { path: severity, map: { critical: blocker, high: major, medium: minor, low: nit } }
+
+  - id: cap
+    kind: code
+    description: Compress before you verify - rank by severity and category, keep the top slice; verification is the expensive step.
+    module: ./reducers/prioritize.py
+    input: { items: $nodes.normalize.output.items }
+    args: { k: 24 }
+
+  - id: verify_issues
+    kind: verify
+    description: Open the file; the evidence must exist and the issue must hold. Inflated severity is a kill too.
+    target: $nodes.cap.output.items
+    tools: [Read, Grep]
+    cwd: $input.repo_path
+    max_turns: 25
+    max_cost_usd: 0.35
+    max_width: 4
+    kill_threshold: 0.6
+    prompt: |
+      Reported issue:
+      {{ json item }}
+
+      Open the file (Read; use Grep to locate the evidence). Kill the issue if the evidence excerpt is not in the file, the
+      described problem does not actually occur (e.g. it is handled elsewhere in the same file), it is a style preference, or
+      the severity is inflated by more than one level. Pass otherwise. Name the line you found the evidence on in reasons.
+
+  - id: prioritize
+    kind: code
+    module: ./reducers/prioritize.py
+    input: { items: $nodes.verify_issues.survivors }
+    args: { k: 10 }
+
+  - id: fix_plans
+    kind: agent
+    model: sonnet
+    effort: medium
+    description: A concrete, minimal patch per verified issue - in parallel, each with the file open.
+    map: $nodes.prioritize.output.items
+    max_width: 3
+    tools: [Read, Grep]
+    cwd: $input.repo_path
+    max_turns: 40
+    max_cost_usd: 0.8
+    failure: { retries: 1, quorum: 0.5, on_failure: block }
+    prompt: |
+      Verified issue #{{ item.rank }}:
+      {{ json item }}
+
+      Read the file and write a minimal fix plan: what changes and why, a unified diff (max 80 lines, real file paths,
+      compiles in spirit), the risk of the change, and the tests to add. Do not widen scope beyond this issue.
+      issue_ref must be "<file>:<title>".
+    output_schema:
+      type: object
+      required: [issue_ref, plan, patch, risk, tests_to_add]
+      additionalProperties: false
+      properties:
+        issue_ref: { type: string }
+        plan: { type: string, minLength: 40 }
+        patch: { type: string, minLength: 20 }
+        risk: { type: string }
+        tests_to_add: { type: array, items: { type: string } }
+
+  - id: review_fixes
+    kind: verify
+    model: sonnet
+    effort: medium
+    description: Adversarial reviewer of each fix plan; rejections go back to the planner once.
+    target: $nodes.fix_plans.outputs
+    tools: [Read]
+    cwd: $input.repo_path
+    max_turns: 25
+    max_cost_usd: 0.45
+    max_width: 3
+    kill_threshold: 0.6
+    repair: { node: fix_plans, max_rounds: 1 }
+    prompt: |
+      Fix plan under review:
+      {{ json item }}
+
+      Open the file the patch touches. Try to reject the plan: does the diff actually address the issue, does it apply to the
+      current code, could it break behaviour or tests, is it larger than needed, does it introduce a new problem? Kill with
+      concrete reasons, or pass.
+
+  - id: report
+    kind: code
+    module: ./reducers/audit-report.py
+    input:
+      repo: $input.repo_path
+      inventory: $nodes.inventory.output
+      route: $nodes.route.output.route
+      issues: $nodes.prioritize.output.items
+      fixes: $nodes.review_fixes.survivors
+      unverified_fixes: $nodes.review_fixes.killed
+      dismissed: $nodes.verify_issues.killed
+      stats: { reported: $nodes.normalize.output.items.length, verified: $nodes.verify_issues.output.total, issue_kill_rate: $nodes.verify_issues.kill_rate, fix_kill_rate: $nodes.review_fixes.kill_rate }
+
+  - id: approve
+    kind: gate
+    title: Write the audit report to a file?
+    prompt: Each issue below was confirmed in the file by a verifier. Each fix plan passed a review. Read the report. Then approve or reject.
+    approve_effect: The system writes the report to the out/ folder.
+    reject_effect: The system writes nothing. The run stops.
+    show: { counts: { issues: $nodes.report.output.issues, fixes: $nodes.report.output.fixes, dismissed: $nodes.report.output.dismissed }, report: $nodes.report.output.markdown }
+
+  - id: write_report
+    kind: code
+    module: ./reducers/write-file.py
+    side_effect: true
+    requires_gate: approve
+    input: { markdown: $nodes.report.output.markdown }
+    args: { dir: out, name: codebase-audit, ext: md }

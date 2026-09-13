@@ -1,0 +1,12 @@
+{
+  "tickets": [
+    { "id": "T-1001", "customer": "Ada", "tier": "pro", "text": "I was double charged this month - two invoices for $29 each on the same day. Please refund one of them." },
+    { "id": "T-1002", "customer": "Bilal", "tier": "free", "text": "The app crashes with a stack trace every time I open the export dialog on Windows. Started after yesterday's update." },
+    { "id": "T-1003", "customer": "Chen", "tier": "enterprise", "text": "We are considering switching to a competitor unless the SSO issues get fixed this quarter. What can you offer?" },
+    { "id": "T-1004", "customer": "Dana", "tier": "pro", "text": "Someone accessed my account from a country I have never visited and I received a suspicious login email. What do I do?" },
+    { "id": "T-1005", "customer": "Eli", "tier": "free", "text": "Hi! Just wanted to say the new dashboard is great. Is there a student discount?" },
+    { "id": "T-1006", "customer": "Farah", "tier": "enterprise", "text": "Our legal team needs your GDPR data processing agreement and a list of subprocessors before renewal." },
+    { "id": "T-1007", "customer": "Gus", "tier": "pro", "text": "Honestly this is unacceptable. Three outages this week and nobody answers. I want a full refund for the year ($348) or I am done." }
+  ],
+  "auto_send": false
+}

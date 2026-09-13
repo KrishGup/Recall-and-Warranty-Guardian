@@ -1,0 +1,233 @@
+# Map -> Reduce -> Verify -> Synthesize -> Human gate -> Publish
+#
+# Shape 4 from the Graph Engineering guide, plus the production research/publishing graph.
+#   scope (sonnet) -> N research lanes (haiku, parallel) -> flatten/dedupe/coverage (code)
+#   -> adversarial verify per finding (haiku, kill authority) -> rank (code)
+#   -> brief (sonnet) -> check (haiku verifier with bounded repair back to brief)
+#   -> [HUMAN GATE] -> publish (side effect, unreachable without approval)
+name: research-brief
+version: 1
+description: Decision-grade research brief with verified, cited findings and a human gate before publishing.
+goal: A brief whose every claim survived an adversarial verifier, with visible coverage.
+
+input_schema:
+  type: object
+  required: [topic]
+  properties:
+    topic: { type: string }
+    audience: { type: string, default: "a product leader deciding whether to invest" }
+    max_lanes: { type: integer, minimum: 3, maximum: 8, default: 5 }
+
+budget:
+  max_cost_usd: 3.0
+  max_wall_ms: 1200000
+  max_width: 6
+
+frozen: [verifier_can_kill, width_budget]
+
+defaults:
+  model: sonnet
+  effort: low
+  failure: { retries: 1, timeout_ms: 300000, repair_attempts: 1 }
+
+output: { from: brief }
+
+nodes:
+  - id: scope
+    kind: agent
+    description: Define the question, completion criteria and independent research lanes.
+    prompt: |
+      Topic: {{ input.topic }}
+      Audience: {{ input.audience }}
+
+      Define one crisp research question, 3-5 completion criteria, and between 3 and {{ input.max_lanes }}
+      research lanes. Lanes must be GENUINELY independent angles (e.g. pricing, adoption signals, technical
+      constraints, regulation, competitor moves) - not paraphrases of the same search. Each lane gets 2-4
+      concrete search queries.
+    output_schema:
+      type: object
+      required: [question, criteria, lanes]
+      additionalProperties: false
+      properties:
+        question: { type: string }
+        criteria: { type: array, minItems: 3, items: { type: string } }
+        lanes:
+          type: array
+          minItems: 3
+          maxItems: 8
+          items:
+            type: object
+            required: [name, angle, queries]
+            additionalProperties: false
+            properties:
+              name: { type: string }
+              angle: { type: string }
+              queries: { type: array, minItems: 1, items: { type: string } }
+
+  - id: research
+    kind: agent
+    description: One worker per lane, separate context each. Cheap model, bounded extraction.
+    model: haiku
+    map: $nodes.scope.output.lanes
+    max_width: 5
+    failure: { retries: 1, quorum: 0.6, on_failure: block, fallback: { model: sonnet } }
+    prompt: |
+      You are research lane "{{ item.name }}" (angle: {{ item.angle }}).
+      Question: {{ nodes.scope.output.question }}
+      Suggested queries: {{ json item.queries }}
+
+      Return 3-6 findings for THIS angle only. Each finding must have:
+      - claim: one specific, falsifiable sentence
+      - evidence: the concrete excerpt, number or observation that supports the claim
+      - source: a specific, checkable reference (publication + date, report name, or URL you are confident exists)
+      - confidence: 0-1, honest. If you are recalling rather than reading a source, cap confidence at 0.5.
+      Never fabricate URLs or statistics. Prefer fewer, well-supported findings.
+    output_schema:
+      type: object
+      required: [lane, findings]
+      additionalProperties: false
+      properties:
+        lane: { type: string }
+        findings:
+          type: array
+          minItems: 1
+          maxItems: 8
+          items:
+            type: object
+            required: [claim, evidence, source, confidence]
+            additionalProperties: false
+            properties:
+              claim: { type: string, minLength: 10 }
+              evidence: { type: string, minLength: 10 }
+              source: { type: string, minLength: 4 }
+              confidence: { type: number, minimum: 0, maximum: 1 }
+
+  - id: flatten
+    kind: code
+    description: Deterministic plumbing - one list of findings from N workers.
+    fn: flatten
+    input: { items: $nodes.research.outputs }
+    args: { path: findings }
+
+  - id: dedupe
+    kind: code
+    description: Remove near-duplicate claims before anyone reasons about them.
+    fn: dedupe
+    input: { items: $nodes.flatten.output.items }
+    args: { key: [claim] }
+
+  - id: coverage
+    kind: code
+    description: Fan-out efficiency - unique sources per completed worker.
+    fn: coverage
+    input: { items: $nodes.dedupe.output.items, workers: $nodes.research.count.completed }
+    args: { key: source }
+
+  - id: verify
+    kind: verify
+    description: Adversarial check of every finding. Different objective from the researcher.
+    model: haiku
+    target: $nodes.dedupe.output.items
+    max_width: 6
+    kill_threshold: 0.6
+    min_survivors: 3
+    prompt: |
+      Candidate finding:
+      {{ json item }}
+
+      Your job is to REJECT this finding if you can. Check:
+      1. Does the evidence actually support the claim as stated (not a weaker or different claim)?
+      2. Is the source specific and checkable (named publication/report + date, or a plausible real URL)?
+      3. Is the confidence honest given the evidence?
+      4. Is the claim about the research question at all?
+      Kill it if any check fails badly. Report concrete reasons.
+
+  - id: rank
+    kind: code
+    description: Keep the strongest survivors - the expensive model should not read everything.
+    fn: top_k
+    input: { items: $nodes.verify.survivors }
+    args: { k: 12, by: confidence }
+
+  - id: brief
+    kind: agent
+    description: Synthesis from structured, verified evidence only.
+    model: sonnet
+    effort: medium
+    input:
+      question: $nodes.scope.output.question
+      criteria: $nodes.scope.output.criteria
+      findings: $nodes.rank.output.items
+      coverage: $nodes.coverage.output
+      lanes_completed: $nodes.research.count.completed
+      lanes_total: $nodes.research.count.total
+      killed_by_verifier: $nodes.verify.output.kill_rate
+    prompt: |
+      Write the brief for the audience "{{ input.audience }}" using ONLY the verified findings in <input>.
+      Every section must cite its findings by their exact `source` strings in `citations`.
+      Do not introduce claims that are not in the findings. If coverage is incomplete
+      (lanes_completed < lanes_total, or few findings), say so plainly in `coverage_note` and `caveats`.
+    output_schema:
+      type: object
+      required: [title, summary, sections, caveats, coverage_note]
+      additionalProperties: false
+      properties:
+        title: { type: string }
+        summary: { type: string, minLength: 40 }
+        sections:
+          type: array
+          minItems: 2
+          items:
+            type: object
+            required: [heading, body, citations]
+            additionalProperties: false
+            properties:
+              heading: { type: string }
+              body: { type: string, minLength: 40 }
+              citations: { type: array, minItems: 1, items: { type: string } }
+        caveats: { type: array, items: { type: string } }
+        coverage_note: { type: string }
+
+  - id: check
+    kind: verify
+    description: Final adversarial check of the brief; failures go back to the writer (bounded).
+    model: haiku
+    target: $nodes.brief.output
+    min_survivors: 1
+    kill_threshold: 0.6
+    repair: { node: brief, max_rounds: 2 }
+    input:
+      allowed_sources: $nodes.rank.output.items
+      question: $nodes.scope.output.question
+      criteria: $nodes.scope.output.criteria
+    prompt: |
+      Brief under review:
+      {{ json item }}
+
+      Attack it:
+      - Every citation must match the `source` of one of the allowed findings in <input> (allowed_sources).
+      - Every section body must be supported by the findings it cites; no new claims.
+      - The brief must answer the question and address the completion criteria.
+      - If coverage was incomplete, caveats must say so.
+      Kill the brief if it fails any of these. List every violation as a separate reason.
+
+  - id: approve
+    kind: gate
+    title: Publish this brief?
+    description: Human approval is an edge. `publish` is unreachable without it.
+    prompt: Review the brief, the final check and the coverage numbers. Approve to publish, or reject with a comment to send it back to the writer.
+    show:
+      brief: $nodes.brief.output
+      check: $nodes.check.output
+      coverage: $nodes.coverage.output
+      killed_findings: $nodes.verify.killed
+    on_reject: { route: brief }
+
+  - id: publish
+    kind: code
+    description: Irreversible action placeholder. Executed at most once per run, only after approval.
+    fn: record
+    side_effect: true
+    requires_gate: approve
+    input: { brief: $nodes.brief.output, approval: $nodes.approve.output, coverage: $nodes.coverage.output }
+    args: { note: "publish placeholder - swap `fn: record` for `module: ./reducers/publish.js` in production" }

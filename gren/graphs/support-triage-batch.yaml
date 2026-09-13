@@ -1,0 +1,234 @@
+# Support triage over a batch of tickets - a per-ticket subgraph (escalation ladder + router + policy + verifier)
+# fanned out in parallel, then batch-level gates in front of the only irreversible action (sending replies).
+#
+#   tickets --map--> [ triage-ticket subgraph ]  x N  (isolated context per ticket, quorum on the batch)
+#                     rung0 regex -> rung1 haiku -> rung2 sonnet (each rung only if the one below was unsure)
+#                     -> route (legal/security escalate, else reply) -> draft reply -> policy check (code)
+#                     -> adversarial reply verifier (repair -> draft) -> result (code computes needs_human)
+#   -> collect (code) -> split auto / human queues (code)
+#   -> [GATE approve_batch (auto when input.auto_send)] -> send_auto (side effect)
+#   -> [GATE approve_risky] -> send_risky (side effect)   -> summary
+name: support-triage-batch
+version: 1
+description: Batch ticket triage with per-ticket escalation, deterministic policy checks, adversarial reply review and gated sending.
+goal: Every ticket labelled with an explainable trail; every reply policy-checked and verified; nothing sent without a gate.
+
+input_schema:
+  type: object
+  required: [tickets]
+  properties:
+    tickets:
+      type: array
+      minItems: 1
+      maxItems: 30
+      items:
+        type: object
+        required: [id, customer, tier, text]
+        properties:
+          id: { type: string }
+          customer: { type: string }
+          tier: { type: string, enum: [free, pro, enterprise] }
+          text: { type: string, minLength: 5 }
+    policies:
+      type: object
+      default:
+        tier_limits: { free: 0, pro: 50, enterprise: 500 }
+        forbidden_phrases: ["lawsuit", "compensation", "our fault"]
+        tone: "warm, concise, no jargon, no promises about future behaviour"
+    auto_send: { type: boolean, default: false }
+
+budget: { max_cost_usd: 5.0, max_wall_ms: 2400000, max_width: 4 }
+frozen: [verifier_can_kill, width_budget]
+defaults: { model: haiku, effort: low, failure: { retries: 1, timeout_ms: 300000 } }
+
+output:
+  summary: $nodes.summary.output
+  auto_sent: $nodes.send_auto.output
+  risky_sent: $nodes.send_risky.output
+  results: $nodes.collect.output.items
+
+nodes:
+  - id: triage
+    kind: subgraph
+    description: One isolated pipeline per ticket; the batch tolerates individual failures (quorum 0.7).
+    map: $input.tickets
+    max_width: 4
+    failure: { quorum: 0.7, on_failure: block }
+    input: { ticket: $item, policies: $input.policies }
+    graph:
+      name: triage-ticket
+      budget: { max_cost_usd: 0.8, max_width: 2 }
+      defaults: { model: haiku, effort: low, failure: { retries: 1, timeout_ms: 240000 } }
+      output: { from: result }
+      nodes:
+        - id: rung0
+          kind: code
+          fn: classify_regex
+          input: { text: $input.ticket.text }
+          args:
+            path: text
+            rules:
+              - { match: "refund|chargeback|double.?charged|invoice", label: billing }
+              - { match: "crash|stack ?trace|500 error|exception|cannot log ?in|password reset", label: technical }
+              - { match: "cancel my (plan|subscription)|downgrade|switching to", label: retention }
+              - { match: "lawyer|legal|gdpr|subpoena|data breach|leaked", label: legal }
+              - { match: "hacked|unauthori[sz]ed access|suspicious login", label: security }
+            default: unknown
+        - id: route0
+          kind: router
+          routes:
+            - { when: { and: [{ neq: ["$nodes.rung0.output.label", unknown] }, { gte: ["$nodes.rung0.output.confidence", 0.85] }] }, route: done, reason: "keyword rule matched" }
+          default: escalate
+        - id: rung1
+          kind: agent
+          when: { eq: ["$nodes.route0.output.route", escalate] }
+          prompt: |
+            Classify this support ticket into exactly one label: billing, technical, retention, legal, security, sales, other.
+            Honest confidence 0-1 (below 0.7 if two labels are plausible).
+            Ticket from a {{ input.ticket.tier }} customer: {{ input.ticket.text }}
+          output_schema: &label_schema
+            type: object
+            required: [label, confidence, reason]
+            additionalProperties: false
+            properties:
+              label: { type: string, enum: [billing, technical, retention, legal, security, sales, other] }
+              confidence: { type: number, minimum: 0, maximum: 1 }
+              reason: { type: string }
+        - id: route1
+          kind: router
+          when: { eq: ["$nodes.route0.output.route", escalate] }
+          routes:
+            - { when: { gte: ["$nodes.rung1.output.confidence", 0.75] }, route: done, reason: "haiku confident" }
+          default: escalate
+        - id: rung2
+          kind: agent
+          model: sonnet
+          effort: medium
+          when: { eq: ["$nodes.route1.output.route", escalate] }
+          input: { cheaper_guess: $nodes.rung1.output }
+          prompt: |
+            A cheaper model was unsure (see <input>). Classify carefully into billing, technical, retention, legal, security,
+            sales or other, explain the deciding signal, give an honest confidence.
+            Ticket from a {{ input.ticket.tier }} customer: {{ input.ticket.text }}
+          output_schema: *label_schema
+        - id: label
+          kind: code
+          description: The most expensive rung that ran wins (merge order rung0 < rung1 < rung2).
+          fn: merge
+          optional: [rung1, route1, rung2]
+          input: { rung0: $nodes.rung0.output, rung1: $nodes.rung1.output, rung2: $nodes.rung2.output }
+          args: { mode: object }
+        - id: route_kind
+          kind: router
+          routes:
+            - { when: { in: ["$nodes.label.output.label", [legal, security]] }, route: escalate, reason: "legal/security never gets an automated reply" }
+          default: reply
+        - id: draft_reply
+          kind: agent
+          when: { eq: ["$nodes.route_kind.output.route", reply] }
+          input: { ticket: $input.ticket, label: $nodes.label.output, policies: $input.policies }
+          prompt: |
+            Draft the reply to the ticket in <input> (label and policies included). Tone: {{ input.policies.tone }}.
+            If a refund is warranted, state the amount in refund_usd (0 otherwise) and keep it within the customer's tier limit
+            ({{ json input.policies.tier_limits }}); never promise anything outside policy. Set escalate=true if a human
+            must take over (angry customer, ambiguous request, anything you are unsure about).
+          output_schema:
+            type: object
+            required: [text, refund_usd, escalate]
+            additionalProperties: false
+            properties:
+              text: { type: string, minLength: 40 }
+              refund_usd: { type: number, minimum: 0 }
+              escalate: { type: boolean }
+        - id: policy
+          kind: code
+          module: ./reducers/policy-check.py
+          input: { reply: $nodes.draft_reply.output, label: $nodes.label.output.label, tier: $input.ticket.tier, policies: $input.policies }
+        - id: verify_reply
+          kind: verify
+          description: Adversarial reviewer of the reply; a rejection sends the reasons back to the drafter once.
+          target: $nodes.draft_reply.output
+          kill_threshold: 0.6
+          repair: { node: draft_reply, max_rounds: 1 }
+          input: { ticket: $input.ticket, policy_check: $nodes.policy.output, policies: $input.policies }
+          prompt: |
+            Reply under review: {{ json item }}
+            Ticket and policy check are in <input>. Kill the reply if it does not address what the customer asked, makes a
+            promise or refund the policy check flagged, uses a forbidden phrase, has the wrong tone, or invents account facts.
+            Pass only a reply you would send yourself.
+        - id: result
+          kind: code
+          module: ./reducers/triage-result.py
+          optional: [rung1, route1, rung2, draft_reply, policy, verify_reply]
+          input:
+            ticket: $input.ticket
+            label: $nodes.label.output
+            trail: { rung0: $nodes.rung0.output, rung1: $nodes.rung1.output, rung2: $nodes.rung2.output, route0: $nodes.route0.output.route, route1: $nodes.route1.output.route }
+            route: $nodes.route_kind.output.route
+            reply_survivors: $nodes.verify_reply.survivors
+            reply_killed: $nodes.verify_reply.killed
+            policy: $nodes.policy.output
+
+  - id: collect
+    kind: code
+    fn: merge
+    input: { results: $nodes.triage.outputs }
+
+  - id: auto_queue
+    kind: code
+    fn: filter
+    input: { items: $nodes.collect.output.items }
+    args: { path: needs_human, op: "==", value: false }
+
+  - id: human_queue
+    kind: code
+    fn: filter
+    input: { items: $nodes.collect.output.items }
+    args: { path: needs_human, op: "==", value: true }
+
+  - id: approve_batch
+    kind: gate
+    title: Send the drafted replies?
+    prompt: The replies below passed the policy check and the reviewer. Read them. Then approve or reject.
+    approve_effect: The system sends these replies to the customers.
+    reject_effect: The system sends nothing. The run continues without them.
+    show: { replies: $nodes.auto_queue.output.items }
+    auto_approve_when: { eq: ["$input.auto_send", true] }
+
+  - id: send_auto
+    kind: code
+    description: The only irreversible action - unreachable without approve_batch.
+    fn: record
+    side_effect: true
+    requires_gate: approve_batch
+    input: { replies: $nodes.auto_queue.output.items, batch: $nodes.triage.count }
+    args: { note: "placeholder for the ticketing system API" }
+
+  - id: approve_risky
+    kind: gate
+    title: Hand these tickets to a person?
+    when: { truthy: "$nodes.human_queue.output.items" }
+    prompt: The system could not answer these tickets safely. Each row shows why.
+    approve_effect: The system puts these tickets in the human queue with the notes below.
+    reject_effect: The system holds these tickets. Nothing is recorded. The run continues.
+    show: { tickets: $nodes.human_queue.output.items }
+    on_reject: { fail_run: false }
+
+  - id: send_risky
+    kind: code
+    fn: record
+    side_effect: true
+    requires_gate: approve_risky
+    input: { tickets: $nodes.human_queue.output.items }
+    args: { note: "placeholder: hand to a human agent / send approved replies" }
+
+  - id: summary
+    kind: code
+    fn: identity
+    optional: [approve_risky, send_risky]
+    input:
+      tickets: $nodes.triage.count
+      auto_replies: $nodes.auto_queue.output._stats.out
+      needs_human: $nodes.human_queue.output._stats.out
+      labels: $nodes.collect.output.items
+      risky_decision: $nodes.approve_risky.output

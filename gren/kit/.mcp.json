@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "gren": {
+      "command": ".venv/Scripts/python.exe",
+      "args": [
+        "-m",
+        "gren",
+        "mcp"
+      ],
+      "env": {
+        "GREN_RUNS": "runs"
+      }
+    }
+  }
+}

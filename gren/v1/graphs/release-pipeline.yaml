@@ -1,0 +1,234 @@
+# Incident-to-release pipeline - a long, multi-stage workflow that crosses several apps:
+#   incident text -> repository (Read/Grep) -> isolated git worktree -> code change (Edit/Write) -> test runner
+#   -> adversarial review of the diff -> changelog + PR text -> [GATE] git commit -> [GATE] GitHub PR (gh)
+#   -> [GATE] chat notification (Slack/Discord/Zapier webhook)
+#
+#   intake (haiku) -> locate (sonnet, Read/Grep/Glob) -> baseline tests (code) -> worktree (code)
+#     -> implement (sonnet, Read/Edit/Write in the worktree) -> diff (code) -> tests (code) -> review (sonnet verifier, repair -> implement)
+#     -> changelog (haiku) -> [approve_commit] commit (side effect) -> [approve_pr] pr (side effect) -> [approve_notify] notify (side effect)
+#     -> summary (code)
+#
+# Every irreversible step is its own gated node; everything before them is reversible (a worktree you can delete).
+name: release-pipeline
+version: 1
+description: From an incident report to a reviewed, tested change on a branch, a draft PR and a chat notification - each irreversible step behind its own gate.
+goal: A tested fix on an isolated branch with a PR description and a notification, where no commit, PR or message happens without approval.
+
+input_schema:
+  type: object
+  required: [incident, repo_path]
+  properties:
+    incident: { type: string, minLength: 20 }
+    repo_path: { type: string }
+    test_command: { type: string, default: "npm" }
+    test_args: { type: array, items: { type: string }, default: ["test"] }
+    pr_base: { type: string, default: main }
+    notify_url: { type: string, default: "" }
+    notify_format: { type: string, enum: [slack, discord, json], default: slack }
+
+budget: { max_cost_usd: 8.0, max_wall_ms: 3600000, max_width: 3 }
+frozen: [verifier_can_kill, width_budget]
+defaults: { model: sonnet, effort: medium, failure: { retries: 1, timeout_ms: 900000, repair_attempts: 1 } }
+
+output:
+  summary: $nodes.summary.output
+  diff_stat: $nodes.diff.output.stat
+  tests: $nodes.tests.output
+  commit: $nodes.commit.output
+  pr: $nodes.pr.output
+  notification: $nodes.notify.output
+
+nodes:
+  - id: intake
+    kind: agent
+    model: haiku
+    effort: low
+    description: Turn the incident text into structured state.
+    prompt: |
+      Incident report:
+      {{ input.incident }}
+
+      Extract: a short title, the observable symptoms, the suspected area of the code (paths or components if named),
+      severity (low|medium|high), the acceptance criteria that would prove the incident is fixed (2-4 bullet strings), and
+      what must NOT change (guardrails).
+    output_schema:
+      type: object
+      required: [title, symptoms, suspected_area, severity, acceptance, guardrails]
+      additionalProperties: false
+      properties:
+        title: { type: string }
+        symptoms: { type: array, items: { type: string } }
+        suspected_area: { type: string }
+        severity: { type: string, enum: [low, medium, high] }
+        acceptance: { type: array, minItems: 1, items: { type: string } }
+        guardrails: { type: array, items: { type: string } }
+
+  - id: locate
+    kind: agent
+    description: Find the code responsible, with evidence from the files.
+    tools: [Read, Grep, Glob]
+    cwd: $input.repo_path
+    max_turns: 50
+    max_cost_usd: 1.0
+    input: { incident: $nodes.intake.output }
+    prompt: |
+      Locate the code behind the incident in <input> inside this repository. Use Grep/Glob/Read (at most ~15 tool calls).
+      Return the files involved (with the line ranges that matter), a hypothesis of the root cause with a VERBATIM
+      evidence excerpt from the code, and a minimal change plan (which file(s) change and how). Do not modify anything.
+    output_schema:
+      type: object
+      required: [files, hypothesis, evidence, plan, confidence]
+      additionalProperties: false
+      properties:
+        files: { type: array, minItems: 1, items: { type: object, required: [path, why], additionalProperties: false, properties: { path: { type: string }, lines: { type: string }, why: { type: string } } } }
+        hypothesis: { type: string }
+        evidence: { type: string }
+        plan: { type: string }
+        confidence: { type: number, minimum: 0, maximum: 1 }
+
+  - id: baseline
+    kind: code
+    description: Run the test suite before changing anything, so a later failure is attributable.
+    module: ./reducers/run-command.js
+    input: { cwd: $input.repo_path, command: $input.test_command, args: $input.test_args }
+    args: { timeout_ms: 600000 }
+
+  - id: worktree
+    kind: code
+    description: Isolated workspace - parallel workers that modify files must not share a checkout.
+    module: ./reducers/git-worktree.js
+    input: { repo_path: $input.repo_path }
+    args: { dir: .worktrees, prefix: gren/ }
+
+  - id: implement
+    kind: agent
+    description: Make the change in the worktree. Bounded by tools, turns and dollars; reviewed adversarially afterwards.
+    tools: [Read, Grep, Glob, Edit, Write]
+    cwd: $nodes.worktree.output.worktree
+    max_turns: 80
+    max_cost_usd: 2.0
+    input: { incident: $nodes.intake.output, location: $nodes.locate.output, baseline_tests: { passed: $nodes.baseline.output.passed, exit_code: $nodes.baseline.output.exit_code } }
+    prompt: |
+      Implement the fix described in <input> (incident + location + plan) inside this worktree. Rules:
+      - Change only what the plan requires; keep the guardrails.
+      - Add or adjust a test when the repository has a test suite and the change is testable.
+      - Do NOT run git commands and do NOT commit; do not touch files outside the repository.
+      - Finish by listing every file you changed and how a reviewer can verify the fix.
+    output_schema:
+      type: object
+      required: [files_changed, summary, verification, notes]
+      additionalProperties: false
+      properties:
+        files_changed: { type: array, minItems: 1, items: { type: string } }
+        summary: { type: string, minLength: 30 }
+        verification: { type: string }
+        notes: { type: string }
+
+  - id: diff
+    kind: code
+    description: The exact diff is state, not a retelling.
+    module: ./reducers/git-diff.js
+    input: { worktree: $nodes.worktree.output.worktree, base_commit: $nodes.worktree.output.base_commit, changed_by: $nodes.implement.output.files_changed }
+
+  - id: tests
+    kind: code
+    description: Run the tests in the worktree AFTER the change. State on disk is invisible to the graph, so the edge carries the changed-file list - that is what makes "after" real.
+    module: ./reducers/run-command.js
+    input: { cwd: $nodes.worktree.output.worktree, command: $input.test_command, args: $input.test_args, changed_files: $nodes.implement.output.files_changed }
+    args: { timeout_ms: 600000 }
+
+  - id: review
+    kind: verify
+    description: Adversarial reviewer with kill authority; rejections go back to the implementer once.
+    target: $nodes.diff.output
+    tools: [Read, Grep]
+    cwd: $nodes.worktree.output.worktree
+    max_turns: 30
+    max_cost_usd: 0.8
+    min_survivors: 1
+    kill_threshold: 0.6
+    repair: { node: implement, max_rounds: 1 }
+    input: { incident: $nodes.intake.output, location: $nodes.locate.output, tests: { passed: $nodes.tests.output.passed, exit_code: $nodes.tests.output.exit_code, stdout_tail: $nodes.tests.output.stdout_tail, stderr_tail: $nodes.tests.output.stderr_tail }, baseline_passed: $nodes.baseline.output.passed }
+    prompt: |
+      Diff under review (state, base commit and file list included):
+      {{ json item }}
+
+      Using <input>: kill this change if the tests did not pass (unless they also failed at baseline for unrelated reasons -
+      say so), if the diff does not address the incident's acceptance criteria, if it violates a guardrail, if it changes
+      behaviour beyond the plan, or if it leaves debugging artefacts. Read the changed files for context. List each problem
+      as a separate reason; pass only a change you would merge.
+
+  - id: changelog
+    kind: agent
+    model: haiku
+    effort: low
+    description: PR title/body and changelog entry from the verified diff.
+    input: { incident: $nodes.intake.output, diff_stat: $nodes.diff.output.stat, implementation: $nodes.implement.output, tests: { passed: $nodes.tests.output.passed } }
+    prompt: |
+      Write the pull request title (imperative, under 70 chars), a PR body in markdown (what/why/how verified, referencing the
+      incident title), a one-line changelog entry, and a short chat notification (2-3 sentences, plain text) from <input>.
+    output_schema:
+      type: object
+      required: [pr_title, pr_body, changelog_line, notification]
+      additionalProperties: false
+      properties:
+        pr_title: { type: string, maxLength: 90 }
+        pr_body: { type: string, minLength: 40 }
+        changelog_line: { type: string }
+        notification: { type: string }
+
+  - id: approve_commit
+    kind: gate
+    title: Commit this change on the branch?
+    prompt: Review the diff, the test result and the reviewer's verdict. Approving creates a commit on an isolated branch (no push).
+    show: { diff_stat: $nodes.diff.output.stat, diff: $nodes.diff.output.diff, tests_passed: $nodes.tests.output.passed, review: $nodes.review.output, pr_title: $nodes.changelog.output.pr_title }
+    on_reject: { route: implement }
+
+  - id: commit
+    kind: code
+    module: ./reducers/git-commit.js
+    side_effect: true
+    requires_gate: approve_commit
+    input: { worktree: $nodes.worktree.output.worktree, message: "{{ nodes.changelog.output.pr_title }}\n\n{{ nodes.changelog.output.changelog_line }}", author: "gren release-pipeline <noreply@example.com>" }
+
+  - id: approve_pr
+    kind: gate
+    title: Push the branch and open a draft PR on GitHub?
+    prompt: This pushes the branch to origin and opens a DRAFT pull request with gh. If the repository has no origin remote, a dry run is recorded instead.
+    show: { commit: $nodes.commit.output, pr_title: $nodes.changelog.output.pr_title, pr_body: $nodes.changelog.output.pr_body }
+
+  - id: pr
+    kind: code
+    module: ./reducers/gh-pr.js
+    side_effect: true
+    requires_gate: approve_pr
+    input: { worktree: $nodes.worktree.output.worktree, branch: $nodes.worktree.output.branch, title: $nodes.changelog.output.pr_title, body: $nodes.changelog.output.pr_body, base: $input.pr_base, draft: true }
+
+  - id: approve_notify
+    kind: gate
+    title: Notify the team?
+    prompt: Posts the notification to the webhook (Slack/Discord/Zapier). Without a notify_url it records a dry run.
+    show: { notification: $nodes.changelog.output.notification, pr: $nodes.pr.output, url_configured: $input.notify_url }
+
+  - id: notify
+    kind: code
+    module: ./reducers/post-webhook.js
+    side_effect: true
+    requires_gate: approve_notify
+    input: { url: $input.notify_url, text: "{{ nodes.changelog.output.notification }}\nPR: {{ nodes.pr.output.url }}{{ nodes.pr.output.command }}", payload: { pr: $nodes.pr.output, commit: $nodes.commit.output } }
+    args: { format: $input.notify_format }
+
+  - id: summary
+    kind: code
+    fn: identity
+    optional: [commit, pr, notify, approve_commit, approve_pr, approve_notify]
+    input:
+      incident: $nodes.intake.output.title
+      severity: $nodes.intake.output.severity
+      files_changed: $nodes.implement.output.files_changed
+      tests_passed: $nodes.tests.output.passed
+      review_verdict: $nodes.review.output.kill_rate
+      commit: $nodes.commit.output
+      pr: $nodes.pr.output
+      notification: $nodes.notify.output
+      worktree: $nodes.worktree.output

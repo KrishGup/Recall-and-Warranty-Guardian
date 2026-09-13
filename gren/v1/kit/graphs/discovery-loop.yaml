@@ -1,0 +1,112 @@
+# Bounded Discovery Loop: search -> verify -> add to seen -> search again, until no new verified findings for 2 rounds.
+# The budget is part of the topology: max rounds, max spend, and the stop rule are in the spec, not in a prompt.
+# The loop dedupes against EVERYTHING seen (including killed items), so rejected ideas do not keep coming back.
+name: discovery-loop
+version: 1
+description: Iteratively discover risks for a plan until the search stops finding new ones.
+goal: A de-duplicated list of verified risks whose completeness is bounded by an explicit convergence rule.
+
+input_schema:
+  type: object
+  required: [plan]
+  properties:
+    plan: { type: string, minLength: 10 }
+
+budget: { max_cost_usd: 1.5, max_wall_ms: 900000, max_width: 3 }
+defaults: { model: haiku, effort: low, failure: { retries: 1, timeout_ms: 120000 } }
+frozen: [verifier_can_kill]
+output: { from: summarize }
+
+nodes:
+  - id: discover
+    kind: loop
+    input: { plan: $input.plan }
+    collect: $output.findings
+    seen_key: key
+    until: { max_rounds: 5, no_new_for_rounds: 2, max_cost_usd: 1.0 }
+    on_nonconvergence: accept
+    body:
+      name: discover-round
+      budget: { max_cost_usd: 0.4, max_width: 3 }
+      defaults: { model: haiku, effort: low }
+      output: { from: keep }
+      nodes:
+        - id: search
+          kind: agent
+          input: { already_seen: $input.seen, round: $input.round, previous_round: $input.prev }
+          prompt: |
+            Round {{ input.round }}. Plan under review:
+            {{ input.plan }}
+
+            Find risks NOT already covered by the keys in already_seen (see <input>). Think about a different category than
+            previous rounds (technical, people, market, legal, timing, dependencies, second-order effects).
+            Each risk needs a stable lowercase `key` (slug), a one-sentence description, a likelihood and an impact (1-5),
+            and the evidence or reasoning. Return an empty list if you genuinely have nothing new.
+          output_schema:
+            type: object
+            required: [findings]
+            additionalProperties: false
+            properties:
+              findings:
+                type: array
+                maxItems: 6
+                items:
+                  type: object
+                  required: [key, risk, likelihood, impact, reasoning]
+                  additionalProperties: false
+                  properties:
+                    key: { type: string, pattern: "^[a-z0-9-]+$" }
+                    risk: { type: string }
+                    likelihood: { type: integer, minimum: 1, maximum: 5 }
+                    impact: { type: integer, minimum: 1, maximum: 5 }
+                    reasoning: { type: string }
+        - id: verify
+          kind: verify
+          target: $nodes.search.output.findings
+          kill_threshold: 0.6
+          input: { plan: $input.plan, already_seen: $input.seen }
+          prompt: |
+            Candidate risk: {{ json item }}
+            Kill it if it is a duplicate/rewording of a key in already_seen, if it is not actually about the plan,
+            if the likelihood/impact are unjustified, or if it is too vague to act on.
+        - id: keep
+          kind: code
+          fn: identity
+          input: { findings: $nodes.verify.survivors, killed: $nodes.verify.killed }
+
+  - id: rank
+    kind: code
+    fn: sort
+    input: { items: $nodes.discover.output.items }
+    args: { by: impact, order: desc }
+
+  - id: summarize
+    kind: agent
+    model: sonnet
+    effort: medium
+    input:
+      risks: $nodes.rank.output.items
+      rounds: $nodes.discover.output.rounds
+      converged: $nodes.discover.output.converged
+      stop_reason: $nodes.discover.output.stop_reason
+    prompt: |
+      Summarize the verified risks in <input> for the plan owner: top 5 by impact x likelihood, one mitigation each,
+      and a completeness note that states the number of rounds, whether the search converged, and why it stopped.
+    output_schema:
+      type: object
+      required: [top_risks, completeness_note]
+      additionalProperties: false
+      properties:
+        top_risks:
+          type: array
+          maxItems: 5
+          items:
+            type: object
+            required: [key, risk, score, mitigation]
+            additionalProperties: false
+            properties:
+              key: { type: string }
+              risk: { type: string }
+              score: { type: integer, minimum: 1, maximum: 25 }
+              mitigation: { type: string }
+        completeness_note: { type: string }

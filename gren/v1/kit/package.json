@@ -1,0 +1,20 @@
+{
+  "name": "my-gren-project",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "A project that runs graph-engineered multi-agent workflows with gren",
+  "scripts": {
+    "gren": "gren",
+    "ui": "gren ui",
+    "mcp": "gren mcp",
+    "validate": "gren validate graphs/starter-fork-join.yaml",
+    "demo:mock": "gren run graphs/starter-fork-join.yaml --bridge mock --auto-approve --input @graphs/inputs/starter.json"
+  },
+  "dependencies": {
+    "gren": "file:./gren-0.1.0.tgz"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

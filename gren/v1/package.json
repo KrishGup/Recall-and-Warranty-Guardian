@@ -1,0 +1,50 @@
+{
+  "name": "gren",
+  "version": "0.1.0",
+  "main": "index.js",
+  "scripts": {
+    "test": "vitest run",
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsx src/cli/main.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "ui": "tsx src/cli/main.ts ui",
+    "mcp": "tsx src/cli/main.ts mcp",
+    "postbuild": "node -e \"require('fs').mkdirSync('dist/ui',{recursive:true});require('fs').copyFileSync('src/ui/index.html','dist/ui/index.html')\"",
+    "kit": "node scripts/make-kit.mjs"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "MIT",
+  "description": "gren - Graph Engineering Runtime for Claude multi-agent systems",
+  "type": "module",
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.3.265",
+    "@anthropic-ai/sdk": "^0.124.0",
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "ajv": "^8.20.0",
+    "ajv-formats": "^3.0.1",
+    "yaml": "^2.9.0",
+    "zod": "^4.5.4"
+  },
+  "devDependencies": {
+    "@types/node": "^26.5.0",
+    "tsx": "^4.23.13",
+    "typescript": "^5.9.3",
+    "vitest": "^5.0.0"
+  },
+  "bin": {
+    "gren": "./bin/gren.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "files": [
+    "dist",
+    "bin",
+    "src/ui",
+    "graphs",
+    "docs",
+    "skills",
+    "README.md"
+  ]
+}

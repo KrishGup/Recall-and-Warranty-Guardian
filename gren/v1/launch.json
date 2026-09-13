@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "gren-ui",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["tsx", "src/cli/main.ts", "ui", "--port", "4545"],
+      "port": 4545
+    }
+  ]
+}

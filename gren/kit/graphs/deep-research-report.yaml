@@ -1,0 +1,406 @@
+# Deep research report - the production research/publishing graph, with real tools.
+#
+#   scope (sonnet)
+#     -> discover: bounded loop { search lanes (haiku+WebSearch, parallel) -> dedupe -> drop seen -> open & vet each URL (haiku+WebFetch, kill authority) }
+#     -> sources (code) -> extract findings per source (haiku+WebFetch, parallel, quorum)
+#     -> flatten/dedupe (code) -> verify each finding by re-opening its source (haiku+WebFetch, kill authority) -> rank (code)
+#     -> outline (sonnet) -> sections-with-findings (code join) -> write sections (sonnet, parallel, each sees only its evidence)
+#     -> citation check (code verifier, repair -> writers) -> assemble (code) -> editor (sonnet verifier, repair -> writers)
+#     -> [HUMAN GATE] -> publish (side effect: writes out/*.md)
+#
+# What crosses each edge is structured; every claim in the report has survived two adversarial checks and a code check.
+name: deep-research-report
+version: 1
+description: Cited research report whose every claim was extracted from an opened source, re-verified against that source, and edited adversarially before a human gate.
+goal: A markdown report answering the question for the audience, with only verified, cited findings and visible coverage.
+
+input_schema:
+  type: object
+  required: [question]
+  properties:
+    question: { type: string, minLength: 10 }
+    audience: { type: string, default: "a technical decision maker" }
+    lanes: { type: integer, minimum: 2, maximum: 6, default: 4 }
+    max_sources: { type: integer, minimum: 4, maximum: 20, default: 10 }
+
+budget: { max_cost_usd: 12.0, max_wall_ms: 3600000, max_width: 5 }
+frozen: [verifier_can_kill, width_budget]
+defaults:
+  model: haiku
+  effort: low
+  failure: { retries: 1, timeout_ms: 600000, repair_attempts: 1 }
+
+output:
+  file: $nodes.publish.output.file
+  title: $nodes.outline.output.title
+  report_markdown: $nodes.assemble.output.markdown
+  sources: $nodes.sources.output.items
+  findings_verified: $nodes.rank.output.items
+  finding_kill_rate: $nodes.verify_findings.kill_rate
+  discovery: $nodes.discover.output.per_round
+
+nodes:
+  - id: scope
+    kind: agent
+    model: sonnet
+    effort: medium
+    description: Question -> completion criteria, independent research lanes with concrete queries, key terms.
+    prompt: |
+      Research question: {{ input.question }}
+      Audience: {{ input.audience }}
+
+      Define 3-5 completion criteria (what the report must establish) and exactly {{ input.lanes }} research lanes that are
+      GENUINELY independent angles (e.g. primary technical sources, industry/vendor reports, practitioner writeups,
+      academic work, critiques/failure reports). Each lane: name, angle, 2-3 concrete web search queries, and the kind of
+      source that would count as strong evidence for it.
+    output_schema:
+      type: object
+      required: [question, criteria, lanes, key_terms]
+      additionalProperties: false
+      properties:
+        question: { type: string }
+        criteria: { type: array, minItems: 3, maxItems: 5, items: { type: string } }
+        key_terms: { type: array, items: { type: string } }
+        lanes:
+          type: array
+          minItems: 2
+          maxItems: 6
+          items:
+            type: object
+            required: [name, angle, queries, strong_evidence]
+            additionalProperties: false
+            properties:
+              name: { type: string }
+              angle: { type: string }
+              queries: { type: array, minItems: 1, maxItems: 3, items: { type: string } }
+              strong_evidence: { type: string }
+
+  - id: discover
+    kind: loop
+    description: Bounded source discovery - search per lane, vet each URL by opening it, stop when a round finds nothing new.
+    input: { question: $nodes.scope.output.question, lanes: $nodes.scope.output.lanes, key_terms: $nodes.scope.output.key_terms }
+    collect: $output.sources
+    seen_key: url
+    until: { max_rounds: 3, no_new_for_rounds: 1, max_cost_usd: 4.0, max_wall_ms: 1200000 }
+    on_nonconvergence: accept
+    body:
+      name: discover-sources
+      budget: { max_cost_usd: 2.0, max_width: 4 }
+      defaults: { model: haiku, effort: low, failure: { retries: 1, timeout_ms: 420000 } }
+      output: { from: keep }
+      nodes:
+        - id: search
+          kind: agent
+          map: $input.lanes
+          max_width: 4
+          tools: [WebSearch]
+          max_turns: 25
+          max_cost_usd: 0.4
+          failure: { retries: 1, quorum: 0.5, on_failure: block }
+          input: { already_seen: $input.seen, round: $input.round }
+          prompt: |
+            Round {{ input.round }}. Lane "{{ item.name }}" (angle: {{ item.angle }}) for the question: {{ input.question }}
+            Strong evidence for this lane looks like: {{ item.strong_evidence }}
+            Run 2-3 web searches (start from: {{ json item.queries }}; vary them in later rounds) and return up to 5 candidate
+            sources that are NOT in already_seen (see <input>). Prefer primary sources and dated publications. For each:
+            the exact URL from the search result, the title, a one-line reason it matters, and the lane name.
+            Return an empty list if nothing new turns up.
+          output_schema:
+            type: object
+            required: [lane, candidates]
+            additionalProperties: false
+            properties:
+              lane: { type: string }
+              candidates:
+                type: array
+                maxItems: 5
+                items:
+                  type: object
+                  required: [url, title, why, lane]
+                  additionalProperties: false
+                  properties:
+                    url: { type: string, minLength: 8 }
+                    title: { type: string }
+                    why: { type: string }
+                    lane: { type: string }
+        - id: flatten
+          kind: code
+          fn: flatten
+          input: { items: $nodes.search.outputs }
+          args: { path: candidates }
+        - id: dedupe
+          kind: code
+          fn: dedupe
+          input: { items: $nodes.flatten.output.items }
+          args: { key: [url] }
+        - id: drop_seen
+          kind: code
+          description: Never re-open a URL any earlier round already saw (accepted or rejected).
+          fn: filter
+          input: { items: $nodes.dedupe.output.items, value: $input.seen }
+          args: { path: url, op: not_in }
+        - id: cap
+          kind: code
+          description: Compress before you verify - at most 10 new candidates are opened per round (the vet fan-out is the cost lever).
+          fn: top_k
+          input: { items: $nodes.drop_seen.output.items }
+          args: { k: 10 }
+        - id: vet
+          kind: verify
+          description: Open every candidate URL. Unreachable, irrelevant or low-quality pages are killed here, before any extraction cost.
+          target: $nodes.cap.output.items
+          tools: [WebFetch]
+          max_turns: 12
+          max_cost_usd: 0.25
+          max_width: 4
+          kill_threshold: 0.6
+          input: { question: $input.question }
+          prompt: |
+            Candidate source: {{ json item }}
+            Fetch the URL. Kill it if it cannot be fetched, is not about the research question in <input>, is a bare
+            listing/login/marketing page with no substantive content, or is a duplicate of a well-known page under another URL.
+            Pass it only if you actually read substantive, relevant content. Put the page's date and type (paper, docs,
+            blog, news, vendor) in your reasons when you pass.
+        - id: keep
+          kind: code
+          fn: identity
+          input: { sources: $nodes.vet.survivors, rejected: $nodes.vet.killed, searched: $nodes.search.count }
+
+  - id: sources
+    kind: code
+    description: Cap the source set (the extraction fan-out width is a cost lever).
+    fn: top_k
+    input: { items: $nodes.discover.output.items }
+    args: { k: 10 }
+
+  - id: extract
+    kind: agent
+    description: One worker per source, separate context, must open the page and quote it verbatim.
+    map: $nodes.sources.output.items
+    max_width: 4
+    tools: [WebFetch]
+    max_turns: 16
+    max_cost_usd: 0.35
+    failure: { retries: 1, quorum: 0.6, on_failure: block }
+    input: { question: $nodes.scope.output.question, criteria: $nodes.scope.output.criteria }
+    prompt: |
+      Fetch this source and extract evidence for the research question in <input>:
+      {{ json item }}
+
+      Return 2-5 findings. Each finding: a specific, falsifiable claim; a VERBATIM quote from the page (max 40 words) that
+      supports it; where on the page it is; the lane; and an honest confidence. Also return the source metadata you can see
+      (title, author/org, date, type). If the page has nothing relevant, return zero findings and say so in `note`.
+      Never paraphrase inside `quote` - it will be checked against the page.
+    output_schema:
+      type: object
+      required: [source_url, source_title, source_type, source_date, findings, note]
+      additionalProperties: false
+      properties:
+        source_url: { type: string }
+        source_title: { type: string }
+        source_type: { type: string }
+        source_date: { type: string }
+        note: { type: string }
+        findings:
+          type: array
+          maxItems: 5
+          items:
+            type: object
+            required: [claim, quote, location, lane, confidence, source_url]
+            additionalProperties: false
+            properties:
+              claim: { type: string, minLength: 15 }
+              quote: { type: string, minLength: 10 }
+              location: { type: string }
+              lane: { type: string }
+              confidence: { type: number, minimum: 0, maximum: 1 }
+              source_url: { type: string }
+
+  - id: flatten_findings
+    kind: code
+    fn: flatten
+    input: { items: $nodes.extract.outputs }
+    args: { path: findings }
+
+  - id: dedupe_findings
+    kind: code
+    fn: dedupe
+    input: { items: $nodes.flatten_findings.output.items }
+    args: { key: [claim] }
+
+  - id: cap_findings
+    kind: code
+    description: Compress before you verify - keep the 30 highest-confidence findings; verification (opening every source) is the expensive step.
+    fn: top_k
+    input: { items: $nodes.dedupe_findings.output.items }
+    args: { k: 30, by: confidence }
+
+  - id: verify_findings
+    kind: verify
+    description: Re-open the source and try to falsify each finding - the quote must exist and support the claim.
+    target: $nodes.cap_findings.output.items
+    tools: [WebFetch]
+    max_turns: 12
+    max_cost_usd: 0.25
+    max_width: 5
+    kill_threshold: 0.6
+    min_survivors: 4
+    input: { question: $nodes.scope.output.question }
+    prompt: |
+      Finding to attack:
+      {{ json item }}
+
+      Fetch source_url. Kill the finding if: the quote does not appear on the page (allow minor whitespace/punctuation
+      differences), the quote does not actually support the claim as stated, the claim is off-question, or the confidence is
+      dishonest. Otherwise pass. Be concrete in reasons.
+
+  - id: rank
+    kind: code
+    fn: top_k
+    input: { items: $nodes.verify_findings.survivors }
+    args: { k: 20, by: confidence }
+
+  - id: outline
+    kind: agent
+    model: sonnet
+    effort: medium
+    description: Structure from evidence - every section lists the finding indices it will use.
+    input:
+      question: $nodes.scope.output.question
+      criteria: $nodes.scope.output.criteria
+      audience: $input.audience
+      findings: $nodes.rank.output.items
+      coverage: { sources_found: $nodes.discover.output.items, sources_used: $nodes.sources.output.items, findings_killed: $nodes.verify_findings.killed, extraction: $nodes.extract.count }
+    prompt: |
+      Design the report from the verified findings in <input> (findings are indexed from 0 in array order).
+      Produce a title, a plan for the summary, and 3-6 sections. Each section has a heading, its goal, the finding
+      indices it will draw on (every used index must exist; a finding may appear in at most two sections), and 2-4 key points.
+      Add a final "Limits of this evidence" section whose goal is to state what the verified evidence does NOT cover
+      (use `coverage`: how many findings were killed, how many sources were used).
+    output_schema:
+      type: object
+      required: [title, summary_plan, sections]
+      additionalProperties: false
+      properties:
+        title: { type: string }
+        summary_plan: { type: string }
+        sections:
+          type: array
+          minItems: 3
+          maxItems: 7
+          items:
+            type: object
+            required: [heading, goal, finding_ids, key_points]
+            additionalProperties: false
+            properties:
+              heading: { type: string }
+              goal: { type: string }
+              finding_ids: { type: array, items: { type: integer, minimum: 0 } }
+              key_points: { type: array, items: { type: string } }
+
+  - id: materialize
+    kind: code
+    description: Deterministic join - each section gets exactly its findings, nothing else.
+    module: ./reducers/sections-with-findings.py
+    input: { sections: $nodes.outline.output.sections, findings: $nodes.rank.output.items }
+
+  - id: write_sections
+    kind: agent
+    model: sonnet
+    effort: medium
+    description: Section writers run in parallel, each with only its own evidence.
+    map: $nodes.materialize.output.sections
+    max_width: 3
+    failure: { retries: 1, quorum: 1, on_failure: block }
+    input:
+      question: $nodes.scope.output.question
+      audience: $input.audience
+      title: $nodes.outline.output.title
+      coverage: { sources_opened: $nodes.sources.output._stats.out, findings_candidates: $nodes.verify_findings.output.total, findings_survived: $nodes.rank.output._stats.out, finding_kill_rate: $nodes.verify_findings.kill_rate, discovery_rounds: $nodes.discover.output.rounds }
+    prompt: |
+      Write the section "{{ item.heading }}" of the report "{{ nodes.outline.output.title }}" for {{ input.audience }}.
+      Goal of the section: {{ item.goal }}
+      Key points to cover: {{ json item.key_points }}
+      Evidence you may use (ONLY this):
+      {{ json item.findings }}
+
+      Rules: 150-400 words of markdown (no heading line - it is added later). Every factual statement must come from the
+      evidence; cite with the exact source_url strings in `citations`. If the evidence is thin, say so in the text rather
+      than filling gaps. Return the section heading unchanged.
+      If this is the "limits of the evidence" section: state ONLY the coverage numbers given in <input> (sources opened,
+      findings that were candidates vs survived, kill rate, discovery rounds) and what the criteria could not be answered
+      with; never guess which individual sources did or did not contribute.
+    output_schema:
+      type: object
+      required: [heading, body, citations]
+      additionalProperties: false
+      properties:
+        heading: { type: string }
+        body: { type: string, minLength: 200 }
+        citations: { type: array, minItems: 0, items: { type: string } }
+
+  - id: allowed_sources
+    kind: code
+    fn: pick
+    input: { items: $nodes.rank.output.items }
+    args: { fields: [source_url] }
+
+  - id: citation_check
+    kind: verify
+    description: Code verifier - a section citing a non-verified source is killed and sent back to its writer.
+    mode: code
+    module: ./reducers/citation-check.py
+    target: $nodes.write_sections.outputs
+    input: { allowed: $nodes.allowed_sources.output.items }
+    repair: { node: write_sections, max_rounds: 2 }
+
+  - id: assemble
+    kind: code
+    module: ./reducers/assemble-report.py
+    input:
+      title: $nodes.outline.output.title
+      summary: $nodes.outline.output.summary_plan
+      sections: $nodes.citation_check.survivors
+      sources: $nodes.sources.output.items
+      meta: { question: $nodes.scope.output.question, sources_opened: $nodes.sources.output._stats.out, findings_candidates: $nodes.verify_findings.output.total, findings_survived: $nodes.rank.output._stats.out, finding_kill_rate: $nodes.verify_findings.kill_rate }
+
+  - id: editor
+    kind: verify
+    model: sonnet
+    effort: medium
+    description: Adversarial editor with kill authority; rejections go back to the writers (bounded).
+    target: $nodes.assemble.output.markdown
+    min_survivors: 1
+    kill_threshold: 0.75
+    repair: { node: write_sections, max_rounds: 2 }
+    input: { question: $nodes.scope.output.question, criteria: $nodes.scope.output.criteria, findings: $nodes.rank.output.items }
+    prompt: |
+      Full draft report:
+      {{ item }}
+
+      Review it as a demanding editor. List every problem you find as a separate reason with the section heading.
+      KILL (confidence >= 0.75) only for disqualifying problems: a statement or number not supported by any finding in
+      <input>, a fabricated name/citation, a contradiction between sections, or a required dimension of the question that
+      is missing although the findings cover it. PASS (verdict "pass", still listing the problems as reasons) when the
+      problems are imprecise wording, a weak finding that the report already caveats, or metadata quibbles - the writers
+      only see the findings, so do not fail them for facts they could not know.
+
+  - id: approve
+    kind: gate
+    title: Publish this research report?
+    prompt: The draft below survived per-finding verification, a code citation check and an adversarial editor. Approve to write it to out/, or reject with a comment to send it back to the writers.
+    show:
+      report: $nodes.assemble.output.markdown
+      editor: $nodes.editor.output
+      finding_kill_rate: $nodes.verify_findings.kill_rate
+      sources_used: $nodes.sources.output.items
+    on_reject: { route: write_sections }
+
+  - id: publish
+    kind: code
+    description: Irreversible in spirit (a file others will read) - unreachable without the gate, runs at most once.
+    module: ./reducers/write-file.py
+    side_effect: true
+    requires_gate: approve
+    input: { markdown: $nodes.assemble.output.markdown, approval: $nodes.approve.output }
+    args: { dir: out, name: research-report, ext: md }
