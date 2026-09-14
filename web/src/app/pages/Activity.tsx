@@ -136,8 +136,11 @@ function RunEntry({ id, rows, defaultOpen }: { id: string; rows: ActivityRow[]; 
   const outcome = outcomeOf(rows)
   const steps = rows.filter(r => r !== outcome)
   const started = rows[rows.length - 1]
-  const tone: Tone = outcome ? outcome.tone : 'muted'
-  const headline = outcome ? outcome.text.replace(/^Sweep /, '').replace(/^Intake /, '') : 'in progress'
+  // No outcome row yet: the run is either still going or paused at the human gate ("Waiting on you" is the triage
+  // row that pauses the graph). Say which; a paused night is the one that matters.
+  const waiting = !outcome && rows.some(r => r.result === 'Waiting on you')
+  const tone: Tone = outcome ? outcome.tone : waiting ? 'critical' : 'muted'
+  const headline = outcome ? outcome.text.replace(/^Sweep /, '').replace(/^Intake /, '') : waiting ? 'waiting on you' : 'in progress'
   const cost = costOf(rows)
   const failed = tone === 'critical' && !!outcome && /failed/i.test(outcome.text)
   return (
@@ -182,6 +185,14 @@ function RunEntry({ id, rows, defaultOpen }: { id: string; rows: ActivityRow[]; 
           ))}
         </ol>
         <div className="g-act__foot">
+          {waiting && (
+            <Link to="/decisions" className="g-link g-ui" style={{ marginInlineEnd: 16 }}>
+              Answer the decisions{' '}
+              <span aria-hidden="true" className="g-arrow">
+                →
+              </span>
+            </Link>
+          )}
           <Link to={`/flow?run=${encodeURIComponent(id)}`} className="g-link g-ui">
             See this run in Agent flow{' '}
             <span aria-hidden="true" className="g-arrow">

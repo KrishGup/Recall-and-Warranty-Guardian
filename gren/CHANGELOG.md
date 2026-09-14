@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.0.1 - 2026-09-13
+
+- `claude-code`: the node contract is bridge-aware. Headless Claude Code enforces the schema itself through `--json-schema`; a restated schema, a bulleted rule list, or a second persona line ("You are an ADVERSARIAL verifier") made the session write its answer as text instead of calling its structured-output tool, so agent and verify nodes failed validation. The claude-code contract is now one short paragraph with the verifier's objective inside it. Measured on real nodes: 0/6 valid before, 12/12 after. The other bridges keep the full contract.
+- Fan-out: the quorum error names the real minimum (at least one item must complete) instead of "need 0".
+
 ## 2.0.0 - 2026-09-13
 
 Rebuilt in Python on the Strands Agents SDK. The graph model, the spec, the run store layout, the dashboard, the CLI commands and the MCP tool names are unchanged.
