@@ -27,6 +27,7 @@ Guardian is a background agent for a household. It makes an inventory of the pro
 | Household decisions from gate interrupts, SMS to the outbox, approve or decline from the dashboard or the CLI, the activity log | `tests/test_api.py` and the dashboard |
 | Intake graph (redact, extract, save) | `guardian intake "..."` with the headless Claude Code provider |
 | Dashboard (Home, Decisions, Inventory, Activity, Settings, Agent flow) with the full trace workbench of the run graph | `web/`. `docs/AGENT_FLOW.md` describes the workbench. |
+| Installable web app (PWA): a manifest, icons, and a service worker that keeps the shell available offline and asks before it applies a new build | `web/vite.config.ts` (`VitePWA`). `tests/test_api.py` checks the hosting. See "Install as an app" below. |
 | Providers: Amazon Bedrock, Anthropic API, headless Claude Code, mock | gren selects the provider from the environment. See the Quickstart. |
 | A live deployment on one EC2 instance with automatic HTTPS | https://guardian.44-214-230-44.sslip.io, made by `scripts/deploy_ec2.py`. It runs the graphs on the Anthropic API. |
 
@@ -108,6 +109,13 @@ Start the dashboard:
 cd web && npm install && npm run dev    # dashboard on http://localhost:5173 (proxies /api and /gren to 8787)
 npm run build                           # then `guardian serve` hosts it at http://127.0.0.1:8787
 ```
+
+Install as an app. The built dashboard is a Progressive Web App. Open the site in Chrome, Edge, or Safari, then use "Install" (desktop) or "Add to Home Screen" (phone). The app opens in its own window with the Guardian icon, and its shortcuts go to Decisions, Inventory, and Agent flow. Notes:
+
+- The service worker keeps the shell, the icons, and the fonts. Offline, the pages show what they have and a notice at the bottom says so. The API is never cached: each read and each action goes to the server.
+- A new build does not replace the running one by itself. The app shows "A new version of Guardian is ready" with a Reload button, so an open run or a half-answered decision is never interrupted. It also looks for a new build once an hour.
+- `npm run dev` runs without a service worker. To try the app behavior, run `npm run build` and open the site that `guardian serve` hosts.
+- The icons come from `python scripts/build_pwa_icons.py`, which draws the favicon mark at each size. Run it after a change to `web/public/favicon.svg`.
 
 Run a sweep from the dashboard (click the logo or "Run sweep now") or from a terminal:
 
