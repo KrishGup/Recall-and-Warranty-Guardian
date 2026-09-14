@@ -59,7 +59,7 @@ If you already use IAM Identity Center, run `aws configure sso` on your machine.
 
 ### C. `aws login` (what this repository uses)
 
-AWS CLI v2 has `aws login --profile guardian`. It signs in through the browser. The credentials last 12 hours. They renew for 90 days without the browser. No keys exist. `.env` holds only `AWS_PROFILE=guardian` and `AWS_REGION`. boto3 needs the CRT extra to read these credentials: `pip install "botocore[crt]"`. The venv already has it. The Agent Toolkit for AWS setup (`aws configure agent-toolkit`) installs the AWS skills and the MCP server for Claude Code on the same profile.
+AWS CLI v2 has `aws login --profile guardian`. It signs in through the browser. The credentials last 12 hours. The CLI can renew them without the browser, but on 2026-09-14 the session expired at 04:00 EDT and the CLI did not renew it (`ExpiredToken`). When a command answers `ExpiredToken`, run `aws login --profile guardian` again. No keys exist. `.env` holds only `AWS_PROFILE=guardian` and `AWS_REGION`. boto3 needs the CRT extra to read these credentials: `pip install "botocore[crt]"`. The venv already has it. The Agent Toolkit for AWS setup (`aws configure agent-toolkit`) installs the AWS skills and the MCP server for Claude Code on the same profile.
 
 ## 3. Bedrock model access (you)
 
