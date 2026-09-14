@@ -50,12 +50,25 @@ def reduce(input, args, ctx):
             p = _payload(store, m)
             if p:
                 confirmed.append(p)
+    # Carry forward every match an earlier night confirmed but never handled: its verdict is decided and its state is
+    # still "open", so it reached neither a decision nor the digest (that run failed before triage). candidate_gen
+    # skips decided pairs, so without this a failed night would lose a confirmed recall for good.
+    seen = {p["match_id"] for p in confirmed}
+    carried = 0
+    for m in store.matches():
+        if m.id in seen or m.state != "open" or m.verdict not in ("yes", "certain", "unsure"):
+            continue
+        p = _payload(store, m)
+        if p:
+            confirmed.append(p)
+            seen.add(m.id)
+            carried += 1
     hazards = {p["recall"]["recall_id"]: {"severity_keyword_pass": p["recall"]["severity"], "reasons": p["recall"]["severity_reasons"], "hazard_text": p["recall"]["hazard_text"][:300]} for p in confirmed}
     questions = []
     for q in input.get("questions") or []:
         if isinstance(q, dict) and q.get("ask") and store.item(str(q.get("item_id") or "")) is not None:
             it = store.item(str(q["item_id"]))
             questions.append({**q, "item_name": f"{it.brand} {it.name}".strip(), "category": it.category, "price": it.price})
-    ctx.log(f"{len(confirmed)} confirmed ({unsure} unsure), {rejected} rejected, {len(questions)} question(s)")
-    return {"confirmed": confirmed, "confirmed_count": len(confirmed), "rejected": rejected, "unsure": unsure, "hazards": hazards, "questions": questions, "question_count": len(questions),
+    ctx.log(f"{len(confirmed)} confirmed ({unsure} unsure, {carried} carried from earlier nights), {rejected} rejected, {len(questions)} question(s)")
+    return {"confirmed": confirmed, "confirmed_count": len(confirmed), "rejected": rejected, "unsure": unsure, "carried": carried, "hazards": hazards, "questions": questions, "question_count": len(questions),
             "_stats": {"in": len(outs) + len(certain) + len(input.get("questions") or []), "out": len(confirmed) + len(questions)}}

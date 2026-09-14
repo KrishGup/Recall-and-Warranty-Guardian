@@ -53,3 +53,33 @@ def test_answers_skips_indexes_absent_from_an_explicit_approval():
 def test_redact_strips_only_luhn_valid_card_numbers():
     text, n = redact_mod.redact("Paid with Visa 4111 1111 1111 1111 on order 1234567890123 ref 4111-1111-1111-1111")
     assert n == 2 and "4111" not in text and "1234567890123" in text and text.count("[card removed]") == 2
+
+
+def test_verdicts_carries_forward_confirmed_matches_that_no_run_handled(store, demo):
+    """A night that fails after matching must not lose a confirmed recall: candidate_gen skips decided pairs, so
+    verdicts re-hands every open, decided match to triage on the next run."""
+    from guardian.models import MatchCandidate, RecallRecord
+    from guardian.reducers import verdicts as verdicts_mod
+
+    seed_store(store, demo, only={"itm_finger_lights", "itm_boon_nursh"})
+    store.upsert_recalls([
+        RecallRecord(recall_id="cpsc#T1", source="cpsc", native_id="T1", title="Finger lights", published_at="2026-09-01", hazard_text="battery ingestion", severity="critical"),
+        RecallRecord(recall_id="cpsc#T2", source="cpsc", native_id="T2", title="Pouches", published_at="2026-09-01", hazard_text="choking", severity="critical"),
+        RecallRecord(recall_id="cpsc#T3", source="cpsc", native_id="T3", title="Pouches again", published_at="2026-09-01"),
+    ])
+    orphan_yes = MatchCandidate(id="itm_finger_lights~cpsc#T1", item_id="itm_finger_lights", recall_id="cpsc#T1", stage=4, key="lexical:90", score=90, verdict="yes", state="open", run_id="failed-night")
+    orphan_certain = MatchCandidate(id="itm_boon_nursh~cpsc#T2", item_id="itm_boon_nursh", recall_id="cpsc#T2", stage=1, key="upc", score=100, verdict="certain", state="open", run_id="failed-night")
+    handled = MatchCandidate(id="itm_boon_nursh~cpsc#T3", item_id="itm_boon_nursh", recall_id="cpsc#T3", stage=1, key="upc", score=100, verdict="certain", state="surfaced", run_id="good-night")
+    rejected = MatchCandidate(id="itm_finger_lights~cpsc#T3", item_id="itm_finger_lights", recall_id="cpsc#T3", stage=4, key="lexical:70", score=70, verdict="no", state="open", run_id="failed-night")
+    for m in (orphan_yes, orphan_certain, handled, rejected):
+        store.upsert_match(m)
+
+    out = verdicts_mod.reduce({"verdicts": [], "certain": [], "questions": []}, {}, SimpleNamespace(run_id="tonight", node_id="verdicts", log=lambda m: None))
+    ids = {p["match_id"] for p in out["confirmed"]}
+    assert ids == {orphan_yes.id, orphan_certain.id}
+    assert out["carried"] == 2 and out["confirmed_count"] == 2
+    assert "cpsc#T1" in out["hazards"] and out["hazards"]["cpsc#T1"]["severity_keyword_pass"] == "critical"
+
+    # A match this run adjudicated is not double-counted as carried.
+    again = verdicts_mod.reduce({"verdicts": [{"match_id": orphan_yes.id, "is_match": "yes", "confidence": 0.9, "rationale": "same brand and product line", "missing_info": []}], "certain": [], "questions": []}, {}, SimpleNamespace(run_id="tonight", node_id="verdicts", log=lambda m: None))
+    assert again["carried"] == 1 and {p["match_id"] for p in again["confirmed"]} == ids
