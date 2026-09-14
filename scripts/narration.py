@@ -1,7 +1,7 @@
 """Turn several narration takes into one voice-over aligned to the demo video.
 
     python scripts/narration.py transcribe take1.wav take2.m4a ...   # word timestamps -> var/demo/narration/<take>.json
-    python scripts/narration.py assemble [--prefer take2] [--no-stretch]  # best take per block -> narration.wav + final MP4
+    python scripts/narration.py assemble [--prefer take2] [--no-stretch] [--pick who=take2,what=take3]  # best take per block -> narration.wav + final MP4
     python scripts/narration.py report                                # the choices, per block
 
 How it works. Each take is transcribed with word timestamps (faster-whisper, on the CPU). For every script block (the
@@ -41,7 +41,9 @@ FINAL = os.path.join(OUT, "guardian-demo-final.mp4")
 MAX_STRETCH = 1.08  # atempo factor limit: a take may be sped up by 8 percent to fit its slot
 PART_DB = -20.0  # mean level every cut is brought to before the mix (readers lean in and out between blocks)
 MAX_GAIN = 9.0  # dB, either way
-PAD = 0.12  # seconds kept before the first word and after the last word of a cut
+PAD = 0.12  # fallback seconds kept before the first word and after the last word when no silence is found
+FADE_IN, FADE_OUT = 0.12, 0.18  # seconds
+SILENCE_DB = -42.0  # envelope level (dBFS, 20 ms frames) under which the take counts as quiet
 
 
 def say(m: str) -> None:
@@ -117,6 +119,79 @@ def peak_db(path: str, start: float, end: float) -> float:
     return -90.0
 
 
+_ENV: dict[str, Any] = {}
+
+
+def envelope(wav_path: str):
+    """RMS envelope in dBFS over 20 ms frames of the 16 kHz mono analysis wav (cached per file)."""
+    if wav_path in _ENV:
+        return _ENV[wav_path]
+    import wave
+
+    import numpy as np
+
+    with wave.open(wav_path, "rb") as w:
+        sr = w.getframerate()
+        raw = w.readframes(w.getnframes())
+    x = np.frombuffer(raw, dtype=np.int16).astype(np.float32) / 32768.0
+    hop = int(sr * 0.02)
+    n = len(x) // hop
+    frames = x[: n * hop].reshape(n, hop)
+    rms = np.sqrt((frames ** 2).mean(axis=1)) + 1e-9
+    db = 20 * np.log10(rms)
+    _ENV[wav_path] = (db, 0.02)
+    return _ENV[wav_path]
+
+
+def refine_edges(take: dict[str, Any], span: dict[str, Any]) -> tuple[float, float]:
+    """Move the cut points off the word timestamps onto the waveform: start in the quiet just before the first
+    word's onset, end after the last word's decay, never crossing into a neighbouring word."""
+    db, hop = envelope(take["wav"])
+    words = take["words"]
+    i0, i1 = span["i0"], span["i1"]
+    prev_end = words[i0 - 1]["e"] if i0 > 0 else 0.0
+    next_start = words[i1]["s"] if i1 < len(words) else len(db) * hop
+    quiet = SILENCE_DB
+    # start: back over the word itself if the timestamp landed late, then back through the gap before it
+    f = min(len(db) - 1, int(span["start"] / hop))
+    lo = max(int(prev_end / hop), f - int(0.9 / hop), 0)
+    k = f
+    while k > max(lo, f - int(0.4 / hop)) and db[k - 1] >= quiet:
+        k -= 1
+    onset = k
+    while k > lo and db[k - 1] < quiet:
+        k -= 1
+    if k == onset:  # still inside speech: a short lead word was merged into the onset; walk over it to the real gap
+        while k > lo and db[k - 1] >= quiet:
+            k -= 1
+        onset = k
+        while k > lo and db[k - 1] < quiet:
+            k -= 1
+    gap_start = k
+    start = max(prev_end, gap_start * hop, onset * hop - 0.18)
+    # end: forward over the word's decay if the timestamp landed early, then a little into the gap after it
+    g = min(len(db) - 1, int(span["end"] / hop))
+    hi = min(int(next_start / hop), g + int(1.0 / hop), len(db) - 1)
+    k = g
+    while k < min(hi, g + int(0.5 / hop)) and db[k] >= quiet:
+        k += 1
+    decay_end = k
+    while k < hi and db[k] < quiet:
+        k += 1
+    gap_end = k
+    end = min(next_start, gap_end * hop, decay_end * hop + 0.22)
+    if end <= start + 0.5:
+        start, end = max(0.0, span["start"] - PAD), span["end"] + PAD
+    return round(max(0.0, start), 3), round(end, 3)
+
+
+def hesitation_penalty(take: dict[str, Any], span: dict[str, Any]) -> float:
+    """Long gaps inside a reading (over 2 s) are restarts or lost places; each costs a little."""
+    ws = take["words"][span["i0"] : span["i1"]]
+    long = [ws[i + 1]["s"] - ws[i]["e"] for i in range(len(ws) - 1) if ws[i + 1]["s"] - ws[i]["e"] > 2.0]
+    return min(0.2, 0.06 * len(long))
+
+
 def transcribe(paths: list[str], model_size: str = "small") -> None:
     from faster_whisper import WhisperModel  # type: ignore
 
@@ -176,6 +251,21 @@ def best_span(block_words: list[str], take_words: list[dict[str, Any]], search_f
         last = best["i0"] + m[-1].b + m[-1].size - 1
     else:
         first, last = best["i0"], best["i1"] - 1
+    # Block words the matcher did not pair at either edge ("follow-up" against "follow" "-up", a short "On") are
+    # still spoken: take as many adjacent transcript words as are missing, while they follow within half a second.
+    missing_head = m[0].a if m else 0
+    missing_tail = (len(block_words) - (m[-1].a + m[-1].size)) if m else 0
+    head, tail = set(block_words[:4]), set(block_words[-4:])
+    grab = missing_head + 1
+    while first > 0 and grab > 0 and take_words[first]["s"] - take_words[first - 1]["e"] < 0.5 and (take_words[first - 1]["n"] in head or missing_head > 0):
+        first -= 1
+        grab -= 1
+        missing_head = max(0, missing_head - 1)
+    grab = missing_tail + 1
+    while last + 1 < len(take_words) and grab > 0 and take_words[last + 1]["s"] - take_words[last]["e"] < 0.5 and (take_words[last + 1]["n"] in tail or missing_tail > 0):
+        last += 1
+        grab -= 1
+        missing_tail = max(0, missing_tail - 1)
     words = take_words[first : last + 1]
     matched = sum(mb.size for mb in m)
     return {"i0": first, "i1": last + 1, "ratio": round(best["ratio"], 3), "accuracy": round(matched / n, 3), "start": words[0]["s"], "end": words[-1]["e"], "spoken": " ".join(w["w"] for w in words)}
@@ -190,7 +280,8 @@ def score(cand: dict[str, Any], slot: float, same_take: bool) -> float:
     return cand["accuracy"] * 0.6 + fit * 0.2 + level * 0.08 + snr * 0.07 + (0.02 if same_take else 0.0) - clip
 
 
-def choose(prefer: str | None = None) -> list[dict[str, Any]]:
+def choose(prefer: str | None = None, picks: dict[str, str] | None = None) -> list[dict[str, Any]]:
+    picks = picks or {}
     takes = [json.load(open(os.path.join(NARR, f), encoding="utf-8")) for f in sorted(os.listdir(NARR)) if f.endswith(".json") and f != "choices.json"]
     if not takes:
         raise SystemExit("no transcripts in var/demo/narration; run `transcribe` first")
@@ -211,21 +302,25 @@ def choose(prefer: str | None = None) -> list[dict[str, Any]]:
             span["level_delta_db"] = round(lvl - t.get("speech_db", lvl), 1)
             span["snr_db"] = round(lvl - t.get("floor_db", -60.0), 1)
             span["peak_db"] = round(peak_db(clean, span["start"], span["end"]), 1)
-            cands.append({**span, "take": t["take"], "wav": clean, "floor_span": t.get("floor_span"), "score": round(score(span, b["slot"], same), 3)})
+            cut0, cut1 = refine_edges(t, span)
+            sc = score(span, b["slot"], same) - hesitation_penalty(t, span)
+            if picks.get(b["id"]) == t["take"]:
+                sc += 1.0
+            cands.append({**span, "take": t["take"], "wav": clean, "cut_start": cut0, "cut_end": cut1, "floor_span": t.get("floor_span"), "score": round(sc, 3)})
         if not cands:
             raise SystemExit(f"block {b['id']}: no take matched")
         cands.sort(key=lambda c: -c["score"])
         win = cands[0]
         cursor[win["take"]] = win["i1"]
         prev_take = win["take"]
-        choices.append({"block": b["id"], "slot_start": b["start"], "slot": round(b["slot"], 2), "take": win["take"], "wav": win["wav"], "start": win["start"], "end": win["end"], "accuracy": win["accuracy"], "score": win["score"], "level_db": win["level_db"], "snr_db": win["snr_db"], "peak_db": win["peak_db"], "floor_span": win.get("floor_span"), "spoken": win["spoken"], "alternatives": [{k: c[k] for k in ("take", "accuracy", "score", "snr_db")} for c in cands[1:]]})
+        choices.append({"block": b["id"], "slot_start": b["start"], "slot": round(b["slot"], 2), "take": win["take"], "wav": win["wav"], "start": win["start"], "end": win["end"], "cut_start": win["cut_start"], "cut_end": win["cut_end"], "accuracy": win["accuracy"], "score": win["score"], "level_db": win["level_db"], "snr_db": win["snr_db"], "peak_db": win["peak_db"], "floor_span": win.get("floor_span"), "spoken": win["spoken"], "alternatives": [{k: c[k] for k in ("take", "accuracy", "score", "snr_db")} for c in cands[1:]]})
     json.dump(choices, open(os.path.join(NARR, "choices.json"), "w", encoding="utf-8"), indent=1)
     return choices
 
 
 # ------------------------------------------------------------------------------------------------ assemble
-def assemble(prefer: str | None = None, stretch: bool = True) -> None:
-    ch = choose(prefer)
+def assemble(prefer: str | None = None, stretch: bool = True, picks: dict[str, str] | None = None) -> None:
+    ch = choose(prefer, picks)
     ff = ffmpeg()
     parts_dir = os.path.join(NARR, "parts")
     os.makedirs(parts_dir, exist_ok=True)
@@ -236,14 +331,14 @@ def assemble(prefer: str | None = None, stretch: bool = True) -> None:
     for i, c in enumerate(ch):
         nxt = ch[i + 1]["slot_start"] if i + 1 < len(ch) else total
         room = nxt - c["slot_start"] - 0.15
-        s0 = max(0.0, c["start"] - PAD)
-        e0 = c["end"] + PAD
+        s0 = c["cut_start"]
+        e0 = c["cut_end"]
         length = e0 - s0
         tempo = 1.0
         if length > room and stretch:
             tempo = min(MAX_STRETCH, length / room)
         part = os.path.join(parts_dir, f"{i:02d}-{c['block']}.wav")
-        af = f"afade=t=in:d=0.04,afade=t=out:st={max(0, length - 0.06):.3f}:d=0.06"
+        af = f"afade=t=in:d={FADE_IN},afade=t=out:st={max(0, length - FADE_OUT):.3f}:d={FADE_OUT}"
         if tempo > 1.001:
             af = f"atempo={tempo:.4f}," + af
         subprocess.run([ff, "-y", "-loglevel", "error", "-ss", f"{s0:.3f}", "-t", f"{length:.3f}", "-i", c["wav"], "-af", af, "-ac", "1", "-ar", "48000", part], check=True)
@@ -255,10 +350,11 @@ def assemble(prefer: str | None = None, stretch: bool = True) -> None:
             part = levelled
         c["gain_db"] = round(gain, 1)
         c["tempo"] = round(tempo, 3)
-        c["placed_at"] = round(c["slot_start"], 2)
         c["overrun"] = round(max(0.0, length / tempo - room), 2)
         inputs += ["-i", part]
-        filters.append(f"[{i}:a]adelay={int(c['slot_start'] * 1000)}|{int(c['slot_start'] * 1000)}[a{i}]")
+        at = c["slot_start"] + 0.10
+        c["placed_at"] = round(at, 2)
+        filters.append(f"[{i}:a]adelay={int(at * 1000)}|{int(at * 1000)}[a{i}]")
         mixes.append(f"[a{i}]")
     # Room tone: the quietest second of the take that carries most blocks, looped under everything at -34 dB, so the
     # gaps between blocks match the recording's own air instead of digital silence.
@@ -287,7 +383,7 @@ def report(ch: list[dict[str, Any]] | None = None) -> None:
     ch = ch or json.load(open(os.path.join(NARR, "choices.json"), encoding="utf-8"))
     say(f"{'block':15s} {'take':12s} {'acc':>5s} {'len':>6s} {'slot':>6s} {'tempo':>5s} {'over':>5s} {'level':>6s} {'gain':>5s} {'snr':>5s}")
     for c in ch:
-        length = c["end"] - c["start"] + 2 * PAD
+        length = c.get("cut_end", c["end"]) - c.get("cut_start", c["start"])
         say(f"{c['block']:15s} {c['take']:12s} {c['accuracy']:5.2f} {length:6.1f} {c['slot']:6.1f} {c.get('tempo', 1.0):5.2f} {c.get('overrun', 0.0):5.1f} {c.get('level_db', 0.0):6.1f} {c.get('gain_db', 0.0):5.1f} {c.get('snr_db', 0.0):5.0f}")
     from collections import Counter
 
@@ -308,7 +404,8 @@ def main(argv: list[str]) -> int:
         transcribe(files, model)
     elif cmd == "assemble":
         prefer = opts[opts.index("--prefer") + 1] if "--prefer" in opts else None
-        assemble(prefer, stretch="--no-stretch" not in opts)
+        picks = dict(kv.split("=", 1) for kv in opts[opts.index("--pick") + 1].split(",")) if "--pick" in opts else None
+        assemble(prefer, stretch="--no-stretch" not in opts, picks=picks)
     elif cmd == "report":
         report()
     else:
