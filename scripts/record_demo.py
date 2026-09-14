@@ -6,6 +6,7 @@ MP4 with a timeline for the voice-over. Playwright drives its own Chromium, so n
     python scripts/record_demo.py record [--reset]       # drive the site through the demo beats, one WebM clip per beat
     python scripts/record_demo.py assemble               # slides + clips -> var/demo/guardian-demo.mp4 + timeline.json + docs/DEMO_SCRIPT.md
     python scripts/record_demo.py all [--reset]
+    python scripts/record_demo.py prompter            # docs/teleprompter.html paced to the timeline (also written by assemble)
     python scripts/record_demo.py mux narration.wav   # voice-over + video -> var/demo/guardian-demo-final.mp4
 
 Options:
@@ -19,6 +20,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -621,7 +623,7 @@ def write_script(timeline: list[dict[str, Any]], total: float) -> None:
     lines = [
         "# Demo video script",
         "",
-        f"The video is `var/demo/guardian-demo.mp4` ({mmss(total)}). Record the voice-over against these timecodes. Each row is one block of the video. Speak the text in the last column while the block is on screen. A comfortable pace is 140 words a minute. The pace column shows the words in the block and the pace that fills the block exactly.",
+        f"The video is `var/demo/guardian-demo.mp4` ({mmss(total)}). Record the voice-over against these timecodes. Each row is one block of the video. Speak the text in the last column while the block is on screen. A comfortable pace is about 3.5 syllables a second. The pace column shows the words in the block, the syllable rate that fills the block, and the equivalent words a minute.",
         "",
         "| Time | On screen | Pace | Say |",
         "|---|---|---|---|",
@@ -631,9 +633,10 @@ def write_script(timeline: list[dict[str, Any]], total: float) -> None:
         secs = max(0.1, r["end"] - r["start"])
         words = len(r["say"].split())
         wpm = words / secs * 60
-        if wpm > 160:
+        if sum(syllables(w) for w in r["say"].split()) / secs > 3.8:
             fast.append(f"{mmss(r['start'])} ({wpm:.0f} wpm)")
-        pace = f"{words} words · {wpm:.0f} wpm" + (" · fast" if wpm > 160 else "")
+        sps = sum(syllables(w) for w in r["say"].split()) / secs
+        pace = f"{words} words · {sps:.1f} syl/s · {wpm:.0f} wpm" + (" · fast" if sps > 3.8 else "")
         lines.append(f"| {mmss(r['start'])}–{mmss(r['end'])} | {' '.join(r['on'])} | {pace} | {r['say']} |")
     lines += [
         "",
@@ -646,7 +649,7 @@ def write_script(timeline: list[dict[str, Any]], total: float) -> None:
         "- To add the voice-over: record it as one file (WAV or M4A) against the video, then run `python scripts/record_demo.py mux narration.wav`. The result is `var/demo/guardian-demo-final.mp4`.",
     ]
     if fast:
-        lines.append(f"- Blocks above 160 words a minute: {', '.join(fast)}. Cut words or lengthen the block before you record.")
+        lines.append(f"- Blocks above 3.8 syllables a second: {', '.join(fast)}. Cut words or lengthen the block before you record.")
     os.makedirs(os.path.join(ROOT, "docs"), exist_ok=True)
     with open(os.path.join(ROOT, "docs", "DEMO_SCRIPT.md"), "w", encoding="utf-8", newline="\n") as f:
         f.write("\n".join(lines) + "\n")
@@ -663,6 +666,70 @@ def mux(audio: str) -> None:
     final = os.path.join(OUT, "guardian-demo-final.mp4")
     subprocess.run([ffmpeg(), "-y", "-loglevel", "error", "-i", video, "-i", audio, "-map", "0:v:0", "-map", "1:a:0", "-c:v", "copy", "-c:a", "aac", "-b:a", "160k", "-af", "apad", "-shortest", "-movflags", "+faststart", final], check=True)
     say(f"final: {final} ({mmss(duration_of(final))})")
+
+
+HTML = '<!doctype html>\n<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">\n<title>Guardian narration prompter</title>\n<link href="https://fonts.googleapis.com/css2?family=Lora:wght@500;600&family=Roboto+Slab:wght@600;700&display=swap" rel="stylesheet">\n<style>\n:root { --ink:#000F08; --paper:#F7F4F3; --dim:#5f6b66; --amber:#FCBA04; --blue:#2274A5; --red:#E0463A; --green:#3FBF7F; --size:46px; }\nhtml,body { margin:0; height:100%; background:var(--ink); color:var(--paper); font-family:Lora,Georgia,serif; overflow:hidden; }\n#top { position:fixed; inset:0 0 auto 0; height:64px; display:flex; align-items:center; gap:22px; padding:0 24px; font-family:\'Roboto Slab\',serif; font-size:22px; background:rgba(0,15,8,.92); border-bottom:1px solid #1f2b25; z-index:5; }\n#clock { font-size:34px; font-weight:700; min-width:230px; font-variant-numeric:tabular-nums; }\n#blockno { color:var(--amber); }\n#pace { color:#B9C3BD; font-size:18px; }\n#hint { margin-inline-start:auto; color:#8a948f; font-size:14px; font-family:Lora,serif; }\n#bar { position:fixed; top:64px; left:0; height:5px; background:var(--blue); width:0; z-index:5; }\n#blockbar { position:fixed; top:69px; left:0; height:3px; background:var(--amber); width:0; z-index:5; }\n#stage { position:fixed; top:80px; bottom:0; left:0; right:0; display:grid; grid-template-columns:minmax(0,1fr) 0; transition:grid-template-columns .2s; }\n#stage.video { grid-template-columns:minmax(0,1fr) 34vw; }\n#text { padding:22px 5vw 40px; overflow:hidden; display:flex; flex-direction:column; justify-content:center; gap:34px; }\n#cur { font-size:var(--size); line-height:1.42; font-weight:500; letter-spacing:.005em; }\n#cur .w { color:#3a4540; transition:color .12s; }\n#cur .w.said { color:var(--paper); }\n#cur .w.now { color:var(--amber); text-decoration:underline; text-decoration-color:var(--amber); text-underline-offset:.16em; }\n#next { font-size:calc(var(--size) * .5); line-height:1.4; color:#6e7a75; border-top:1px solid #22302a; padding-top:22px; }\n#next b { color:#9aa6a0; font-family:\'Roboto Slab\',serif; font-weight:600; font-size:.7em; letter-spacing:.08em; text-transform:uppercase; display:block; margin-bottom:8px; }\n#cue { font-family:\'Roboto Slab\',serif; font-size:19px; color:var(--amber); letter-spacing:.06em; text-transform:uppercase; }\n#cue span { color:#B9C3BD; text-transform:none; letter-spacing:0; font-family:Lora,serif; font-size:19px; }\n#vid { background:#000; display:flex; align-items:center; justify-content:center; border-left:1px solid #1f2b25; }\n#vid video { width:100%; max-height:100%; }\n#count { position:fixed; inset:0; display:none; align-items:center; justify-content:center; font-family:\'Roboto Slab\',serif; font-size:260px; font-weight:700; color:var(--amber); background:rgba(0,15,8,.85); z-index:9; }\n#count.on { display:flex; }\n#done { display:none; font-family:\'Roboto Slab\',serif; font-size:56px; color:var(--green); }\nbody.mirror #text { transform:scaleX(-1); }\n</style></head>\n<body>\n<div id="top"><div id="clock">0:00.0 / 0:00</div><div id="blockno">block 1 / 13</div><div id="pace"></div><div id="hint">Space start/pause · R restart · ←/→ block · + − size · V video · M mirror · F fullscreen</div></div>\n<div id="bar"></div><div id="blockbar"></div>\n<div id="stage">\n  <div id="text"><div id="cue"></div><div id="cur"></div><div id="done">End. Stop the recording.</div><div id="next"></div></div>\n  <div id="vid"><video id="video" muted playsinline preload="auto" src="__VIDEO__"></video></div>\n</div>\n<div id="count">3</div>\n<script>\nconst BLOCKS = __BLOCKS__;\nconst TOTAL = __TOTAL__;\nconst LEAD = 0.35;   // seconds after a block starts before the first word is due (the dissolve settles)\nconst TAIL = 0.92;   // words are paced to finish at 92% of the block, leaving a breath before the next cut\nconst TICK = 1 / 30;\nfor (const b of BLOCKS) { b.cum = []; let acc = 0; for (const w of b.weights) { acc += w; b.cum.push(acc); } }\nlet t = 0, playing = false, last = null, raf = null, size = 46, useVideo = false;\nconst video = document.getElementById(\'video\');\nconst curEl = document.getElementById(\'cur\'), nextEl = document.getElementById(\'next\'), cueEl = document.getElementById(\'cue\');\nconst clockEl = document.getElementById(\'clock\'), blockEl = document.getElementById(\'blockno\'), paceEl = document.getElementById(\'pace\');\nconst bar = document.getElementById(\'bar\'), bbar = document.getElementById(\'blockbar\'), doneEl = document.getElementById(\'done\');\nconst mmss = s => { s = Math.max(0, s); const m = Math.floor(s / 60), r = s - m * 60; return m + \':\' + (r < 10 ? \'0\' : \'\') + r.toFixed(1); };\nconst mmssI = s => { const m = Math.floor(s / 60), r = Math.round(s - m * 60); return m + \':\' + (r < 10 ? \'0\' : \'\') + r; };\nlet shown = -1;\nfunction blockAt(time) { for (let i = BLOCKS.length - 1; i >= 0; i--) if (time >= BLOCKS[i].start) return i; return 0; }\nfunction renderBlock(i) {\n  const b = BLOCKS[i];\n  curEl.innerHTML = b.words.map((w, k) => `<span class="w" data-k="${k}">${w}</span>`).join(\' \');\n  const n = BLOCKS[i + 1];\n  nextEl.innerHTML = n ? `<b>Next · ${mmssI(n.start)} · ${n.on}</b>${n.text}` : \'<b>Last block</b>\';\n  cueEl.innerHTML = `${mmssI(b.start)}–${mmssI(b.end)} <span>· ${b.on}</span>`;\n  blockEl.textContent = `block ${i + 1} / ${BLOCKS.length}`;\n  paceEl.textContent = `${b.words.length} words · ${(b.syllables / (b.end - b.start)).toFixed(1)} syllables/s · ${Math.round(b.words.length / (b.end - b.start) * 60)} wpm`;\n  shown = i;\n}\nfunction render() {\n  const i = blockAt(t);\n  if (i !== shown) renderBlock(i);\n  const b = BLOCKS[i];\n  const span = (b.end - b.start) * TAIL - LEAD;\n  const frac = Math.min(1, Math.max(0, (t - b.start - LEAD) / Math.max(0.1, span)));\n  const total = b.cum[b.cum.length - 1]; let due = 0; while (due < b.words.length && b.cum[due] <= frac * total) due++;\n  const spans = curEl.children;\n  for (let k = 0; k < spans.length; k++) { spans[k].className = \'w\' + (k < due ? \' said\' : \'\') + (k === due ? \' now\' : \'\'); }\n  clockEl.textContent = mmss(t) + \' / \' + mmssI(TOTAL);\n  bar.style.width = (100 * Math.min(1, t / TOTAL)) + \'%\';\n  bbar.style.width = (100 * Math.min(1, Math.max(0, (t - b.start) / (b.end - b.start)))) + \'%\';\n  doneEl.style.display = t >= TOTAL ? \'block\' : \'none\';\n}\nfunction loop(now) {\n  if (!playing) return;\n  if (useVideo && !video.paused && !video.ended) t = video.currentTime;\n  else { if (last != null) t += (now - last) / 1000; }\n  last = now;\n  if (t >= TOTAL) { t = TOTAL; playing = false; if (useVideo) video.pause(); }\n  render();\n  if (playing) raf = requestAnimationFrame(loop);\n}\nfunction play() { if (playing) return; playing = true; last = null; if (useVideo) { video.currentTime = t; video.play().catch(() => {}); } raf = requestAnimationFrame(loop); }\nfunction pause() { playing = false; last = null; if (raf) cancelAnimationFrame(raf); if (useVideo) video.pause(); render(); }\nfunction seek(time) { t = Math.max(0, Math.min(TOTAL, time)); if (useVideo) video.currentTime = t; render(); }\nfunction countdown(n, then) { const c = document.getElementById(\'count\'); c.textContent = n; c.classList.add(\'on\'); if (n <= 1) { setTimeout(() => { c.classList.remove(\'on\'); then(); }, 1000); } else setTimeout(() => countdown(n - 1, then), 1000); }\ndocument.addEventListener(\'keydown\', e => {\n  if (e.code === \'Space\') { e.preventDefault(); if (playing) pause(); else if (t <= 0.01) countdown(3, play); else play(); }\n  else if (e.key === \'r\' || e.key === \'R\') { pause(); seek(0); shown = -1; render(); }\n  else if (e.key === \'ArrowRight\') { const i = blockAt(t); seek(BLOCKS[Math.min(BLOCKS.length - 1, i + 1)].start); }\n  else if (e.key === \'ArrowLeft\') { const i = blockAt(t); const b = BLOCKS[i]; seek(t - b.start > 1.5 ? b.start : BLOCKS[Math.max(0, i - 1)].start); }\n  else if (e.key === \'+\' || e.key === \'=\') { size = Math.min(80, size + 4); document.documentElement.style.setProperty(\'--size\', size + \'px\'); }\n  else if (e.key === \'-\' || e.key === \'_\') { size = Math.max(24, size - 4); document.documentElement.style.setProperty(\'--size\', size + \'px\'); }\n  else if (e.key === \'v\' || e.key === \'V\') { document.getElementById(\'stage\').classList.toggle(\'video\'); }\n  else if (e.key === \'m\' || e.key === \'M\') { document.body.classList.toggle(\'mirror\'); }\n  else if (e.key === \'f\' || e.key === \'F\') { if (document.fullscreenElement) document.exitFullscreen(); else document.documentElement.requestFullscreen().catch(() => {}); }\n});\nvideo.addEventListener(\'loadedmetadata\', () => { useVideo = true; document.getElementById(\'stage\').classList.add(\'video\'); });\nvideo.addEventListener(\'error\', () => { useVideo = false; });\nrenderBlock(0); render();\n</script></body></html>\n'
+
+SPOKEN_SYLLABLES = {"cpsc": 4, "nhtsa": 5, "openfda": 5, "vin": 1, "upc": 3, "sms": 3, "sdk": 3, "api": 3, "multiagentbase": 6, "graphbuilder": 3, "and-join": 2}
+
+
+def syllables(word: str) -> int:
+    """A count good enough to pace a reader: vowel groups, silent e, digits read out."""
+    w = word.lower().strip(".,;:!?()'\"")
+    if not w:
+        return 0
+    if w in SPOKEN_SYLLABLES:
+        return SPOKEN_SYLLABLES[w]
+    letters = re.sub(r"[^a-z]", "", w)
+    if not letters:
+        return max(1, len(re.sub(r"[^0-9]", "", w)) * 2)
+    n = len(re.findall(r"[aeiouy]+", letters))
+    if letters.endswith("e") and not letters.endswith(("le", "ee", "ye")) and n > 1:
+        n -= 1
+    if letters.endswith("ed") and n > 1 and not letters.endswith(("ted", "ded")):
+        n -= 1
+    return max(1, n)
+
+
+def word_weights(text: str) -> list[float]:
+    """Pacing weight of each word: its syllables plus a breath after punctuation (comma, colon, sentence end)."""
+    out: list[float] = []
+    for w in text.split():
+        wt = float(syllables(w))
+        if w.endswith((".", "!", "?")):
+            wt += 1.6
+        elif w.endswith((":", ";")):
+            wt += 1.2
+        elif w.endswith(","):
+            wt += 0.6
+        out.append(wt)
+    return out
+
+
+def prompter() -> str:
+    """docs/teleprompter.html: the narration paced to the assembled timeline, with the video muted beside it. Open it in a
+    browser (file://), press Space for a 3-2-1 count, and read the highlighted words; the pace is the block's own wpm."""
+    tl_path = os.path.join(OUT, "timeline.json")
+    if not os.path.isfile(tl_path):
+        raise SystemExit("no var/demo/timeline.json; run `assemble` first")
+    tl = json.load(open(tl_path, encoding="utf-8"))
+    by_id = {s["id"]: s for s in SLIDES}
+    blocks: list[dict[str, Any]] = []
+    for seg in tl["segments"]:
+        if seg["kind"] == "slide":
+            s = by_id[seg["id"]]
+            on = ("Title card, then live: " + CLIP_TEXT.get(s.get("clip", ""), "")) if s.get("clip") else f"Slide: {slide_label(s)}"
+            if s.get("clip") == "sweep":
+                on = "Title card, then live: the sweep starts; then the paused run"
+            blocks.append({"start": seg["start"], "end": seg["end"], "text": s["notes"], "words": s["notes"].split(), "weights": word_weights(s["notes"]), "syllables": sum(syllables(w) for w in s["notes"].split()), "on": on})
+        else:
+            blocks[-1]["end"] = seg["end"]
+    html = HTML.replace("__BLOCKS__", json.dumps(blocks)).replace("__TOTAL__", str(tl["total_seconds"])).replace("__VIDEO__", "../var/demo/guardian-demo.mp4")
+    path = os.path.join(ROOT, "docs", "teleprompter.html")
+    with open(path, "w", encoding="utf-8", newline="\n") as f:
+        f.write(html)
+    say(f"prompter: {path} ({len(blocks)} blocks, {mmss(tl['total_seconds'])})")
+    return path
 
 
 # ------------------------------------------------------------------------------------------------ main
@@ -695,6 +762,8 @@ def main(argv: list[str]) -> int:
         record(site, "--skip-sweep" in opts)
     if cmd in ("assemble", "all"):
         assemble()
+    if cmd in ("prompter", "assemble", "all"):
+        prompter()
     if cmd == "mux":
         if not opts:
             raise SystemExit("usage: record_demo.py mux <audio file>")
