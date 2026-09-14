@@ -39,6 +39,8 @@ NARR = os.path.join(OUT, "narration")
 VIDEO = os.path.join(OUT, "guardian-demo.mp4")
 FINAL = os.path.join(OUT, "guardian-demo-final.mp4")
 MAX_STRETCH = 1.08  # atempo factor limit: a take may be sped up by 8 percent to fit its slot
+PART_DB = -20.0  # mean level every cut is brought to before the mix (readers lean in and out between blocks)
+MAX_GAIN = 9.0  # dB, either way
 PAD = 0.12  # seconds kept before the first word and after the last word of a cut
 
 
@@ -185,7 +187,7 @@ def score(cand: dict[str, Any], slot: float, same_take: bool) -> float:
     level = max(0.0, 1.0 - abs(cand.get("level_delta_db", 0.0)) / 9.0)  # a span 9 dB off the take's own speech level scores 0
     snr = min(1.0, max(0.0, (cand.get("snr_db", 30.0) - 10.0) / 25.0))  # 10 dB -> 0, 35 dB -> 1
     clip = 0.0 if cand.get("peak_db", -6.0) < -0.3 else 0.15
-    return cand["accuracy"] * 0.6 + fit * 0.2 + level * 0.08 + snr * 0.07 + (0.05 if same_take else 0.0) - clip
+    return cand["accuracy"] * 0.6 + fit * 0.2 + level * 0.08 + snr * 0.07 + (0.02 if same_take else 0.0) - clip
 
 
 def choose(prefer: str | None = None) -> list[dict[str, Any]]:
@@ -245,6 +247,13 @@ def assemble(prefer: str | None = None, stretch: bool = True) -> None:
         if tempo > 1.001:
             af = f"atempo={tempo:.4f}," + af
         subprocess.run([ff, "-y", "-loglevel", "error", "-ss", f"{s0:.3f}", "-t", f"{length:.3f}", "-i", c["wav"], "-af", af, "-ac", "1", "-ar", "48000", part], check=True)
+        have = rms_db(part, 0.0, length / tempo)
+        gain = max(-MAX_GAIN, min(MAX_GAIN, PART_DB - have))
+        if abs(gain) > 0.3:
+            levelled = part.replace(".wav", ".lvl.wav")
+            subprocess.run([ff, "-y", "-loglevel", "error", "-i", part, "-af", f"volume={gain:.2f}dB,alimiter=limit=0.89:attack=3:release=60", "-ac", "1", "-ar", "48000", levelled], check=True)
+            part = levelled
+        c["gain_db"] = round(gain, 1)
         c["tempo"] = round(tempo, 3)
         c["placed_at"] = round(c["slot_start"], 2)
         c["overrun"] = round(max(0.0, length / tempo - room), 2)
@@ -276,10 +285,10 @@ def assemble(prefer: str | None = None, stretch: bool = True) -> None:
 
 def report(ch: list[dict[str, Any]] | None = None) -> None:
     ch = ch or json.load(open(os.path.join(NARR, "choices.json"), encoding="utf-8"))
-    say(f"{'block':15s} {'take':12s} {'acc':>5s} {'len':>6s} {'slot':>6s} {'tempo':>5s} {'over':>5s} {'level':>6s} {'snr':>5s}")
+    say(f"{'block':15s} {'take':12s} {'acc':>5s} {'len':>6s} {'slot':>6s} {'tempo':>5s} {'over':>5s} {'level':>6s} {'gain':>5s} {'snr':>5s}")
     for c in ch:
         length = c["end"] - c["start"] + 2 * PAD
-        say(f"{c['block']:15s} {c['take']:12s} {c['accuracy']:5.2f} {length:6.1f} {c['slot']:6.1f} {c.get('tempo', 1.0):5.2f} {c.get('overrun', 0.0):5.1f} {c.get('level_db', 0.0):6.1f} {c.get('snr_db', 0.0):5.0f}")
+        say(f"{c['block']:15s} {c['take']:12s} {c['accuracy']:5.2f} {length:6.1f} {c['slot']:6.1f} {c.get('tempo', 1.0):5.2f} {c.get('overrun', 0.0):5.1f} {c.get('level_db', 0.0):6.1f} {c.get('gain_db', 0.0):5.1f} {c.get('snr_db', 0.0):5.0f}")
     from collections import Counter
 
     say("takes used: " + ", ".join(f"{t} x{n}" for t, n in Counter(c["take"] for c in ch).most_common()))
