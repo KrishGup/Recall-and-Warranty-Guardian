@@ -22,7 +22,7 @@ input_schema:
 
 budget: { max_cost_usd: 3.00, max_wall_ms: 1200000, max_width: 4 }
 frozen: [verifier_can_kill, width_budget]
-defaults: { model: opus, effort: medium, failure: { retries: 1, timeout_ms: 300000, repair_attempts: 1 } }
+defaults: { model: opus, failure: { retries: 1, timeout_ms: 300000, repair_attempts: 1 } }
 
 output:
   channel: $nodes.triage.output.channel
@@ -80,6 +80,7 @@ nodes:
   - id: matcher
     kind: agent
     model: opus
+    effort: medium
     description: Adjudicates only ambiguous candidate pairs. Certain pairs (exact keys) skip the model entirely. Output is a MatchVerdict, validated by the engine.
     map: $nodes.candidate_gen.output.candidates
     when: { gt: [$nodes.candidate_gen.output.candidate_count, 0] }
@@ -201,7 +202,6 @@ nodes:
   - id: severity_check
     kind: verify
     model: haiku
-    effort: low
     description: Verifier with authority. Confirms the plan against the deterministic severity pass and the hazard text; a kill sends triage back through one bounded repair round with the reasons.
     target: $nodes.triage.output
     kill_threshold: 0.7

@@ -1,27 +1,28 @@
-// Guardian mark, option 1d "Night watch" (design/Guardian Logos.dc.html): a crescent that swings aside like a
-// manhole lid to reveal the status dot. Open whenever status is not idle; the shell also opens it 400 ms after load.
-import type { CSSProperties } from 'react'
+// Guardian mark, option 1d "Night watch". The geometry is the one in design/avatars (the 1024 px renders) and
+// public/favicon.svg, in a 48-unit box: the ink disc, a paper lid (the same circle) that rests at (38, 16) when open
+// and at (29.8, 24) when closed (a thin crescent), and the status dot at (12, 34). A 1 px paper hairline separates
+// the mark from the dark top bar. The lid swings aside 400 ms after load and stays open while the agent is not idle;
+// the dot takes the agent status colour and pulses while a sweep runs (styles: .g-logo* in app/app.css).
+import { useId } from 'react'
 import { AGENT_STATUS, type AgentStatusKey } from '../theme/tokens'
 
-export function Logo({ status, open, size = 28 }: { status: AgentStatusKey; open?: boolean; size?: number }) {
-  const col = AGENT_STATUS[status]
+export const LOGO_INK = '#000F08'
+export const LOGO_PAPER = '#F7F4F3'
+
+export function Logo({ status, open, size = 28, outline = true }: { status: AgentStatusKey; open?: boolean; size?: number; outline?: boolean }) {
+  const clipId = 'g-logo-' + useId().replace(/[^a-zA-Z0-9_-]/g, '')
   const isOpen = open ?? status !== 'idle'
-  const dot = Math.round((size * 9) / 28)
-  const off = (size - dot) / 2
-  // Inset the disk and the lid a few pixels so the wrapper's own background shows through as a deliberate,
-  // visible ring around the mark instead of a 0px seam that only shows as antialiasing.
-  const border = Math.max(3, Math.round(size / 7))
-  const base: CSSProperties = { position: 'absolute', inset: border, borderRadius: '50%' }
+  const cls = ['g-logo', isOpen ? 'is-open' : '', status === 'working' ? 'is-working' : '', outline ? 'g-logo--outlined' : ''].filter(Boolean).join(' ')
   return (
-    <span aria-hidden="true" style={{ position: 'relative', width: size, height: size, borderRadius: '50%', background: '#F7F4F3', display: 'inline-block', overflow: 'hidden', flex: '0 0 auto' }}>
-      <span style={{ ...base, background: '#000F08' }} />
-      <span
-        style={{
-          position: 'absolute', width: dot, height: dot, borderRadius: '50%', background: col, left: off, top: off, transition: 'background-color .4s',
-          animation: status === 'working' ? 'gPulse 1.1s ease-in-out infinite' : 'none', boxShadow: '0 0 0 2px #000F08',
-        }}
-      />
-      <span style={{ ...base, background: '#F7F4F3', transformOrigin: '100% 50%', transform: isOpen ? 'translateX(58%) rotate(28deg)' : 'translateX(30%) rotate(0deg)', transition: 'transform .8s cubic-bezier(.2,.8,.2,1)' }} />
-    </span>
+    <svg aria-hidden="true" focusable="false" className={cls} width={size} height={size} viewBox="0 0 48 48">
+      <clipPath id={clipId}>
+        <circle cx="24" cy="24" r="24" />
+      </clipPath>
+      <g clipPath={`url(#${clipId})`}>
+        <circle cx="24" cy="24" r="24" fill={LOGO_INK} />
+        <circle className="g-logo__dot" cx="12" cy="34" r="5" fill={AGENT_STATUS[status]} />
+        <circle className="g-logo__lid" cx="24" cy="24" r="24" fill={LOGO_PAPER} />
+      </g>
+    </svg>
   )
 }

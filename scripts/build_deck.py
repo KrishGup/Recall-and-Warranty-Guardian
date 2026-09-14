@@ -19,7 +19,7 @@ from pptx.util import Emu, Inches, Pt
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "scripts"))
-from deck_content import AMBER, BLUE, CONNECTOR, GREEN, INK, LIVE, PAPER, RED, SLIDES  # noqa: E402
+from deck_content import AMBER, BLUE, CONNECTOR, GREEN, INK, LIVE, PAPER, RED, SLIDES, logo_svg  # noqa: E402
 
 OUT_DIR = os.path.join(ROOT, "docs", "deck")
 OUT = os.path.join(OUT_DIR, "Guardian-Demo-Deck.pptx")
@@ -119,7 +119,7 @@ def hline(slide, x, y, w, color: str, weight: float = 1.0):
     return ln
 
 
-LOGO_PNG = os.path.join(OUT_DIR, "assets", "logo.png")
+LOGO_PNG = os.path.join(OUT_DIR, "assets", "logo-nightwatch.png")
 
 
 def render_logo() -> str:
@@ -129,14 +129,8 @@ def render_logo() -> str:
     from playwright.sync_api import sync_playwright  # type: ignore
 
     os.makedirs(os.path.dirname(LOGO_PNG), exist_ok=True)
-    size, dot, ring = 96, 31, 6
-    off = (size - dot) / 2
-    html = (
-        f'<html><body style="margin:0;background:transparent"><span id="l" style="position:relative;width:{size}px;height:{size}px;border-radius:50%;background:{PAPER};display:inline-block;overflow:hidden">'
-        f'<span style="position:absolute;inset:0;border-radius:50%;background:{INK}"></span>'
-        f'<span style="position:absolute;width:{dot}px;height:{dot}px;border-radius:50%;left:{off}px;top:{off}px;box-shadow:0 0 0 {ring}px {INK};background:{AMBER}"></span>'
-        f'<span style="position:absolute;inset:0;border-radius:50%;background:{PAPER};transform-origin:100% 50%;transform:translateX(58%) rotate(28deg)"></span></span></body></html>'
-    )
+    size = 96
+    html = f'<html><body style="margin:0;background:transparent"><div id="l" style="width:{size}px;height:{size}px">{logo_svg(size)}</div></body></html>'
     with sync_playwright() as p:
         b = p.chromium.launch()
         page = b.new_page(viewport={"width": size, "height": size}, device_scale_factor=8)
@@ -276,8 +270,10 @@ def node_card(sl, x, y, name: str, label: str, kind: str):
     w, h = NODE_W, NODE_H
     rect(sl, PX(x), PX(y), PX(w), PX(h), "#131F18", line="#2C3B33", radius=PX(12))
     rect(sl, PX(x), PX(y + 6), PX(6), PX(h - 12), color)
-    text(sl, PX(x + 20), PX(y + 14), PX(w - 28), PX(36), name, 23 if len(name) > 13 else 26, font=HEAD, bold=True)
-    text(sl, PX(x + 20), PX(y + 54), PX(w - 28), PX(30), label, 21, font=UI, color=color, caps=True, spacing=1)
+    # Node ids never wrap (underscores give no break opportunity): long ids get a smaller size instead of overflowing.
+    name_pt = 26 if len(name) <= 11 else 23 if len(name) <= 14 else 20
+    text(sl, PX(x + 18), PX(y + 14), PX(w - 24), PX(36), name, name_pt, font=HEAD, bold=True)
+    text(sl, PX(x + 18), PX(y + 54), PX(w - 24), PX(30), label, 20 if len(label) <= 13 else 17, font=UI, color=color, caps=True, spacing=1)
 
 
 def dashed(sl, x1, y1, x2, y2, color: str, weight: float = 2.0):
@@ -415,9 +411,17 @@ def export(pptx_path: str) -> str:
     os.makedirs(out_dir, exist_ok=True)
     for f in os.listdir(out_dir):
         os.remove(os.path.join(out_dir, f))
-    app = win32com.client.Dispatch("PowerPoint.Application")
+    # Early binding (generated typelib wrapper): the dynamic dispatch cannot set Presentation.EmbedTrueTypeFonts.
+    app = win32com.client.gencache.EnsureDispatch("PowerPoint.Application")
     pres = app.Presentations.Open(os.path.abspath(pptx_path), False, False, False)
     try:
+        # Embed the brand fonts (OFL, embeddable) so the deck renders the same on a machine without them installed.
+        try:
+            pres.EmbedTrueTypeFonts = True
+            pres.Save()
+            print("fonts embedded")
+        except Exception as e:  # noqa: BLE001
+            print(f"font embedding skipped: {e}")
         pres.Export(os.path.abspath(out_dir), "PNG", 1920, 1080)
     finally:
         pres.Close()

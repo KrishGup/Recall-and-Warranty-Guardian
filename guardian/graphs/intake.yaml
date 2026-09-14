@@ -13,7 +13,7 @@ input_schema:
     source: { type: string, enum: [paste, email, manual], default: paste }
 
 budget: { max_cost_usd: 0.30, max_wall_ms: 240000, max_width: 2 }
-defaults: { model: haiku, effort: low, failure: { retries: 1, timeout_ms: 120000, repair_attempts: 1 } }
+defaults: { model: haiku, failure: { retries: 1, timeout_ms: 120000, repair_attempts: 1 } }
 output: { from: save_item }
 
 nodes:

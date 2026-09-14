@@ -83,7 +83,7 @@ SLIDES: list[dict] = [
         "id": "demo-inventory",
         "kind": "demo",
         "bg": "paper",
-        "seconds": 3,
+        "seconds": 5,
         "clip": "inventory",
         "eyebrow": "Demo · 1 / 5 · live site",
         "h2": "The inventory, built from forwarded receipts",
@@ -99,7 +99,7 @@ SLIDES: list[dict] = [
         "id": "demo-sweep",
         "kind": "demo",
         "bg": "paper",
-        "seconds": 3,
+        "seconds": 5,
         "clip": "sweep",
         "eyebrow": "Demo · 2 / 5 · live site",
         "h2": "The sweep, live, and the run paused on the human gate",
@@ -115,7 +115,7 @@ SLIDES: list[dict] = [
         "id": "demo-home",
         "kind": "demo",
         "bg": "paper",
-        "seconds": 3,
+        "seconds": 5,
         "clip": "home",
         "eyebrow": "Demo · 3 / 5 · live site",
         "h2": "The morning after a sweep",
@@ -131,7 +131,7 @@ SLIDES: list[dict] = [
         "id": "demo-decision",
         "kind": "demo",
         "bg": "paper",
-        "seconds": 3,
+        "seconds": 5,
         "clip": "decision",
         "eyebrow": "Demo · 4 / 5 · live site",
         "h2": "One decision, one tap",
@@ -147,7 +147,7 @@ SLIDES: list[dict] = [
         "id": "demo-activity",
         "kind": "demo",
         "bg": "paper",
-        "seconds": 3,
+        "seconds": 5,
         "clip": "after",
         "eyebrow": "Demo · 5 / 5 · live site",
         "h2": "Every sweep is logged",
@@ -236,6 +236,16 @@ SLIDES: list[dict] = [
 # Demo clips, in order, with the seconds each one is expected to hold on screen once recorded. `record_demo.py`
 # measures the real clip lengths; these are the targets its pacing aims for.
 CLIPS: dict[str, int] = {"inventory": 22, "sweep": 48, "home": 15, "decision": 22, "after": 22}
+
+
+def logo_svg(size: int, dot: str = "#FCBA04", outline: bool = True) -> str:
+    """The Night watch mark as inline SVG: the same 48-unit geometry as web/src/ui/Logo.tsx and design/avatars, open."""
+    ring = f'<circle cx="24" cy="24" r="23.4" fill="none" stroke="{PAPER}" stroke-width="1.2"/>' if outline else ""
+    return (
+        f'<svg width="{size}" height="{size}" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg" style="display:block;flex:0 0 auto">'
+        f'<clipPath id="lc"><circle cx="24" cy="24" r="24"/></clipPath><g clip-path="url(#lc)"><circle cx="24" cy="24" r="24" fill="{INK}"/>'
+        f'<circle cx="12" cy="34" r="4" fill="{dot}"/><circle cx="38" cy="16" r="24" fill="{PAPER}"/></g>{ring}</svg>'
+    )
 
 
 def total_seconds() -> int:

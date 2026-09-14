@@ -104,12 +104,15 @@ def runtime_env(host: str, token: str) -> str:
         ("GUARDIAN_FEEDS", e.get("GUARDIAN_DEPLOY_FEEDS", "live")),
         ("GREN_BRIDGE", e.get("GUARDIAN_DEPLOY_BRIDGE", "bedrock")),
         ("ANTHROPIC_API_KEY", e.get("ANTHROPIC_API_KEY", "")),  # only used when GUARDIAN_DEPLOY_BRIDGE=anthropic
+        ("ANTHROPIC_BASE_URL", e.get("ANTHROPIC_BASE_URL", "")),  # a custom endpoint or gateway; the SDK reads it
+        ("ANTHROPIC_AUTH_TOKEN", e.get("ANTHROPIC_AUTH_TOKEN", "")),  # bearer auth for gateways that use it
         ("AWS_REGION", region()),
         ("AWS_DEFAULT_REGION", region()),
         ("GREN_BEDROCK_HAIKU", e.get("GREN_BEDROCK_HAIKU", "")),
         ("GREN_BEDROCK_SONNET", e.get("GREN_BEDROCK_SONNET", "")),
         ("GREN_BEDROCK_OPUS", e.get("GREN_BEDROCK_OPUS", "")),
         ("GUARDIAN_DAILY_BUDGET_USD", e.get("GUARDIAN_DAILY_BUDGET_USD", "10")),
+        ("TZ", e.get("GUARDIAN_DEPLOY_TZ", "America/New_York")),  # the household's clock: activity times, "today", the 08:00 snooze
         ("GUARDIAN_API_TOKEN", token),
         ("GUARDIAN_S3_BUCKET", bucket()),
         ("GUARDIAN_S3_PREFIX", e.get("GUARDIAN_S3_PREFIX", "guardian")),
