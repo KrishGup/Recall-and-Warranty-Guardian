@@ -310,7 +310,7 @@ class Guardian:
             status = t.split(".")[1]
             if kind == "intake":
                 if status != "completed":
-                    self.store.log(Activity(source="Intake", text="Intake failed", result=str(data.get("error") or "")[:200], tone="critical", run_id=rid))
+                    self.store.log(Activity(source="Intake", text="Intake failed", result=str(data.get("error") or "")[:400], tone="critical", run_id=rid))
                 return
             self._finish_sweep(rid, status, run, data)
 
@@ -376,7 +376,7 @@ class Guardian:
             self.store.log(Activity(source="Guardian", text="Sweep complete", result=("Nothing to report" if channel in (None, "none") else summary) + f" · ${float(run.get('totals', {}).get('cost_usd') or 0):.3f}", tone="ok", run_id=rid))
         else:
             summary = f"{status}: {str(data.get('error') or run.get('error') or '')[:120]}"
-            self.store.log(Activity(source="Guardian", text=f"Sweep {status}", result=str(data.get("error") or run.get("error") or "")[:200], tone="critical", run_id=rid))
+            self.store.log(Activity(source="Guardian", text=f"Sweep {status}", result=str(data.get("error") or run.get("error") or "")[:400], tone="critical", run_id=rid))
         self._sweep_update(rid, status=status, ended_at=now_iso(), summary=summary, cost_usd=float(run.get("totals", {}).get("cost_usd") or 0), recalls_pulled=int(feeds.get("upserted") or 0),
                            certain=int(matching.get("certain") or 0), candidates=int(matching.get("candidates") or 0), surfaced=n_dec)
         self._emit_local("sweep.finished", {"run_id": rid, "status": status})

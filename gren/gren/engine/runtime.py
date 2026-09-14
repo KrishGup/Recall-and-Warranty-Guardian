@@ -386,16 +386,17 @@ class GrenNode(MultiAgentBase):
     def _contract(self, role: str, schema: dict[str, Any], repair_errors: list[str] | None, bridge: str | None = None) -> str:
         if bridge == "claude-code":
             # The CLI enforces the schema itself through `--json-schema` and its structured-output tool. Restating the
-            # schema as text, or stacking a bulleted rule list, measurably makes the session free-write JSON with its own
-            # field names instead of calling that tool, which the engine then rejects. Keep this contract short prose.
+            # schema as text, stacking a bulleted rule list, or adding a second persona line ("You are an ADVERSARIAL
+            # verifier") measurably makes the session free-write its answer instead of calling that tool, which the
+            # engine then rejects. Keep this contract one short paragraph; the verifier's objective goes inside it.
+            adversarial = "Judge the candidate adversarially: look for the reason it should be rejected and pass it only when you could not falsify it. " if role == "verify" else ""
             lines = [
                 f'You are one bounded node ("{self.node.id}") inside a larger multi-agent graph. Your only job is to return the requested '
                 "structured output through the structured output tool, using exactly the fields the schema defines and nothing else. "
-                "Never invent sources, citations, numbers or facts you did not derive from the provided input; if evidence is missing, "
+                + adversarial
+                + "Never invent sources, citations, numbers or facts you did not derive from the provided input; if evidence is missing, "
                 "lower the confidence or leave the array empty rather than filling the gap.",
             ]
-            if role == "verify":
-                lines.append("You are an ADVERSARIAL verifier: your objective is to find the reason this candidate should be rejected, and you have authority to kill it. Only pass a candidate you could not falsify.")
             if repair_errors:
                 lines += ["", "Your previous answer FAILED schema validation with these errors - fix them by using the structured output tool with the exact field names:"] + [f"  - {e}" for e in repair_errors]
             return "\n".join(lines)
@@ -568,7 +569,8 @@ class GrenNode(MultiAgentBase):
         if failed:
             ctx.decision(node.id, "failure", f"fan-out completed {len(completed)}/{len(arr)} (quorum {quorum}); failed: " + " | ".join(f"#{i['index']}: {i.get('error')}" for i in failed)[:600])
         if arr and (not completed or len(completed) / len(arr) < quorum):
-            raise RuntimeError(f"quorum not met: {len(completed)}/{len(arr)} items completed (need {int(-(-quorum * len(arr)) // 1)}). Failures: " + " | ".join(str(i.get("error")) for i in failed)[:400])
+            need = max(1, int(-(-quorum * len(arr)) // 1))  # at least one item must complete whatever the quorum
+            raise RuntimeError(f"quorum not met: {len(completed)}/{len(arr)} items completed (need {need}). Failures: " + " | ".join(str(i.get("error")) for i in failed)[:400])
 
     # ---- code ----
     def _reducer(self, node: CodeNode | VerifyNode) -> Callable[..., Any]:

@@ -277,11 +277,40 @@ body.g-dragging-y { cursor: row-resize; user-select: none; }
 .g-nights { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(380px, 100%), 1fr)); gap: 16px; align-items: start; }
 .g-night__head { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; padding: 12px 20px; border-bottom: 1px solid var(--line); }
 .g-night__title { font-family: var(--font-heading); font-size: 16px; font-weight: 600; margin: 0; }
-.g-night__rows { list-style: none; margin: 0; padding: 4px 20px; }
-.g-night__row { display: grid; grid-template-columns: 52px minmax(0, 1fr); gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--line); }
-.g-night__row:last-child { border-bottom: 0; }
-.g-night__row time { font-family: var(--font-heading); font-size: 13px; color: var(--ink2); padding-top: 2px; }
+.g-night__meta { margin-top: 2px; font-size: 12px; }
+.g-night__rows { list-style: none; margin: 0; padding: 8px 20px 12px; position: relative; }
+/* The rail: one vertical hairline behind the tone dots so a night reads as a timeline, not a table. */
+.g-night__rows::before { content: ''; position: absolute; top: 16px; bottom: 16px; inset-inline-start: calc(20px + 52px + 10px + 5.5px); width: 1px; background: var(--line); }
 .g-src { display: inline-block; font-family: var(--font-ui); font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; padding: 2px 8px; border-radius: 10px; border: 1px solid var(--line); color: var(--ink2); margin-inline-end: 8px; vertical-align: middle; }
+
+.g-act { position: relative; }
+.g-act__head { display: grid; grid-template-columns: 52px 12px minmax(0, 1fr) auto; gap: 0 10px; align-items: start; padding: 10px 0; list-style: none; }
+.g-act__head::-webkit-details-marker { display: none; }
+.g-act__head--row { grid-template-columns: 52px 12px minmax(0, 1fr); }
+.g-act__time { font-family: var(--font-heading); font-size: 13px; color: var(--ink2); padding-top: 3px; font-variant-numeric: tabular-nums; }
+.g-act__dot { width: 12px; height: 12px; border-radius: 50%; margin-top: 5px; box-shadow: 0 0 0 3px var(--surface); }
+.g-act__main { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.g-act__title { font-size: 15px; line-height: 1.35; }
+.g-act__outcome { font-weight: 600; }
+.g-act__sub { font-size: 12px; }
+.g-act__text { line-height: 1.5; overflow-wrap: anywhere; }
+.g-act__result { font-size: 14px; }
+.g-act__links { display: flex; gap: 12px; flex-wrap: wrap; font-size: 12px; margin-top: 2px; }
+.g-act__chev { color: var(--ink2); font-size: 12px; padding-top: 4px; transition: transform 0.15s ease; }
+.g-act__details[open] > .g-act__head .g-act__chev { transform: rotate(180deg); }
+
+/* A run block: the steps are indented under the headline with their own quieter rail. */
+.g-act--run { margin: 4px 0; border-radius: 12px; }
+.g-act--run > .g-act__details > .g-act__head { cursor: pointer; border-radius: 12px; }
+.g-act--run > .g-act__details > .g-act__head:hover { background: var(--tint); }
+.g-act--run.is-failed > .g-act__details { border-inline-start: 3px solid var(--critical); padding-inline-start: 0; margin-inline-start: -3px; }
+.g-act__err { margin: 0 0 8px; margin-inline-start: calc(52px + 12px + 20px); padding: 10px 12px; border-radius: 8px; background: var(--criticalBg); color: var(--ink); font-family: var(--font-mono); font-size: 12px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
+.g-act__steps { list-style: none; margin: 0 0 4px; padding: 0; padding-inline-start: calc(52px + 12px + 20px); }
+.g-act__step { display: grid; grid-template-columns: 44px auto minmax(0, 1fr); gap: 0 8px; align-items: baseline; padding: 5px 0; font-size: 14px; border-top: 1px solid var(--line); }
+.g-act__step:first-child { border-top: 0; }
+.g-act__time--step { font-size: 12px; padding-top: 0; }
+.g-act__step .g-src { margin-inline-end: 0; }
+.g-act__foot { padding: 4px 0 8px; padding-inline-start: calc(52px + 12px + 20px); font-size: 13px; }
 
 /* ---- agent flow ---- */
 .g-flow { padding: 20px; overflow-x: auto; margin-bottom: 16px; }
