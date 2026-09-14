@@ -383,7 +383,22 @@ class GrenNode(MultiAgentBase):
                       "An independent verifier rejected parts of your previous output for the reasons above. Produce a corrected output that addresses every reason."]
         return system, "\n".join(parts)
 
-    def _contract(self, role: str, schema: dict[str, Any], repair_errors: list[str] | None) -> str:
+    def _contract(self, role: str, schema: dict[str, Any], repair_errors: list[str] | None, bridge: str | None = None) -> str:
+        if bridge == "claude-code":
+            # The CLI enforces the schema itself through `--json-schema` and its structured-output tool. Restating the
+            # schema as text, or stacking a bulleted rule list, measurably makes the session free-write JSON with its own
+            # field names instead of calling that tool, which the engine then rejects. Keep this contract short prose.
+            lines = [
+                f'You are one bounded node ("{self.node.id}") inside a larger multi-agent graph. Your only job is to return the requested '
+                "structured output through the structured output tool, using exactly the fields the schema defines and nothing else. "
+                "Never invent sources, citations, numbers or facts you did not derive from the provided input; if evidence is missing, "
+                "lower the confidence or leave the array empty rather than filling the gap.",
+            ]
+            if role == "verify":
+                lines.append("You are an ADVERSARIAL verifier: your objective is to find the reason this candidate should be rejected, and you have authority to kill it. Only pass a candidate you could not falsify.")
+            if repair_errors:
+                lines += ["", "Your previous answer FAILED schema validation with these errors - fix them by using the structured output tool with the exact field names:"] + [f"  - {e}" for e in repair_errors]
+            return "\n".join(lines)
         lines = [
             f'You are one bounded node ("{self.node.id}") inside a larger multi-agent graph. You have exactly one job: produce the requested structured output.',
             "Rules:",
@@ -436,7 +451,7 @@ class GrenNode(MultiAgentBase):
                 while True:
                     model = ctx.registry.create(bridge, model_alias, effort=effort, max_tokens=getattr(node, "max_output_tokens", None), node_opts=node_opts)
                     self._bind(model, attempt, item_index, role, bool(errors), f.timeout_ms / 1000)
-                    sys_prompt = "\n\n".join(x for x in (self._contract(role, schema, errors), system) if x)
+                    sys_prompt = "\n\n".join(x for x in (self._contract(role, schema, errors, bridge), system) if x)
                     res = await asyncio.wait_for(self._invoke(model, bridge, sys_prompt, prompt, out_model, node), timeout=f.timeout_ms / 1000)
                     a_rec["usage"] = sum_usage(a_rec.get("usage"), res["usage"])
                     a_rec["cost_usd"] = float(a_rec.get("cost_usd") or 0) + float(res["cost_usd"] or 0)
