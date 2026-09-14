@@ -426,7 +426,8 @@ def screens(site: Site) -> None:
             ("/", "home.png", None),
             ("/inventory", "inventory.png", lambda: page.get_by_role("button", name="NURSH", exact=False).first.click()),
             ("/decisions", "decisions.png", None),
-            ("/flow", "flow-paused.png", lambda: page.locator(".tr-node", has_text="household_decision").first.click(force=True) if page.locator(".tr-node", has_text="household_decision").count() else None),
+            # The paused-run capture belongs to the recording (beat_sweep_paused); `screens` only refreshes it while a run waits.
+            *([("/flow", "flow-paused.png", lambda: page.locator(".tr-node", has_text="household_decision").first.click(force=True) if page.locator(".tr-node", has_text="household_decision").count() else None)] if site.api("/api/summary").get("agent_status") == "pending" else []),
             ("/activity", "activity.png", None),
         ):
             page.goto(site.base + path, wait_until="networkidle")
