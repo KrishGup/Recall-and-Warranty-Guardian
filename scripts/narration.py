@@ -11,6 +11,13 @@ accuracy first, then how well its length fits the block's slot, then a small bon
 the previous block (one voice, fewer jumps). The winning span is cut from its take, placed at the block's start time
 on a silent track, stretched by at most 8 percent when it would run into the next block, loudness-normalised, and
 muxed under var/demo/guardian-demo.mp4 as var/demo/guardian-demo-final.mp4.
+
+Every take goes through the same vocal chain before any cut, so takes recorded at different distances or on
+different microphones sit at one level: a high-pass at 80 Hz (rumble, desk thumps), spectral noise reduction, a
+de-esser, a gentle compressor, and per-take loudness normalisation to -18 LUFS. Each candidate span also gets an
+audio score: its level against the take's own median, its signal-to-noise against the take's quiet floor, and a
+penalty for clipping. Room tone from the quietest second of the winning take runs under the whole track at a low
+level so the gaps between blocks are not digital silence.
 """
 from __future__ import annotations
 
@@ -75,6 +82,39 @@ def to_wav(src: str, dst: str) -> None:
     subprocess.run([ffmpeg(), "-y", "-loglevel", "error", "-i", src, "-ac", "1", "-ar", "16000", "-c:a", "pcm_s16le", dst], check=True)
 
 
+VOCAL_CHAIN = "highpass=f=80,afftdn=nf=-28:nt=w,deesser=i=0.4,acompressor=threshold=-20dB:ratio=2.5:attack=6:release=90:makeup=2,loudnorm=I=-18:TP=-2:LRA=9"
+
+
+def clean_take(src: str, dst: str) -> None:
+    """The vocal chain, once per take, at 48 kHz mono: what the cuts are taken from."""
+    subprocess.run([ffmpeg(), "-y", "-loglevel", "error", "-i", src, "-af", VOCAL_CHAIN, "-ac", "1", "-ar", "48000", "-c:a", "pcm_s16le", dst], check=True)
+
+
+def rms_db(path: str, start: float, end: float) -> float:
+    """Mean volume (dBFS) of a slice, from ffmpeg's volumedetect."""
+    if end - start < 0.05:
+        return -90.0
+    out = subprocess.run([ffmpeg(), "-loglevel", "info", "-ss", f"{start:.3f}", "-t", f"{end - start:.3f}", "-i", path, "-af", "volumedetect", "-f", "null", "-"], capture_output=True, text=True).stderr
+    for line in out.splitlines():
+        if "mean_volume" in line:
+            try:
+                return float(line.split("mean_volume:")[1].split("dB")[0])
+            except ValueError:
+                pass
+    return -90.0
+
+
+def peak_db(path: str, start: float, end: float) -> float:
+    out = subprocess.run([ffmpeg(), "-loglevel", "info", "-ss", f"{start:.3f}", "-t", f"{max(0.05, end - start):.3f}", "-i", path, "-af", "volumedetect", "-f", "null", "-"], capture_output=True, text=True).stderr
+    for line in out.splitlines():
+        if "max_volume" in line:
+            try:
+                return float(line.split("max_volume:")[1].split("dB")[0])
+            except ValueError:
+                pass
+    return -90.0
+
+
 def transcribe(paths: list[str], model_size: str = "small") -> None:
     from faster_whisper import WhisperModel  # type: ignore
 
@@ -85,13 +125,22 @@ def transcribe(paths: list[str], model_size: str = "small") -> None:
         name = os.path.splitext(os.path.basename(src))[0]
         wav = os.path.join(NARR, f"{name}.wav")
         to_wav(src, wav)
+        clean = os.path.join(NARR, f"{name}.clean.wav")
+        clean_take(src, clean)
         segments, info = model.transcribe(wav, language="en", word_timestamps=True, initial_prompt=prompt, vad_filter=True, beam_size=5)
         words: list[dict[str, Any]] = []
         for seg in segments:
             for w in seg.words or []:
                 words.append({"w": w.word.strip(), "n": norm(w.word), "s": round(w.start, 3), "e": round(w.end, 3), "p": round(w.probability, 3)})
-        json.dump({"take": name, "source": os.path.abspath(src), "wav": wav, "duration": info.duration, "words": words}, open(os.path.join(NARR, f"{name}.json"), "w", encoding="utf-8"), indent=1)
-        say(f"transcribed {name}: {len(words)} words, {info.duration:.0f} s")
+        # The take's own reference levels: speech (median over the word spans) and the floor (the quietest gap).
+        spans = [(w["s"], w["e"]) for w in words if w["e"] - w["s"] > 0.15][:400]
+        levels = sorted(rms_db(clean, a, b) for a, b in spans[:: max(1, len(spans) // 40)])
+        speech = levels[len(levels) // 2] if levels else -20.0
+        gaps = [(words[i]["e"], words[i + 1]["s"]) for i in range(len(words) - 1) if words[i + 1]["s"] - words[i]["e"] > 0.6]
+        floor_candidates = sorted((rms_db(clean, a + 0.1, b - 0.1), a + 0.1, b - 0.1) for a, b in gaps[:30]) if gaps else []
+        floor = floor_candidates[0] if floor_candidates else (-60.0, 0.0, 0.0)
+        json.dump({"take": name, "source": os.path.abspath(src), "wav": wav, "clean": clean, "duration": info.duration, "speech_db": speech, "floor_db": floor[0], "floor_span": [floor[1], floor[2]], "words": words}, open(os.path.join(NARR, f"{name}.json"), "w", encoding="utf-8"), indent=1)
+        say(f"transcribed {name}: {len(words)} words, {info.duration:.0f} s, speech {speech:.0f} dB, floor {floor[0]:.0f} dB")
 
 
 # ------------------------------------------------------------------------------------------------ align
@@ -133,7 +182,10 @@ def best_span(block_words: list[str], take_words: list[dict[str, Any]], search_f
 def score(cand: dict[str, Any], slot: float, same_take: bool) -> float:
     length = cand["end"] - cand["start"] + 2 * PAD
     fit = 1.0 if length <= slot else max(0.0, 1.0 - (length / slot - 1.0) / 0.25)  # over the slot by 25 % scores 0
-    return cand["accuracy"] * 0.7 + fit * 0.25 + (0.05 if same_take else 0.0)
+    level = max(0.0, 1.0 - abs(cand.get("level_delta_db", 0.0)) / 9.0)  # a span 9 dB off the take's own speech level scores 0
+    snr = min(1.0, max(0.0, (cand.get("snr_db", 30.0) - 10.0) / 25.0))  # 10 dB -> 0, 35 dB -> 1
+    clip = 0.0 if cand.get("peak_db", -6.0) < -0.3 else 0.15
+    return cand["accuracy"] * 0.6 + fit * 0.2 + level * 0.08 + snr * 0.07 + (0.05 if same_take else 0.0) - clip
 
 
 def choose(prefer: str | None = None) -> list[dict[str, Any]]:
@@ -151,14 +203,20 @@ def choose(prefer: str | None = None) -> list[dict[str, Any]]:
             if not span:
                 continue
             same = t["take"] == (prev_take or prefer)
-            cands.append({**span, "take": t["take"], "wav": t["wav"], "score": round(score(span, b["slot"], same), 3)})
+            clean = t.get("clean") or t["wav"]
+            lvl = rms_db(clean, span["start"], span["end"])
+            span["level_db"] = round(lvl, 1)
+            span["level_delta_db"] = round(lvl - t.get("speech_db", lvl), 1)
+            span["snr_db"] = round(lvl - t.get("floor_db", -60.0), 1)
+            span["peak_db"] = round(peak_db(clean, span["start"], span["end"]), 1)
+            cands.append({**span, "take": t["take"], "wav": clean, "floor_span": t.get("floor_span"), "score": round(score(span, b["slot"], same), 3)})
         if not cands:
             raise SystemExit(f"block {b['id']}: no take matched")
         cands.sort(key=lambda c: -c["score"])
         win = cands[0]
         cursor[win["take"]] = win["i1"]
         prev_take = win["take"]
-        choices.append({"block": b["id"], "slot_start": b["start"], "slot": round(b["slot"], 2), "take": win["take"], "wav": win["wav"], "start": win["start"], "end": win["end"], "accuracy": win["accuracy"], "score": win["score"], "spoken": win["spoken"], "alternatives": [{k: c[k] for k in ("take", "accuracy", "score")} for c in cands[1:]]})
+        choices.append({"block": b["id"], "slot_start": b["start"], "slot": round(b["slot"], 2), "take": win["take"], "wav": win["wav"], "start": win["start"], "end": win["end"], "accuracy": win["accuracy"], "score": win["score"], "level_db": win["level_db"], "snr_db": win["snr_db"], "peak_db": win["peak_db"], "floor_span": win.get("floor_span"), "spoken": win["spoken"], "alternatives": [{k: c[k] for k in ("take", "accuracy", "score", "snr_db")} for c in cands[1:]]})
     json.dump(choices, open(os.path.join(NARR, "choices.json"), "w", encoding="utf-8"), indent=1)
     return choices
 
@@ -193,7 +251,21 @@ def assemble(prefer: str | None = None, stretch: bool = True) -> None:
         inputs += ["-i", part]
         filters.append(f"[{i}:a]adelay={int(c['slot_start'] * 1000)}|{int(c['slot_start'] * 1000)}[a{i}]")
         mixes.append(f"[a{i}]")
-    graph = ";".join(filters) + ";" + "".join(mixes) + f"amix=inputs={len(ch)}:normalize=0:dropout_transition=0,apad=whole_dur={total:.2f},atrim=0:{total:.2f},loudnorm=I=-16:TP=-1.5:LRA=11[out]"
+    # Room tone: the quietest second of the take that carries most blocks, looped under everything at -34 dB, so the
+    # gaps between blocks match the recording's own air instead of digital silence.
+    from collections import Counter
+
+    main_take = Counter(c["take"] for c in ch).most_common(1)[0][0]
+    main = next(c for c in ch if c["take"] == main_take)
+    tone = os.path.join(parts_dir, "roomtone.wav")
+    fs = main.get("floor_span") or [0.0, 0.0]
+    if fs and fs[1] - fs[0] >= 0.4:
+        subprocess.run([ff, "-y", "-loglevel", "error", "-ss", f"{fs[0]:.3f}", "-t", f"{min(1.0, fs[1] - fs[0]):.3f}", "-i", main["wav"], "-af", "afade=t=in:d=0.05,afade=t=out:st=0.9:d=0.1", "-ac", "1", "-ar", "48000", tone], check=True)
+        inputs += ["-stream_loop", "-1", "-i", tone]
+        filters.append(f"[{len(ch)}:a]atrim=0:{total:.2f},volume=-34dB[tone]")
+        mixes.append("[tone]")
+    n_in = len(mixes)
+    graph = ";".join(filters) + ";" + "".join(mixes) + f"amix=inputs={n_in}:normalize=0:dropout_transition=0,apad=whole_dur={total:.2f},atrim=0:{total:.2f},loudnorm=I=-16:TP=-1.5:LRA=11[out]"
     narration = os.path.join(OUT, "narration.wav")
     subprocess.run([ff, "-y", "-loglevel", "error", *inputs, "-filter_complex", graph, "-map", "[out]", "-ac", "2", "-ar", "48000", narration], check=True)
     json.dump(ch, open(os.path.join(NARR, "choices.json"), "w", encoding="utf-8"), indent=1)
@@ -204,10 +276,13 @@ def assemble(prefer: str | None = None, stretch: bool = True) -> None:
 
 def report(ch: list[dict[str, Any]] | None = None) -> None:
     ch = ch or json.load(open(os.path.join(NARR, "choices.json"), encoding="utf-8"))
-    say(f"{'block':15s} {'take':10s} {'acc':>5s} {'len':>6s} {'slot':>6s} {'tempo':>5s} {'over':>5s}")
+    say(f"{'block':15s} {'take':12s} {'acc':>5s} {'len':>6s} {'slot':>6s} {'tempo':>5s} {'over':>5s} {'level':>6s} {'snr':>5s}")
     for c in ch:
         length = c["end"] - c["start"] + 2 * PAD
-        say(f"{c['block']:15s} {c['take']:10s} {c['accuracy']:5.2f} {length:6.1f} {c['slot']:6.1f} {c.get('tempo', 1.0):5.2f} {c.get('overrun', 0.0):5.1f}")
+        say(f"{c['block']:15s} {c['take']:12s} {c['accuracy']:5.2f} {length:6.1f} {c['slot']:6.1f} {c.get('tempo', 1.0):5.2f} {c.get('overrun', 0.0):5.1f} {c.get('level_db', 0.0):6.1f} {c.get('snr_db', 0.0):5.0f}")
+    from collections import Counter
+
+    say("takes used: " + ", ".join(f"{t} x{n}" for t, n in Counter(c["take"] for c in ch).most_common()))
     low = [c for c in ch if c["accuracy"] < 0.8]
     if low:
         say("low accuracy (check the spoken text in var/demo/narration/choices.json): " + ", ".join(c["block"] for c in low))
