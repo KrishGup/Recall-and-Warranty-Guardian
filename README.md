@@ -156,6 +156,13 @@ GREN_ALLOW_MOCK=1 python -m pytest -q
 
 `gren analyze guardian/graphs/nightly-sweep.yaml` shows the derived edges, the critical path, the frozen constraints (`gate_before_side_effect`, `spend_cap`, `verifier_can_kill`, `width_budget`, and more), and the pre-ship checklist.
 
+## Demo deck and video
+
+- `docs/deck/Guardian-Demo-Deck.pptx` is the deck (13 slides with speaker notes). `docs/deck/preview` has one PNG for each slide. Rebuild both with `python scripts/build_deck.py --export`.
+- `python scripts/record_demo.py all --reset` renders the slides, records the live site with Playwright, and assembles `var/demo/guardian-demo.mp4`. `docs/DEMO_SCRIPT.md` has the timecodes and the words for the voice-over.
+- `python scripts/record_demo.py mux narration.wav` lays the voice-over under the video.
+- `docs/architecture.png` is the architecture diagram.
+
 ## Repository layout
 
 ```
@@ -165,9 +172,9 @@ web/             Vite + React dashboard (src/app: shell and pages; src/trace: th
 tests/           pytest: feeds, matching, policy, schemas, the sweep graph end to end, the HTTP API, the deployment helpers
 demo/            the demo household
 deploy/          the EC2 install script (deploy/ec2) and the AgentCore project (deploy/agentcore)
-scripts/         aws_check.py, deploy_ec2.py, package_agent.py
-docs/            AWS_SETUP.md, AGENT_FLOW.md
-design/          the design handoff (README and high-fidelity HTML prototypes)
+scripts/         aws_check.py, deploy_ec2.py, package_agent.py, build_deck.py, record_demo.py, deck_content.py
+docs/            AWS_SETUP.md, AGENT_FLOW.md, DEMO_SCRIPT.md, architecture.png, deck/ (the PPTX and its previews)
+design/          the design handoff (README, high-fidelity HTML prototypes, deck/ and fonts/)
 BUILD_PLAN.md    the product and architecture plan. agents-for-humans-hackathon-requirements.md lists the rules.
 ```
 

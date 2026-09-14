@@ -41,15 +41,17 @@ interface Props {
 const MARKERS = { faint: 'gArrow', primary: 'gArrowC', amber: 'gArrowG', critical: 'gArrowR', ink: 'gArrowK', ok: 'gArrowOk' } as const
 
 /** The node the camera should centre on: the gate that waits, else the running node furthest along the graph, else
- *  the middle of the graph (triage in the sweep). Returns '' when there is nothing to focus. */
-function focusNode(run: Props['run'], graph: Props['graph'], pos: PosMap): string {
+ *  the start of the graph (a blueprint or a finished run reads from its first node). '' when there is nothing. */
+function focusNode(run: Props['run'], graph: Props['graph'], pos: PosMap, rtl: boolean): string {
   const recs = run?.nodes ?? {}
   const ids = Object.keys(recs)
   const waiting = ids.find(id => isWaiting(recs[id].status))
   if (waiting) return waiting
+  const ahead = (a: string, b: string) => (rtl ? pos[b].x < pos[a].x : pos[b].x > pos[a].x)
   const running = ids.filter(id => recs[id].status === 'running' && pos[id])
-  if (running.length) return running.reduce((a, b) => (pos[b].x > pos[a].x ? b : a))
-  return pos.triage ? 'triage' : graph.nodes[Math.floor(graph.nodes.length / 2)]?.id ?? ''
+  if (running.length) return running.reduce((a, b) => (ahead(a, b) ? b : a))
+  const all = graph.nodes.map(n => n.id).filter(id => pos[id])
+  return all.length ? all.reduce((a, b) => (ahead(a, b) ? a : b)) : ''
 }
 
 export function Canvas({ run, runId, graph, rtl, theme, narrow, sel, onSelect, fitKey, now, loading, error, apiDown, hasRuns, onRetry }: Props) {
@@ -78,6 +80,8 @@ export function Canvas({ run, runId, graph, rtl, theme, narrow, sel, onSelect, f
   runRef.current = run
   const graphRef = useRef(graph)
   graphRef.current = graph
+  const rtlRef = useRef(rtl)
+  rtlRef.current = rtl
 
   const cpSet = useMemo(() => new Set(showCritical ? criticalNodes(run) : []), [run, showCritical])
   const relSet = useMemo(() => relatedSet(sel, graph.edges), [sel, graph.edges])
@@ -129,7 +133,7 @@ export function Canvas({ run, runId, graph, rtl, theme, narrow, sel, onSelect, f
       }
       // The graph does not fit at a readable zoom: centre on the front of the run (the gate that waits, else the
       // running node furthest along, else the middle of the graph) and keep the graph's edges inside the canvas.
-      const f = posRef.current[focusNode(runRef.current, graphRef.current, posRef.current)] || ps[0]
+      const f = posRef.current[focusNode(runRef.current, graphRef.current, posRef.current, rtlRef.current)] || ps[0]
       let x = r.width / 2 - (f.x + f.w / 2) * k
       let y = r.height / 2 - (f.y + f.h / 2) * k + 20
       const m = 30
@@ -142,7 +146,7 @@ export function Canvas({ run, runId, graph, rtl, theme, narrow, sel, onSelect, f
   )
 
   // The camera follows a live run until the user takes over (pan, zoom, drag); Fit hands it back.
-  const focusId = focusNode(run, graph, pos)
+  const focusId = focusNode(run, graph, pos, rtl)
   useEffect(() => {
     if (!hasLayoutRef.current || userMovedRef.current) return
     const id = requestAnimationFrame(() => fit(true))
