@@ -98,26 +98,31 @@ export function Canvas({ run, runId, graph, rtl, theme, narrow, sel, onSelect, f
     setView({ k, x: r.width / 2 - (f.x + f.w / 2) * k, y: r.height / 2 - (f.y + f.h / 2) * k + 20 })
   }, [])
 
-  // Re-fit on request (panels, drawer, inspector, run change, direction) once the layout exists.
+  // Re-fit on request (panels, drawer, inspector, run change, direction) once the layout exists,
+  // and again whenever the layout changes shape: a live run reveals its nodes level by level.
   const hasLayout = graph.nodes.length > 0
   useEffect(() => {
     if (!hasLayout) return
     const id = requestAnimationFrame(() => fit())
     return () => cancelAnimationFrame(id)
-  }, [fitKey, runId, rtl, hasLayout, fit])
+  }, [fitKey, runId, rtl, hasLayout, levelsKey, fit])
 
-  // Size of the canvas (legend visibility) and a debounced re-fit on resize.
+  // Size of the canvas (legend visibility) and a debounced re-fit on resize. The svg is observed
+  // too: a banner above it (waiting, failed, cancelled) changes its height without touching the section.
   useEffect(() => {
     const el = sectionRef.current
+    const svg = svgRef.current
     if (!el || typeof ResizeObserver === 'undefined') return
     let timer: number | null = null
     const ro = new ResizeObserver(entries => {
-      const cr = entries[0]?.contentRect
-      if (cr) setSize({ w: cr.width, h: cr.height })
+      for (const entry of entries) {
+        if (entry.target === el) setSize({ w: entry.contentRect.width, h: entry.contentRect.height })
+      }
       if (timer != null) clearTimeout(timer)
       timer = window.setTimeout(() => fit(), 120)
     })
     ro.observe(el)
+    if (svg) ro.observe(svg)
     return () => {
       ro.disconnect()
       if (timer != null) clearTimeout(timer)
