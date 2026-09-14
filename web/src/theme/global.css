@@ -14,6 +14,14 @@
   color-scheme: dark;
 }
 html, body, #root { margin: 0; padding: 0; height: 100%; }
+/* Resolution tiers. The layout is fluid, but every size in the app is in px, so on a 2K or 4K screen the type shrinks
+   to a sliver while the cards stretch. `--ui-scale` zooms the whole app by the screen width (media queries read the
+   real viewport, not the zoomed one). Percentages survive zoom; viewport units do not, so use --vh and --vw below. */
+:root { --ui-scale: 1; --vh: calc(100vh / var(--ui-scale)); --vw: calc(100vw / var(--ui-scale)); }
+@media (min-width: 1920px) { :root { --ui-scale: 1.1; } }
+@media (min-width: 2400px) { :root { --ui-scale: 1.25; } }
+@media (min-width: 3200px) { :root { --ui-scale: 1.5; --page-max: 1600px; } }
+#root { zoom: var(--ui-scale); }
 body { background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 15px; line-height: 1.5; -webkit-font-smoothing: antialiased; }
 * { box-sizing: border-box; }
 a { color: var(--primary); }

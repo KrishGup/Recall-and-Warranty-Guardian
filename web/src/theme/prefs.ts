@@ -24,6 +24,20 @@ function write(key: string, value: string) {
   }
 }
 
+/** The resolution tier's zoom factor (`--ui-scale` in global.css). Layout px inside #root are window px divided by it,
+ *  so anything that sizes from window.innerWidth/innerHeight must go through here. */
+export function uiScale(): number {
+  if (typeof document === 'undefined') return 1
+  const v = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--ui-scale'))
+  return Number.isFinite(v) && v > 0 ? v : 1
+}
+/** The viewport in layout px (what the app's own px measurements compare against). */
+export function layoutViewport(): { width: number; height: number } {
+  if (typeof window === 'undefined') return { width: 1200, height: 900 }
+  const s = uiScale()
+  return { width: window.innerWidth / s, height: window.innerHeight / s }
+}
+
 export function readNumber(key: string, fallback: number): number {
   const v = Number(read(key, String(fallback)))
   return Number.isFinite(v) ? v : fallback

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'react'
 import { Api } from '../../api/client'
 import type { ItemDetail, MatchCandidate } from '../../api/types'
-import { readNumber, writeNumber } from '../../theme/prefs'
+import { layoutViewport, readNumber, writeNumber } from '../../theme/prefs'
 import { warrantyColor } from '../../theme/tokens'
 import { Bar, ErrorNote, Skeleton, Status } from '../../ui/primitives'
 import { clamp, errMsg, money, plural, recallVar } from '../format'
@@ -15,8 +15,11 @@ const KEY = 'guardian.splitH'
 
 export function SplitPanel({ itemId, onClose }: { itemId: string; onClose: () => void }) {
   const { theme, toast, narrow, dataVersion, bumpData } = useShell()
-  const max = Math.max(160, Math.round((typeof window !== 'undefined' ? window.innerHeight : 900) * 0.5))
-  const [h, setH] = useState(() => clamp(readNumber(KEY, 300), 160, max))
+  // Up to half the (layout) viewport; the default is a proportion of it, so a tall screen opens a taller panel and a
+  // short laptop screen keeps more of the table in view.
+  const vh = layoutViewport().height
+  const max = Math.max(160, Math.round(vh * 0.5))
+  const [h, setH] = useState(() => clamp(readNumber(KEY, Math.round(vh * (vh < 800 ? 0.3 : 0.38))), 160, max))
   const set = useCallback((v: number) => {
     setH(v)
     writeNumber(KEY, v)
@@ -217,7 +220,7 @@ function EmailModal({ item, onClose, onToast }: { item: ItemDetail; onClose: () 
           <p className="g-small g-muted" style={{ margin: '0 0 10px' }}>
             The message Guardian ingested for {item.retailer ? `this ${item.retailer} purchase` : 'this item'}, captured as plain text.
           </p>
-          <pre className="g-receipt-text" dir="ltr" style={{ maxHeight: '40vh' }}>
+          <pre className="g-receipt-text" dir="ltr" style={{ maxHeight: 'calc(var(--vh) * 0.4)' }}>
             {item.receipt_text}
           </pre>
           <div className="g-dialog__foot">

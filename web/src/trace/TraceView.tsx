@@ -6,7 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { useSearchParams } from 'react-router-dom'
 import { Api } from '../api/client'
 import type { GrenEvent, GrenGraphInfo, GuardianEvent } from '../api/types'
-import { readNumber, useNarrow, usePrefs, writeNumber } from '../theme/prefs'
+import { layoutViewport, readNumber, useNarrow, usePrefs, writeNumber } from '../theme/prefs'
 import { BREAKPOINT_TRACE_NARROW, type AgentStatusKey } from '../theme/tokens'
 import { DEFAULT_BLUEPRINT, isBlueprint, useBlueprint, useGraphs } from './blueprint'
 import { Canvas } from './Canvas'
@@ -55,7 +55,7 @@ export function TraceWorkbench({ embedded = false, chrome }: Props) {
   const { rtl, theme } = usePrefs()
   const windowNarrow = useNarrow(BREAKPOINT_TRACE_NARROW)
   const rootRef = useRef<HTMLDivElement>(null)
-  const [rootW, setRootW] = useState(() => (typeof window === 'undefined' ? 1200 : window.innerWidth))
+  const [rootW, setRootW] = useState(() => layoutViewport().width)
   useEffect(() => {
     const el = rootRef.current
     if (!embedded || !el || typeof ResizeObserver === 'undefined') return
@@ -161,7 +161,7 @@ export function TraceWorkbench({ embedded = false, chrome }: Props) {
   const [drawerOpen, setDrawerOpen] = useState(() => {
     const stored = readNumber(KEY_DRAWER_OPEN, -1)
     if (stored === 0 || stored === 1) return stored === 1
-    return typeof window === 'undefined' || window.innerHeight >= 700
+    return layoutViewport().height >= 700
   })
   const [colH, setColH] = useState(800)
   const mainRef = useRef<HTMLDivElement>(null)

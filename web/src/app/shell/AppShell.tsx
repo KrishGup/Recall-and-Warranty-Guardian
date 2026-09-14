@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { Api, useEventSource } from '../../api/client'
 import type { Decision, Decisions, GuardianEvent, Summary } from '../../api/types'
-import { readBool, readNumber, useNarrow, usePrefs, writeNumber } from '../../theme/prefs'
+import { layoutViewport, readBool, readNumber, useNarrow, usePrefs, writeNumber } from '../../theme/prefs'
 import { AGENT_STATUS, BREAKPOINT_NARROW } from '../../theme/tokens'
 import { Logo } from '../../ui/Logo'
 import { clamp, errMsg } from '../format'
@@ -253,8 +253,8 @@ export function AppShell({ children }: { children: ReactNode }) {
     runSweep()
   }
 
-  // ---- side nav width (200–400, default 248, persisted) ----
-  const [navW, setNavW] = useState(() => clamp(readNumber(NAV_KEY, 248), 200, 400))
+  // ---- side nav width (200–400, persisted; the default follows the screen: 208 on a small laptop, 248 otherwise) ----
+  const [navW, setNavW] = useState(() => clamp(readNumber(NAV_KEY, layoutViewport().width < 1180 ? 208 : 248), 200, 400))
   const setNav = useCallback((v: number) => {
     setNavW(v)
     writeNumber(NAV_KEY, v)
@@ -350,26 +350,28 @@ export function AppShell({ children }: { children: ReactNode }) {
           </nav>
 
           <div className="g-col">
-            <main id="main" tabIndex={-1} className={`g-main${page === 'flow' ? ' g-main--flow' : ''}`} style={narrow && selectedItemId ? { paddingBottom: '40vh' } : undefined}>
-              <nav aria-label="Breadcrumb" className="g-crumb">
-                <Link to="/">Guardian</Link>
-                <span aria-hidden="true">/</span>
-                <span aria-current="page">{TITLES[page]}</span>
-              </nav>
-              {showFlash && critical && (
-                <div role="alert" className="g-flash">
-                  <span aria-hidden="true" className="g-flash__i">
-                    !
-                  </span>
-                  <div className="g-flash__text">
-                    <strong>Critical recall matches an item you own.</strong> {flashText(critical)}
+            <main id="main" tabIndex={-1} className={`g-main${page === 'flow' ? ' g-main--flow' : ''}`} style={narrow && selectedItemId ? { paddingBottom: 'calc(var(--vh) * 0.4)' } : undefined}>
+              <div className="g-main__inner">
+                <nav aria-label="Breadcrumb" className="g-crumb">
+                  <Link to="/">Guardian</Link>
+                  <span aria-hidden="true">/</span>
+                  <span aria-current="page">{TITLES[page]}</span>
+                </nav>
+                {showFlash && critical && (
+                  <div role="alert" className="g-flash">
+                    <span aria-hidden="true" className="g-flash__i">
+                      !
+                    </span>
+                    <div className="g-flash__text">
+                      <strong>Critical recall matches an item you own.</strong> {flashText(critical)}
+                    </div>
+                    <button type="button" className="g-flash__btn" onClick={() => navigate('/decisions')}>
+                      Review decision
+                    </button>
                   </div>
-                  <button type="button" className="g-flash__btn" onClick={() => navigate('/decisions')}>
-                    Review decision
-                  </button>
-                </div>
-              )}
-              {children}
+                )}
+                {children}
+              </div>
             </main>
             {selectedItemId && <SplitPanel itemId={selectedItemId} onClose={closeItem} />}
           </div>
