@@ -366,6 +366,9 @@ def beat_sweep_paused(site: Site, pw) -> str:
     b, ctx, page = site.context(pw, "sweep-paused")
     site.goto(page, "/flow")
     page.wait_for_timeout(2200)
+    # The deck's sweep slide: the paused run before the cursor enters the frame.
+    os.makedirs(SCREENS_DIR, exist_ok=True)
+    page.screenshot(path=os.path.join(SCREENS_DIR, "flow-paused.png"))
     site.hover_boxes(page, [page.get_by_text("Waiting on you", exact=False).first], hold=1600)
     site.click(page, page.get_by_role("tab", name="Timeline"), hold=3200)
     gate = page.locator(".tr-node", has_text="household_decision")
