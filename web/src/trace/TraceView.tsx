@@ -175,8 +175,9 @@ export function TraceWorkbench({ embedded = false, chrome }: Props) {
     ro.observe(el)
     return () => ro.disconnect()
   }, [])
+  // The canvas keeps the larger share by default: a 13-node graph needs about 400 px to read without zooming.
   const drawerMax = Math.max(120, Math.round(colH * 0.55))
-  const drawerDefault = Math.min(340, Math.round(colH * 0.42))
+  const drawerDefault = Math.min(320, Math.round(colH * 0.38))
   const drawerH = clamp(drawerStored ?? drawerDefault, 120, drawerMax)
   const toggleDrawer = useCallback(() => {
     setDrawerOpen(o => {

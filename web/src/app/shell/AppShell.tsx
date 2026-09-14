@@ -263,7 +263,9 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   const pendingCount = decisions?.pending.length ?? summary?.decisions_pending ?? 0
   const critical = decisions?.pending.find(d => d.severity === 'critical') ?? null
-  const showFlash = critical !== null && page !== 'decisions'
+  // Decisions is where the banner points, and the Agent flow workbench shows the waiting gate in its own banner and
+  // needs its height for the graph.
+  const showFlash = critical !== null && page !== 'decisions' && page !== 'flow'
 
   const shell: Shell = useMemo(
     () => ({

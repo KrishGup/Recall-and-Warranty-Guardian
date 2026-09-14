@@ -185,11 +185,13 @@ export function Canvas({ run, runId, graph, rtl, theme, narrow, sel, onSelect, f
     }
   }, [fit])
 
-  // Wheel zoom around the cursor (non-passive so the page never scrolls).
+  // Ctrl/⌘ + wheel (and a trackpad pinch, which arrives with ctrlKey) zooms around the cursor. A plain wheel is left
+  // to the browser so the page behind the workbench still scrolls when the pointer happens to be over the graph.
   useEffect(() => {
     const svg = svgRef.current
     if (!svg) return
     const onWheel = (e: WheelEvent) => {
+      if (!e.ctrlKey && !e.metaKey) return
       e.preventDefault()
       const r = svg.getBoundingClientRect()
       const mx = e.clientX - r.left
@@ -499,7 +501,7 @@ export function Canvas({ run, runId, graph, rtl, theme, narrow, sel, onSelect, f
             skipped or not yet
           </span>
           <span className="tr-legend-sep" aria-hidden="true" />
-          <span>drag nodes · wheel to zoom · hover an edge to see what crosses it</span>
+          <span>drag nodes · Ctrl + wheel or pinch to zoom · hover an edge to see what crosses it</span>
         </div>
       )}
 

@@ -386,8 +386,11 @@ body.g-dragging-y { cursor: row-resize; user-select: none; }
 }
 
 /* ---- Agent flow page: the trace workbench fills the main area below the breadcrumb and the page header ---- */
-.g-main--flow { display: flex; flex-direction: column; overflow: hidden; padding-bottom: 16px; }
+.g-main--flow { display: flex; flex-direction: column; overflow-y: auto; padding-bottom: 16px; }
 .g-flowpage { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+/* The workbench fills the column when the screen is tall enough, and never drops below a working height: on a
+   1080 p screen the page scrolls instead of squeezing a 13-node graph into a strip. */
+@media (min-width: 861px) { .g-flowpage .tr-frame { min-height: 700px; } }
 .g-flowhead { flex: 0 0 auto; margin-bottom: 12px; }
 .g-flowhead__actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .g-flowhead__stream { font-family: var(--font-ui); font-size: 13px; color: var(--ink2); display: inline-flex; align-items: center; gap: 8px; margin-inline-end: 4px; white-space: nowrap; }
