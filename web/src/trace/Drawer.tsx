@@ -1,14 +1,19 @@
-// Bottom drawer of the canvas column: grab bar, tab strip and the Events / Metrics / Decisions / Tasks / Spec / Output panels.
-import { useLayoutEffect, useRef, type UIEvent } from 'react'
+// Bottom drawer of the canvas column: grab bar, tab strip and the panels. Overview and Timeline read the run the way a
+// person would; Events is the engine log with filters; Metrics, Decisions, Tasks, Spec and Output are the engine's view.
+import { useLayoutEffect, useMemo, useRef, useState, type UIEvent } from 'react'
 import { fmt } from '../api/client'
-import type { GrenEvent, GrenRun } from '../api/types'
+import type { ActivityRow, GrenEvent, GrenGraphInfo, GrenRun } from '../api/types'
 import { kindColors, type Theme } from '../theme/tokens'
 import { GateCard, type GateInfo } from './GateCard'
-import { eventText, eventTone, hms, kfmt, nodeDuration, nodeStatus, pct, pretty, tokensOf, type Graph } from './model'
+import { eventText, eventTone, hms, kfmt, modelShort, nodeDuration, nodeStatus, pct, pretty, tokensOf, type Graph } from './model'
+import { OverviewPanel, type OverviewActions } from './Overview'
+import { TimelinePanel } from './Timeline'
 import { Resizer } from './ui'
 
-export type Tab = 'events' | 'metrics' | 'decisions' | 'tasks' | 'spec' | 'output'
+export type Tab = 'overview' | 'timeline' | 'events' | 'metrics' | 'decisions' | 'tasks' | 'spec' | 'output'
 const TABS: [Tab, string][] = [
+  ['overview', 'Overview'],
+  ['timeline', 'Timeline'],
   ['events', 'Events'],
   ['metrics', 'Metrics'],
   ['decisions', 'Decisions'],
@@ -21,6 +26,9 @@ interface Props {
   run: GrenRun | null
   graph: Graph
   events: GrenEvent[]
+  activity: ActivityRow[]
+  graphInfo: GrenGraphInfo | null
+  overview: OverviewActions
   tab: Tab
   onTab: (t: Tab) => void
   open: boolean
@@ -36,7 +44,7 @@ interface Props {
   now: number
 }
 
-export function Drawer({ run, graph, events, tab, onTab, open, onToggle, height, maxH, onHeight, onCommit, sel, onSelect, gate, theme, now }: Props) {
+export function Drawer({ run, graph, events, activity, graphInfo, overview, tab, onTab, open, onToggle, height, maxH, onHeight, onCommit, sel, onSelect, gate, theme, now }: Props) {
   const panelRef = useRef<HTMLDivElement>(null)
   const atBottom = useRef(true)
   const onScroll = (e: UIEvent<HTMLDivElement>) => {
@@ -83,7 +91,9 @@ export function Drawer({ run, graph, events, tab, onTab, open, onToggle, height,
         </button>
       </div>
       <div id="tr-panel" role="tabpanel" aria-labelledby={`tr-tab-${tab}`} className="tr-panel" ref={panelRef} onScroll={onScroll} hidden={!open}>
-        {tab === 'events' && <EventsPanel events={events} run={run} />}
+        {tab === 'overview' && <OverviewPanel run={run} graph={graph} activity={activity} graphInfo={graphInfo} theme={theme} now={now} actions={overview} />}
+        {tab === 'timeline' && <TimelinePanel run={run} graph={graph} sel={sel} onSelect={onSelect} theme={theme} now={now} />}
+        {tab === 'events' && <EventsPanel events={events} run={run} graph={graph} />}
         {tab === 'metrics' && <MetricsPanel run={run} graph={graph} sel={sel} onSelect={onSelect} theme={theme} now={now} />}
         {tab === 'decisions' && <DecisionsPanel run={run} />}
         {tab === 'tasks' && <TasksPanel run={run} gate={gate} now={now} />}
@@ -94,32 +104,84 @@ export function Drawer({ run, graph, events, tab, onTab, open, onToggle, height,
   )
 }
 
-function EventsPanel({ events, run }: { events: GrenEvent[]; run: GrenRun | null }) {
-  if (!events.length) return <p className="tr-empty">{run ? 'No events recorded yet.' : 'Select a run to see its event log.'}</p>
+type EventClass = 'all' | 'problems' | 'nodes' | 'calls' | 'gates'
+const CLASSES: [EventClass, string][] = [
+  ['all', 'All'],
+  ['problems', 'Problems'],
+  ['nodes', 'Nodes'],
+  ['calls', 'Model calls'],
+  ['gates', 'Gates'],
+]
+
+function EventsPanel({ events, run, graph }: { events: GrenEvent[]; run: GrenRun | null; graph: Graph }) {
+  const [q, setQ] = useState('')
+  const [node, setNode] = useState('')
+  const [cls, setCls] = useState<EventClass>('all')
+  const filtered = useMemo(() => {
+    const s = q.trim().toLowerCase()
+    return events.filter(ev => {
+      if (node && ev.node !== node) return false
+      if (cls === 'problems' && eventTone(ev.type) !== 'critical') return false
+      if (cls === 'nodes' && !/^node\./.test(ev.type)) return false
+      if (cls === 'calls' && !/^call\.|^code\./.test(ev.type)) return false
+      if (cls === 'gates' && !/gate|approv|paused|resumed|task/.test(ev.type)) return false
+      if (s && !(ev.type.toLowerCase().includes(s) || (ev.node ?? '').toLowerCase().includes(s) || eventText(ev).toLowerCase().includes(s))) return false
+      return true
+    })
+  }, [events, q, node, cls])
+  if (!events.length) return <p className="tr-empty">{run ? (run.run.labels?.kind === 'blueprint' ? 'A blueprint has no events; run it to see the engine log.' : 'No events recorded yet.') : 'Select a run to see its event log.'}</p>
   return (
-    <ol className="tr-events" dir="ltr">
-      {events.map(ev => (
-        <li key={ev.seq} className="tr-ev">
-          <span className="tr-ev-t">{hms(ev.ts)}</span>
-          <span className={`tr-ev-type tone-${eventTone(ev.type)}`}>{ev.type}</span>
-          <span className="tr-ev-node">{ev.node ? ev.node + (ev.item != null ? `[${ev.item}]` : '') : '—'}</span>
-          <span className="tr-ev-text">{eventText(ev)}</span>
-        </li>
-      ))}
-    </ol>
+    <>
+      <div className="tr-evfilters">
+        <input type="search" className="tr-input tr-input--sm" placeholder="Filter events" aria-label="Filter events" value={q} onChange={e => setQ(e.target.value)} />
+        <select className="tr-input tr-input--sm" aria-label="Node" value={node} onChange={e => setNode(e.target.value)}>
+          <option value="">All nodes</option>
+          {graph.nodes.map(n => (
+            <option key={n.id} value={n.id}>
+              {n.id}
+            </option>
+          ))}
+        </select>
+        <div role="group" aria-label="Event kind" className="tr-chips">
+          {CLASSES.map(([id, label]) => (
+            <button key={id} type="button" className="tr-chip" aria-pressed={cls === id} onClick={() => setCls(id)}>
+              {label}
+            </button>
+          ))}
+        </div>
+        <span className="tr-meta tr-evcount">
+          {filtered.length === events.length ? `${events.length} events` : `${filtered.length} of ${events.length}`}
+        </span>
+      </div>
+      {filtered.length === 0 ? (
+        <p className="tr-empty">No events match.</p>
+      ) : (
+        <ol className="tr-events" dir="ltr">
+          {filtered.map(ev => (
+            <li key={ev.seq} className="tr-ev">
+              <span className="tr-ev-t">{hms(ev.ts)}</span>
+              <span className={`tr-ev-type tone-${eventTone(ev.type)}`}>{ev.type}</span>
+              <span className="tr-ev-node">{ev.node ? ev.node + (ev.item != null ? `[${ev.item}]` : '') : '—'}</span>
+              <span className="tr-ev-text">{eventText(ev)}</span>
+            </li>
+          ))}
+        </ol>
+      )}
+    </>
   )
 }
 
 function MetricsPanel({ run, graph, sel, onSelect, theme, now }: { run: GrenRun | null; graph: Graph; sel: string | null; onSelect: (id: string) => void; theme: Theme; now: number }) {
   const m = run?.metrics
-  if (!run || !m) return <p className="tr-empty">No metrics yet.</p>
+  if (!run || !m) return <p className="tr-empty">{run?.run.labels?.kind === 'blueprint' ? 'A blueprint has no metrics; the Overview shows the estimates.' : 'No metrics yet.'}</p>
   const kinds = kindColors(theme)
   const human = m.human ?? { gates: 0, approved: 0, rejected: 0, auto: 0 }
   const waitingGate = Object.values(run.nodes).some(r => r.status === 'waiting_approval')
+  const byModel = Object.entries(m.cost_by_model ?? {}).sort((a, b) => b[1] - a[1])
   const cards: { label: string; value: string; sub: string }[] = [
     { label: 'wall clock', value: fmt.ms(m.wall_ms), sub: `critical path ${fmt.ms(m.critical_path?.ms)}` },
     { label: 'parallel speedup', value: m.parallel_speedup != null ? `${m.parallel_speedup.toFixed(1)}×` : '—', sub: `sum of work ${fmt.ms(m.sum_of_node_ms)}` },
-    { label: 'cost', value: fmt.usd(m.cost_usd), sub: `${m.agent_calls ?? 0} agent call${m.agent_calls === 1 ? '' : 's'}` },
+    { label: 'cost', value: fmt.usd(m.cost_usd), sub: byModel.length ? byModel.map(([k, v]) => `${modelShort(k) || k} ${fmt.usd(v)}`).join(' · ') : `${m.agent_calls ?? 0} agent call${m.agent_calls === 1 ? '' : 's'}` },
     { label: 'peak width', value: `${m.width?.peak ?? '—'} / ${m.width?.budget ?? '∞'}`, sub: `${Math.round(m.width?.agent_seconds ?? 0)} s agent time` },
     { label: 'node failure rate', value: pct(m.node_failure_rate), sub: `retry rate ${pct(m.retry_rate)}` },
     {

@@ -483,6 +483,7 @@ const impl: ApiShape = {
     graph: async () => {
       throw new Error('no graph blueprints in mock mode')
     },
+    start: async () => ({ run_id: RUN_ID }),
   },
 }
 

@@ -181,6 +181,9 @@ export interface ActivityRow {
   result: string | null // "1 candidate · certain"
   tone: Tone
   at: string // full ISO timestamp
+  run_id?: string | null
+  item_id?: string | null
+  decision_id?: string | null
 }
 export interface ActivityNight {
   date: string // YYYY-MM-DD
@@ -253,6 +256,11 @@ export interface GrenRunSummary {
   cost_usd: number
   bridge: string
   parent: unknown
+  labels?: Record<string, string> | null
+  wall_ms?: number | null
+  ended_at?: string | null
+  forked_from?: string | null
+  error?: string | null
   nodes: { total: number; completed: number; failed: number; skipped: number; waiting: number }
   in_process?: boolean
 }
@@ -450,6 +458,7 @@ export interface GrenRun {
     approvals: Record<string, { gate: string; decision: string; by: string; comment?: string | null; at: string }>
     decisions: GrenDecision[]
     parent?: unknown
+    forked_from?: string | null
     labels?: Record<string, string> | null
     output?: unknown
     error?: string | null
@@ -503,7 +512,15 @@ export interface GrenGraphInfo {
   errors: number
   warnings: number
   budget?: { max_cost_usd?: number; max_wall_ms?: number; max_width?: number } | null
+  input_schema?: unknown
   error?: string
+}
+
+/** Options for POST /api/sweep. */
+export interface SweepOptions {
+  window_days?: number
+  full_scan?: boolean
+  auto_approve?: boolean
 }
 
 /** A graph file parsed and analysed (GET /gren/api/graph?path=). */

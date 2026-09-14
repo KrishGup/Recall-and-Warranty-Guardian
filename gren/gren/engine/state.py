@@ -330,6 +330,8 @@ def summarize(state: RunState) -> dict[str, Any]:
     return {
         "id": r["id"], "graph": r["graph"], "status": r["status"], "created_at": r["created_at"], "updated_at": r["updated_at"],
         "cost_usd": r["totals"]["cost_usd"], "bridge": r["bridge"], "parent": r.get("parent"),
+        "labels": r.get("labels") or None, "wall_ms": r["totals"].get("wall_ms"), "ended_at": r.get("ended_at"), "forked_from": r.get("forked_from"),
+        "error": (r.get("error") or None) if r["status"] == "failed" else None,
         "nodes": {
             "total": len(ns),
             "completed": sum(1 for n in ns if n["status"] == "completed"),

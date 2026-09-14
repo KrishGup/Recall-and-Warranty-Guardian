@@ -3,6 +3,7 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from 'react'
 import { fmt } from '../api/client'
 import { isBlueprint } from './blueprint'
+import { waitingFor } from './GateCard'
 import type { GrenNodeRecord, GrenRun } from '../api/types'
 import { FONTS, kindColors, type Theme } from '../theme/tokens'
 import {
@@ -33,11 +34,13 @@ interface Props {
   /** The runs list itself failed: the API is unreachable rather than one run missing. */
   apiDown: boolean
   hasRuns: boolean
+  /** Fork the run from a node (the banner's "Retry from …" on a failed run). */
+  onRetry?: (node: string) => void
 }
 
 const MARKERS = { faint: 'gArrow', primary: 'gArrowC', amber: 'gArrowG', critical: 'gArrowR', ink: 'gArrowK', ok: 'gArrowOk' } as const
 
-export function Canvas({ run, runId, graph, rtl, theme, narrow, sel, onSelect, fitKey, now, loading, error, apiDown, hasRuns }: Props) {
+export function Canvas({ run, runId, graph, rtl, theme, narrow, sel, onSelect, fitKey, now, loading, error, apiDown, hasRuns, onRetry }: Props) {
   const svgRef = useRef<SVGSVGElement>(null)
   const sectionRef = useRef<HTMLElement>(null)
   const [view, setView] = useState<View>({ x: 40, y: 40, k: 1 })
@@ -205,6 +208,18 @@ export function Canvas({ run, runId, graph, rtl, theme, narrow, sel, onSelect, f
   const gates = waitingGates(run)
   const legendVisible = !narrow && size.h >= 300 && size.w >= 760
   const hoverEdge: GEdge | null = hover && graph.edges[hover.i] ? graph.edges[hover.i] : null
+  // One line that says what this run needs from the reader, with the one action that answers it.
+  const failedRec = Object.values(recs).find(r => r.status === 'failed')
+  const banner: { kind: 'failed' | 'waiting' | 'muted'; title: string; text: string; action: { label: string; fn: () => void } | null } | null =
+    !run || isBlueprint(run)
+      ? null
+      : run.run.status === 'failed' && failedRec
+        ? { kind: 'failed', title: `Failed at ${failedRec.id}.`, text: ellipsis(failedRec.error ?? run.run.error ?? '', 160), action: onRetry ? { label: `Retry from ${failedRec.id}`, fn: () => onRetry(failedRec.id) } : null }
+        : gates.length
+          ? { kind: 'waiting', title: `Waiting on you at ${gates[0]}`, text: `for ${waitingFor(recs[gates[0]], now)}. Nothing downstream runs until it is answered.`, action: { label: 'Open the gate', fn: () => onSelect(gates[0]) } }
+          : run.run.status === 'cancelled'
+            ? { kind: 'muted', title: 'Cancelled.', text: 'Nodes after the cancel point did not run.', action: null }
+            : null
 
   return (
     <section id="canvas" ref={sectionRef} tabIndex={-1} aria-label="Run graph" className="tr-canvas" onKeyDown={e => e.key === 'Escape' && onSelect(null)}>
@@ -331,6 +346,19 @@ export function Canvas({ run, runId, graph, rtl, theme, narrow, sel, onSelect, f
         </button>
       </div>
 
+      {banner && (
+        <div className={`tr-runbanner tr-runbanner--${banner.kind}`} role={banner.kind === 'failed' ? 'alert' : 'status'}>
+          <span className="tr-runbanner-text">
+            <b>{banner.title}</b> {banner.text}
+          </span>
+          {banner.action && (
+            <button type="button" className="tr-btn tr-btn--sm" onClick={banner.action.fn}>
+              {banner.action.label}
+            </button>
+          )}
+        </div>
+      )}
+
       {run && (
         <div className="tr-strip tr-desk">
           <span className="tr-status" style={{ color: st.text }}>
@@ -375,6 +403,28 @@ export function Canvas({ run, runId, graph, rtl, theme, narrow, sel, onSelect, f
             <span aria-hidden="true" className="tr-swatch" style={{ borderTop: `2px solid ${theme.ink}` }} />
             route
           </span>
+          <span className="tr-legend-sep" aria-hidden="true" />
+          <span>
+            <span aria-hidden="true" className="tr-dot" style={{ background: theme.ok }} />
+            done
+          </span>
+          <span>
+            <span aria-hidden="true" className="tr-dot" style={{ background: theme.primary }} />
+            running
+          </span>
+          <span>
+            <span aria-hidden="true" className="tr-dot" style={{ background: theme.amberLine }} />
+            waiting on you
+          </span>
+          <span>
+            <span aria-hidden="true" className="tr-dot" style={{ background: theme.critical }} />
+            failed
+          </span>
+          <span>
+            <span aria-hidden="true" className="tr-dot" style={{ background: theme.faint }} />
+            skipped or not yet
+          </span>
+          <span className="tr-legend-sep" aria-hidden="true" />
           <span>drag nodes · wheel to zoom · hover an edge to see what crosses it</span>
         </div>
       )}

@@ -1,20 +1,22 @@
 // Agent flow: the gren trace workbench. Runs and blueprints in a sidebar, a pan/zoom graph canvas, a bottom drawer
-// with the event log, metrics, decisions, gates, spec and output, and a node inspector with fork. It renders in two
-// frames: embedded in the dashboard's Agent flow page (/flow) or full-screen with its own top bar (/flow/trace).
+// (overview, timeline, event log, metrics, decisions, gates, spec, output), and a node inspector with fork. It renders
+// in two frames: embedded in the dashboard's Agent flow page (/flow) or full-screen with its own top bar (/flow/trace).
 // Live data from /gren/api and the /api/events stream; graph blueprints from /gren/api/graph when nothing has run.
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { Api } from '../api/client'
-import type { GrenEvent, GuardianEvent } from '../api/types'
+import type { GrenEvent, GrenGraphInfo, GuardianEvent } from '../api/types'
 import { readNumber, useNarrow, usePrefs, writeNumber } from '../theme/prefs'
 import { BREAKPOINT_TRACE_NARROW, type AgentStatusKey } from '../theme/tokens'
 import { DEFAULT_BLUEPRINT, isBlueprint, useBlueprint, useGraphs } from './blueprint'
 import { Canvas } from './Canvas'
-import { useDecisions, useRun, useRunEvents, useRuns } from './data'
+import { useActivity, useDecisions, useRun, useRunEvents, useRuns } from './data'
 import { Drawer, type Tab } from './Drawer'
 import type { GateInfo } from './GateCard'
 import { Inspector } from './Inspector'
 import { buildGraph, copyText, EMPTY_GRAPH, errorMessage, isLiveRun, modelShort, toYaml, waitingGates } from './model'
+import type { OverviewActions } from './Overview'
+import { RunDialog } from './RunDialog'
 import { RunPicker, RunsSidebar } from './RunsSidebar'
 import { useTraceStream, type StreamStatus } from './stream'
 import { TopBar } from './TopBar'
@@ -74,6 +76,7 @@ export function TraceWorkbench({ embedded = false, chrome }: Props) {
   const runParam = params.get('run')
   // A blueprint shows when asked for, or when nothing has ever run: the graph exactly as gren will execute it.
   const blueprintPath = graphParam ?? (runs && runs.length === 0 && !runParam ? DEFAULT_BLUEPRINT : null)
+  const graphInfo: GrenGraphInfo | null = useMemo(() => (blueprintPath ? (graphs.find(g => g.path === blueprintPath) ?? null) : null), [graphs, blueprintPath])
   const runId = blueprintPath ? null : (runParam ?? runs?.[0]?.id ?? null)
   const summary = useMemo(() => runs?.find(r => r.id === runId) ?? null, [runs, runId])
   const onEventRef = useRef<(e: GuardianEvent) => void>(() => {})
@@ -83,6 +86,7 @@ export function TraceWorkbench({ embedded = false, chrome }: Props) {
   const pollMs = live ? (stream === 'open' ? 6000 : 3000) : null
   const { run: loadedRun, error: loadedError, loading: loadingRun, refresh: refreshRun } = useRun(runId, pollMs)
   const { events, ingest, refresh: refreshEvents } = useRunEvents(runId, pollMs)
+  const { rows: activity, refresh: refreshActivity } = useActivity(runId)
   const { blueprint, error: blueprintError } = useBlueprint(blueprintPath)
   const run = blueprintPath ? blueprint : loadedRun
   const loading = blueprintPath ? !blueprint && !blueprintError : loadingRun
@@ -96,9 +100,10 @@ export function TraceWorkbench({ embedded = false, chrome }: Props) {
 
   // ---- selection and view state
   const [sel, setSel] = useState<string | null>(null)
-  const [tab, setTab] = useState<Tab>('events')
+  const [tab, setTab] = useState<Tab>('overview')
   const [busy, setBusy] = useState(false)
   const [sweeping, setSweeping] = useState(false)
+  const [runDialog, setRunDialog] = useState<GrenGraphInfo | null>(null)
   const [fitKey, setFitKey] = useState(0)
   const refit = useCallback(() => setFitKey(k => k + 1), [])
   const [toast, setToast] = useState('')
@@ -106,7 +111,7 @@ export function TraceWorkbench({ embedded = false, chrome }: Props) {
   const say = useCallback((m: string) => {
     setToast(m)
     if (toastTimer.current != null) clearTimeout(toastTimer.current)
-    toastTimer.current = window.setTimeout(() => setToast(''), 3000)
+    toastTimer.current = window.setTimeout(() => setToast(''), 3500)
   }, [])
 
   const selectRun = useCallback(
@@ -130,7 +135,7 @@ export function TraceWorkbench({ embedded = false, chrome }: Props) {
         return next
       })
       setSel(null)
-      setTab('spec')
+      setTab('overview')
     },
     [setParams],
   )
@@ -152,26 +157,26 @@ export function TraceWorkbench({ embedded = false, chrome }: Props) {
     const v = readNumber(KEY_DRAWER_H, 0)
     return v > 0 ? v : null
   })
-  const [drawerOpen, setDrawerOpen] = useState(() => readNumber(KEY_DRAWER_OPEN, 1) !== 0)
+  // Open by default unless the person closed it last time or the window is short (the canvas needs its room).
+  const [drawerOpen, setDrawerOpen] = useState(() => {
+    const stored = readNumber(KEY_DRAWER_OPEN, -1)
+    if (stored === 0 || stored === 1) return stored === 1
+    return typeof window === 'undefined' || window.innerHeight >= 700
+  })
   const [colH, setColH] = useState(800)
   const mainRef = useRef<HTMLDivElement>(null)
-  const measuredOnce = useRef(false)
   useEffect(() => {
     const el = mainRef.current
     if (!el || typeof ResizeObserver === 'undefined') return
     const ro = new ResizeObserver(entries => {
       const h = entries[0]?.contentRect.height ?? 0
       if (h > 0) setColH(h)
-      if (!measuredOnce.current && h > 0) {
-        measuredOnce.current = true
-        if (h < 600) setDrawerOpen(false)
-      }
     })
     ro.observe(el)
     return () => ro.disconnect()
   }, [])
-  const drawerMax = Math.max(120, Math.round(colH * 0.45))
-  const drawerDefault = Math.min(260, Math.round(colH * 0.32))
+  const drawerMax = Math.max(120, Math.round(colH * 0.55))
+  const drawerDefault = Math.min(340, Math.round(colH * 0.42))
   const drawerH = clamp(drawerStored ?? drawerDefault, 120, drawerMax)
   const toggleDrawer = useCallback(() => {
     setDrawerOpen(o => {
@@ -225,12 +230,14 @@ export function TraceWorkbench({ embedded = false, chrome }: Props) {
       if (e.run_id === runId) {
         if (typeof e.seq === 'number') ingest(e as GrenEvent)
         refreshRun()
+        refreshActivity()
       }
       if (/^run\.|^node\.(started|completed|failed|skipped)|^gate\./.test(e.type)) refreshRuns()
       if (/^gate\./.test(e.type)) refreshDecisions()
     } else if (/decision|sweep|answer|intake|remedy/.test(e.type)) {
       refreshDecisions()
       refreshRuns()
+      refreshActivity()
       if (runId) {
         refreshRun()
         refreshEvents()
@@ -256,13 +263,14 @@ export function TraceWorkbench({ embedded = false, chrome }: Props) {
         refreshRuns()
         refreshDecisions()
         refreshEvents()
+        refreshActivity()
       } catch (e) {
         say('Could not answer the gate: ' + errorMessage(e))
       } finally {
         setBusy(false)
       }
     },
-    [run, decisions, say, refreshRun, refreshRuns, refreshDecisions, refreshEvents],
+    [run, decisions, say, refreshRun, refreshRuns, refreshDecisions, refreshEvents, refreshActivity],
   )
   const gateInfoFor = useCallback(
     (id: string | null): GateInfo | null => {
@@ -283,6 +291,7 @@ export function TraceWorkbench({ embedded = false, chrome }: Props) {
   )
   const taskGate = useMemo(() => gateInfoFor(gates[0] ?? null), [gateInfoFor, gates])
   const selGate = useMemo(() => gateInfoFor(sel), [gateInfoFor, sel])
+  const gatesPending = useMemo(() => (run ? (decisions?.pending ?? []).filter(d => d.run_id === run.run.id).length : 0), [run, decisions])
 
   // ---- actions
   const runSweep = useCallback(async () => {
@@ -291,8 +300,8 @@ export function TraceWorkbench({ embedded = false, chrome }: Props) {
       const r = await Api.sweep()
       refreshRuns()
       if (r.run_id) selectRun(r.run_id)
-      setTab('events')
-      say('Manual sweep started · feeds_refresh running.')
+      setTab('overview')
+      say('Sweep started · feeds_refresh is running.')
     } catch (e) {
       say('Could not start a sweep: ' + errorMessage(e))
     } finally {
@@ -356,24 +365,55 @@ export function TraceWorkbench({ embedded = false, chrome }: Props) {
     say(ok ? 'Node spec copied as YAML.' : 'The browser blocked clipboard access.')
   }, [graph, sel, say])
 
-  const fork = useCallback(async () => {
-    if (!run || !sel) return
-    if (isBlueprint(run)) {
-      say('A blueprint cannot be forked; run the graph first, then fork from any node.')
-      return
-    }
-    setBusy(true)
-    try {
-      const r = await Api.gren.fork(run.run.id, [sel])
-      refreshRuns()
-      say(`Forked · ${r.run_id} resets ${sel} and everything downstream.`)
-      selectRun(r.run_id)
-    } catch (e) {
-      say('Could not fork: ' + errorMessage(e))
-    } finally {
-      setBusy(false)
-    }
-  }, [run, sel, refreshRuns, selectRun, say])
+  const copyRunId = useCallback(async () => {
+    if (!run) return
+    const ok = await copyText(run.run.id)
+    say(ok ? 'Run id copied.' : 'The browser blocked clipboard access.')
+  }, [run, say])
+
+  /** Fork from a node: everything before it is kept, the node and everything downstream run again. */
+  const forkFrom = useCallback(
+    async (node: string) => {
+      if (!run) return
+      if (isBlueprint(run)) {
+        say('A blueprint cannot be forked; run the graph first, then fork from any node.')
+        return
+      }
+      setBusy(true)
+      try {
+        const r = await Api.gren.fork(run.run.id, [node])
+        refreshRuns()
+        say(`Forked · ${r.run_id} re-runs ${node} and everything downstream.`)
+        selectRun(r.run_id)
+        setTab('overview')
+      } catch (e) {
+        say('Could not fork: ' + errorMessage(e))
+      } finally {
+        setBusy(false)
+      }
+    },
+    [run, refreshRuns, selectRun, say],
+  )
+
+  const openRunDialog = useCallback(() => {
+    if (graphInfo) setRunDialog(graphInfo)
+    else say('The graph list is still loading.')
+  }, [graphInfo, say])
+
+  const overview: OverviewActions = useMemo(
+    () => ({
+      live,
+      busy,
+      gatesPending,
+      onSelectRun: selectRun,
+      onSelectNode: id => setSel(id),
+      onRetry: node => void forkFrom(node),
+      onCancel: () => void cancelRun(),
+      onRunGraph: openRunDialog,
+      onCopyId: () => void copyRunId(),
+    }),
+    [live, busy, gatesPending, selectRun, forkFrom, cancelRun, openRunDialog, copyRunId],
+  )
 
   const logoStatus: AgentStatusKey = gates.length ? 'pending' : live ? 'working' : 'idle'
   const ctx: WorkbenchChrome = { logoStatus, stream, apiDown: !!runsError, sweeping, busy, runId, blueprint: blueprintPath, live, gates: gates.length, runSweep: () => void runSweep(), cancelRun: () => void cancelRun() }
@@ -406,11 +446,15 @@ export function TraceWorkbench({ embedded = false, chrome }: Props) {
               error={runError ?? runsError}
               apiDown={!!runsError}
               hasRuns={!!runs?.length}
+              onRetry={node => void forkFrom(node)}
             />
             <Drawer
               run={run}
               graph={graph}
               events={events}
+              activity={activity}
+              graphInfo={graphInfo}
+              overview={overview}
               tab={tab}
               onTab={t => {
                 setTab(t)
@@ -446,11 +490,23 @@ export function TraceWorkbench({ embedded = false, chrome }: Props) {
               busy={busy}
               onCopyPrompt={() => void copyPrompt()}
               onCopySpec={() => void copySpec()}
-              onFork={() => void fork()}
+              onFork={() => void forkFrom(sel)}
             />
           )}
         </div>
       </div>
+      {runDialog && (
+        <RunDialog
+          graph={runDialog}
+          onClose={() => setRunDialog(null)}
+          onStarted={(id, note) => {
+            refreshRuns()
+            selectRun(id)
+            setTab('overview')
+            say(note)
+          }}
+        />
+      )}
       <Toast message={toast} />
     </div>
   )
