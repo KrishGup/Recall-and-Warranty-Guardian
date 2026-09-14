@@ -40,6 +40,18 @@ interface Props {
 
 const MARKERS = { faint: 'gArrow', primary: 'gArrowC', amber: 'gArrowG', critical: 'gArrowR', ink: 'gArrowK', ok: 'gArrowOk' } as const
 
+/** The node the camera should centre on: the gate that waits, else the running node furthest along the graph, else
+ *  the middle of the graph (triage in the sweep). Returns '' when there is nothing to focus. */
+function focusNode(run: Props['run'], graph: Props['graph'], pos: PosMap): string {
+  const recs = run?.nodes ?? {}
+  const ids = Object.keys(recs)
+  const waiting = ids.find(id => isWaiting(recs[id].status))
+  if (waiting) return waiting
+  const running = ids.filter(id => recs[id].status === 'running' && pos[id])
+  if (running.length) return running.reduce((a, b) => (pos[b].x > pos[a].x ? b : a))
+  return pos.triage ? 'triage' : graph.nodes[Math.floor(graph.nodes.length / 2)]?.id ?? ''
+}
+
 export function Canvas({ run, runId, graph, rtl, theme, narrow, sel, onSelect, fitKey, now, loading, error, apiDown, hasRuns, onRetry }: Props) {
   const svgRef = useRef<SVGSVGElement>(null)
   const sectionRef = useRef<HTMLElement>(null)
@@ -47,6 +59,10 @@ export function Canvas({ run, runId, graph, rtl, theme, narrow, sel, onSelect, f
   const viewRef = useRef(view)
   viewRef.current = view
   const [override, setOverride] = useState<PosMap>({})
+  // True once the user panned or zoomed this run; the camera then stops following the run until Fit or a new run.
+  const userMovedRef = useRef(false)
+  const animRef = useRef<number | null>(null)
+  const hasLayoutRef = useRef(false)
   const [hover, setHover] = useState<{ i: number; x: number; y: number } | null>(null)
   const [showCritical, setShowCritical] = useState(true)
   const [panning, setPanning] = useState(false)
@@ -67,40 +83,76 @@ export function Canvas({ run, runId, graph, rtl, theme, narrow, sel, onSelect, f
   const relSet = useMemo(() => relatedSet(sel, graph.edges), [sel, graph.edges])
   const paths = useMemo(() => graph.edges.map(e => (pos[e.from] && pos[e.to] ? edgePath(pos[e.from], pos[e.to], e.repair, rtl) : '')), [graph.edges, pos, rtl])
 
-  // Reset dragged positions when the run changes.
+  // Reset dragged positions and follow mode when the run changes.
   useEffect(() => {
     setOverride({})
+    userMovedRef.current = false
   }, [runId])
 
-  const fit = useCallback(() => {
-    const svg = svgRef.current
-    if (!svg) return
-    const r = svg.getBoundingClientRect()
-    if (r.width < 10 || r.height < 10) return
-    const ps = Object.values(posRef.current)
-    if (!ps.length) return
-    const minX = Math.min(...ps.map(p => p.x))
-    const minY = Math.min(...ps.map(p => p.y))
-    const maxX = Math.max(...ps.map(p => p.x + p.w))
-    const maxY = Math.max(...ps.map(p => p.y + p.h))
-    const bw = Math.max(1, maxX - minX)
-    const bh = Math.max(1, maxY - minY)
-    const raw = Math.min((r.width - 60) / bw, (r.height - 120) / bh)
-    const k = Math.min(1.2, Math.max(0.6, raw))
-    if (raw >= 0.6) {
-      setView({ k, x: (r.width - bw * k) / 2 - minX * k, y: (r.height - bh * k) / 2 - minY * k + 20 })
+  // Animate the view to a target over ~400 ms (programmatic moves only; user pans stay direct).
+  const moveTo = useCallback((target: View, animate: boolean) => {
+    if (animRef.current != null) cancelAnimationFrame(animRef.current)
+    if (!animate) {
+      setView(target)
       return
     }
-    const recs = runRef.current?.nodes ?? {}
-    const ids = Object.keys(recs)
-    const focusId = ids.find(id => isWaiting(recs[id].status)) ?? ids.find(id => recs[id].status === 'running') ?? (posRef.current.triage ? 'triage' : graphRef.current.nodes[0]?.id)
-    const f = (focusId && posRef.current[focusId]) || ps[0]
-    setView({ k, x: r.width / 2 - (f.x + f.w / 2) * k, y: r.height / 2 - (f.y + f.h / 2) * k + 20 })
+    const from = viewRef.current
+    const t0 = performance.now()
+    const step = (now: number) => {
+      const p = Math.min(1, (now - t0) / 420)
+      const e = 1 - Math.pow(1 - p, 3)
+      setView({ x: from.x + (target.x - from.x) * e, y: from.y + (target.y - from.y) * e, k: from.k + (target.k - from.k) * e })
+      animRef.current = p < 1 ? requestAnimationFrame(step) : null
+    }
+    animRef.current = requestAnimationFrame(step)
   }, [])
+
+  const fit = useCallback(
+    (animate = false) => {
+      const svg = svgRef.current
+      if (!svg) return
+      const r = svg.getBoundingClientRect()
+      if (r.width < 10 || r.height < 10) return
+      const ps = Object.values(posRef.current)
+      if (!ps.length) return
+      const minX = Math.min(...ps.map(p => p.x))
+      const minY = Math.min(...ps.map(p => p.y))
+      const maxX = Math.max(...ps.map(p => p.x + p.w))
+      const maxY = Math.max(...ps.map(p => p.y + p.h))
+      const bw = Math.max(1, maxX - minX)
+      const bh = Math.max(1, maxY - minY)
+      const raw = Math.min((r.width - 60) / bw, (r.height - 120) / bh)
+      const k = Math.min(1.2, Math.max(0.6, raw))
+      if (raw >= 0.6) {
+        moveTo({ k, x: (r.width - bw * k) / 2 - minX * k, y: (r.height - bh * k) / 2 - minY * k + 20 }, animate)
+        return
+      }
+      // The graph does not fit at a readable zoom: centre on the front of the run (the gate that waits, else the
+      // running node furthest along, else the middle of the graph) and keep the graph's edges inside the canvas.
+      const f = posRef.current[focusNode(runRef.current, graphRef.current, posRef.current)] || ps[0]
+      let x = r.width / 2 - (f.x + f.w / 2) * k
+      let y = r.height / 2 - (f.y + f.h / 2) * k + 20
+      const m = 30
+      if (bw * k > r.width - 2 * m) x = Math.max(r.width - m - maxX * k, Math.min(m - minX * k, x))
+      if (bh * k > r.height - 2 * m) y = Math.max(r.height - m - maxY * k, Math.min(m - minY * k, y))
+      else y = (r.height - bh * k) / 2 - minY * k + 20
+      moveTo({ k, x, y }, animate)
+    },
+    [moveTo],
+  )
+
+  // The camera follows a live run until the user takes over (pan, zoom, drag); Fit hands it back.
+  const focusId = focusNode(run, graph, pos)
+  useEffect(() => {
+    if (!hasLayoutRef.current || userMovedRef.current) return
+    const id = requestAnimationFrame(() => fit(true))
+    return () => cancelAnimationFrame(id)
+  }, [focusId, fit])
 
   // Re-fit on request (panels, drawer, inspector, run change, direction) once the layout exists,
   // and again whenever the layout changes shape: a live run reveals its nodes level by level.
   const hasLayout = graph.nodes.length > 0
+  hasLayoutRef.current = hasLayout
   useEffect(() => {
     if (!hasLayout) return
     const id = requestAnimationFrame(() => fit())
@@ -140,6 +192,8 @@ export function Canvas({ run, runId, graph, rtl, theme, narrow, sel, onSelect, f
       const my = e.clientY - r.top
       const v = viewRef.current
       const k2 = Math.min(3, Math.max(0.2, v.k * Math.exp(-e.deltaY * 0.0015)))
+      userMovedRef.current = true
+      if (animRef.current != null) cancelAnimationFrame(animRef.current)
       setView({ x: mx - (mx - v.x) * (k2 / v.k), y: my - (my - v.y) * (k2 / v.k), k: k2 })
     }
     svg.addEventListener('wheel', onWheel, { passive: false })
@@ -153,6 +207,8 @@ export function Canvas({ run, runId, graph, rtl, theme, narrow, sel, onSelect, f
     const mx = r.width / 2
     const my = r.height / 2
     const k2 = Math.min(3, Math.max(0.2, v.k * f))
+    userMovedRef.current = true
+    if (animRef.current != null) cancelAnimationFrame(animRef.current)
     setView({ x: mx - (mx - v.x) * (k2 / v.k), y: my - (my - v.y) * (k2 / v.k), k: k2 })
   }, [])
 
@@ -161,6 +217,8 @@ export function Canvas({ run, runId, graph, rtl, theme, narrow, sel, onSelect, f
     const t = e.target as Element
     if (t.closest('.tr-node') || t.closest('.tr-edge-hit')) return
     const v0 = viewRef.current
+    userMovedRef.current = true
+    if (animRef.current != null) cancelAnimationFrame(animRef.current)
     setPanning(true)
     startDrag(
       e,
@@ -333,7 +391,14 @@ export function Canvas({ run, runId, graph, rtl, theme, narrow, sel, onSelect, f
 
       <div className="tr-toolbar">
         <div role="group" aria-label="View" className="tr-group">
-          <button type="button" className="tr-btn" onClick={fit}>
+          <button
+            type="button"
+            className="tr-btn"
+            onClick={() => {
+              userMovedRef.current = false
+              fit(true)
+            }}
+          >
             Fit
           </button>
           <button type="button" className="tr-btn tr-btn--icon" aria-label="Zoom in" onClick={() => zoom(1.25)}>

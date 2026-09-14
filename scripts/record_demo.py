@@ -10,7 +10,7 @@ MP4 with a timeline for the voice-over. Playwright drives its own Chromium, so n
 
 Options:
     --base-url URL     the site (default GUARDIAN_URL from .env; use http://127.0.0.1:8790 for a local dry run)
-    --token TOKEN      GUARDIAN_API_TOKEN for a public deployment (default from .env; none for a local server)
+    --token TOKEN      GUARDIAN_API_TOKEN for actions (default from .env; --no-token for a server started without one)
     --reset            reset and reseed the target's store first (live: over SSM; local: on disk)
     --skip-sweep       do not start a sweep; the site is already paused on a decision (records the gate, decision and after beats)
     --headed           watch the recording in a visible browser
@@ -337,7 +337,7 @@ def beat_inventory(site: Site, pw) -> str:
     rows = page.locator(".g-linkbtn")
     site.hover_boxes(page, [rows.nth(2), rows.nth(4)], hold=700)
     site.click(page, page.get_by_role("button", name="NURSH", exact=False), hold=2000)
-    site.hover_boxes(page, [page.get_by_text("receipt thumbnail", exact=False).first, page.get_by_text("Warranty", exact=True).first, page.get_by_text("Recall checks", exact=False).first], hold=2000)
+    site.hover_boxes(page, [page.locator(".g-receipt").first, page.get_by_text("Warranty", exact=True).first, page.get_by_text("Recall checks", exact=False).first], hold=2000)
     page.wait_for_timeout(3000)
     return site.finish(b, ctx, page, "inventory")
 
@@ -346,10 +346,19 @@ def beat_sweep_start(site: Site, pw) -> str:
     b, ctx, page = site.context(pw, "sweep-start")
     site.goto(page, "/flow")
     page.wait_for_timeout(1200)
+    before = (site.api("/api/summary").get("last_sweep") or {}).get("run_id")
     site.click(page, page.get_by_role("button", name="Run sweep now"), hold=1200)
-    # Watch the graph fill in for a while: the run is now the newest and selected.
-    for _ in range(9):
+    # Watch the graph fill in for a while: the run is now the newest and selected. Fail fast if nothing started
+    # (a missing token, a budget stop) instead of waiting twelve minutes for a gate that never comes.
+    started = False
+    for i in range(9):
         page.wait_for_timeout(2500)
+        if not started and i >= 1:
+            s = site.api("/api/summary")
+            started = s.get("agent_status") == "working" or (s.get("last_sweep") or {}).get("run_id") not in (None, before)
+            if not started and i >= 3:
+                site.finish(b, ctx, page, "sweep-start")
+                raise RuntimeError("the sweep did not start (check the token and the daily budget; the dashboard toast has the reason)")
     return site.finish(b, ctx, page, "sweep-start")
 
 
@@ -445,14 +454,14 @@ def screens(site: Site) -> None:
 # ------------------------------------------------------------------------------------------------ record
 def reset_target(site: Site) -> None:
     if site.base.startswith("http://127.0.0.1") or site.base.startswith("http://localhost"):
-        say("reset: local server; use `guardian seed --data <dir>` and clear its runs before starting it")
+        say("reset: local server; stop it, run `guardian seed --no-case-studies --data <dir>`, clear its runs dir, start it with --no-schedule")
         return
     say("reset: live server over SSM (stop, purge, seed, start)")
     script = (
         "systemctl stop guardian; set -a; . /etc/guardian/env; set +a; cd /opt/guardian/app && "
         "sudo -E -u guardian /opt/guardian/venv/bin/python -c \"import os, shutil\nfrom guardian.service import Guardian\nfrom guardian.state_sync import push_all\n"
         "g, _ = Guardian.build(with_gren_app=False)\ng.store.reset()\nshutil.rmtree(g.run_store.root, ignore_errors=True); os.makedirs(g.run_store.root, exist_ok=True)\n"
-        "print(push_all(g._sync_targets))\" && sudo -E -u guardian /opt/guardian/venv/bin/guardian seed && systemctl start guardian && sleep 3 && curl -sS http://127.0.0.1:8787/api/health"
+        "print(push_all(g._sync_targets))\" && sudo -E -u guardian /opt/guardian/venv/bin/guardian seed --no-case-studies && systemctl start guardian && sleep 3 && curl -sS http://127.0.0.1:8787/api/health"
     )
     subprocess.run([sys.executable, os.path.join(ROOT, "scripts", "deploy_ec2.py"), "run", script], check=True)
 
@@ -644,9 +653,7 @@ def main(argv: list[str]) -> int:
         return default
 
     base = opt("--base-url", os.environ.get("GUARDIAN_URL") or "")
-    token = opt("--token", os.environ.get("GUARDIAN_API_TOKEN") or None)
-    if base and (base.startswith("http://127.0.0.1") or base.startswith("http://localhost")) and "--token" not in opts:
-        token = None
+    token = None if "--no-token" in opts else opt("--token", os.environ.get("GUARDIAN_API_TOKEN") or None)
     site = Site(base, token, "--headed" in opts)
     os.makedirs(OUT, exist_ok=True)
     if cmd in ("slides", "all"):
