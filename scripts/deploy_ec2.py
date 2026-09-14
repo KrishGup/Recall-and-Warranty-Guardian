@@ -112,6 +112,7 @@ def runtime_env(host: str, token: str) -> str:
         ("GREN_BEDROCK_SONNET", e.get("GREN_BEDROCK_SONNET", "")),
         ("GREN_BEDROCK_OPUS", e.get("GREN_BEDROCK_OPUS", "")),
         ("GUARDIAN_DAILY_BUDGET_USD", e.get("GUARDIAN_DAILY_BUDGET_USD", "10")),
+        ("TZ", e.get("GUARDIAN_DEPLOY_TZ", "America/New_York")),  # the household's clock: activity times, "today", the 08:00 snooze
         ("GUARDIAN_API_TOKEN", token),
         ("GUARDIAN_S3_BUCKET", bucket()),
         ("GUARDIAN_S3_PREFIX", e.get("GUARDIAN_S3_PREFIX", "guardian")),
