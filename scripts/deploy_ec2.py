@@ -104,6 +104,8 @@ def runtime_env(host: str, token: str) -> str:
         ("GUARDIAN_FEEDS", e.get("GUARDIAN_DEPLOY_FEEDS", "live")),
         ("GREN_BRIDGE", e.get("GUARDIAN_DEPLOY_BRIDGE", "bedrock")),
         ("ANTHROPIC_API_KEY", e.get("ANTHROPIC_API_KEY", "")),  # only used when GUARDIAN_DEPLOY_BRIDGE=anthropic
+        ("ANTHROPIC_BASE_URL", e.get("ANTHROPIC_BASE_URL", "")),  # a custom endpoint or gateway; the SDK reads it
+        ("ANTHROPIC_AUTH_TOKEN", e.get("ANTHROPIC_AUTH_TOKEN", "")),  # bearer auth for gateways that use it
         ("AWS_REGION", region()),
         ("AWS_DEFAULT_REGION", region()),
         ("GREN_BEDROCK_HAIKU", e.get("GREN_BEDROCK_HAIKU", "")),

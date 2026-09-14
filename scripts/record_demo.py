@@ -30,7 +30,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.join(ROOT, "scripts"))
 import guardian  # noqa: E402,F401  (loads .env)
-from deck_content import CLIPS, INK, LIVE, PAPER, REPO, SLIDES  # noqa: E402
+from deck_content import CLIPS, INK, LIVE, PAPER, REPO, SLIDES, logo_svg  # noqa: E402
 
 OUT = os.path.join(ROOT, "var", "demo")
 SLIDES_DIR = os.path.join(OUT, "slides")
@@ -72,26 +72,19 @@ def esc(s: str) -> str:
     return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
-def logo_html(size: int, dot: int, ring: int) -> str:
-    off = (size - dot) / 2
-    return (
-        f'<span style="position:relative;width:{size}px;height:{size}px;border-radius:50%;background:{PAPER};display:inline-block;overflow:hidden;flex:0 0 auto">'
-        f'<span style="position:absolute;inset:0;border-radius:50%;background:{INK}"></span>'
-        f'<span style="position:absolute;width:{dot}px;height:{dot}px;border-radius:50%;left:{off}px;top:{off}px;box-shadow:0 0 0 {ring}px {INK};background:#FCBA04"></span>'
-        f'<span style="position:absolute;inset:0;border-radius:50%;background:{PAPER};transform-origin:100% 50%;transform:translateX(58%) rotate(28deg)"></span></span>'
-    )
-
-
 def node_card(name: str, label: str, kind: str) -> str:
     color = {"code": "#B9C3BD", "agent": "#6FB3E3", "verify": "#5DBB86", "gate": "#FCBA04"}[kind]
+    # Node ids never wrap (underscores give no break opportunity), so long ids get a smaller size instead of overflowing.
+    name_px = 26 if len(name) <= 11 else 23 if len(name) <= 14 else 20
+    label_px = 20 if len(label) <= 13 else 17
     return (
-        f'<div style="background:#131F18;border:1px solid #2C3B33;border-left:6px solid {color};border-radius:12px;padding:16px 20px;width:246px;box-sizing:border-box;display:flex;flex-direction:column;gap:6px">'
-        f'<span style="font-family:\'Roboto Slab\',Georgia,serif;font-weight:600;font-size:26px;line-height:1.2">{esc(name)}</span>'
-        f'<span style="font-family:Habibi,serif;font-size:24px;letter-spacing:.06em;text-transform:uppercase;color:{color}">{esc(label)}</span></div>'
+        f'<div style="background:#131F18;border:1px solid #2C3B33;border-left:6px solid {color};border-radius:12px;padding:16px 18px;width:258px;box-sizing:border-box;display:flex;flex-direction:column;gap:6px">'
+        f'<span style="font-family:\'Roboto Slab\',Georgia,serif;font-weight:600;font-size:{name_px}px;line-height:1.2;white-space:nowrap">{esc(name)}</span>'
+        f'<span style="font-family:Habibi,serif;font-size:{label_px}px;letter-spacing:.06em;text-transform:uppercase;white-space:nowrap;color:{color}">{esc(label)}</span></div>'
     )
 
 
-ARROW = '<div style="width:44px;display:flex;align-items:center;flex:0 0 auto"><span style="flex:1;height:2px;background:#4A5551"></span><span style="width:0;height:0;border-top:7px solid transparent;border-bottom:7px solid transparent;border-left:11px solid #4A5551"></span></div>'
+ARROW = '<div style="width:30px;display:flex;align-items:center;flex:0 0 auto"><span style="flex:1;height:2px;background:#4A5551"></span><span style="width:0;height:0;border-top:7px solid transparent;border-bottom:7px solid transparent;border-left:11px solid #4A5551"></span></div>'
 
 
 def column(cards: list[tuple[str, str, str]]) -> str:
@@ -99,7 +92,7 @@ def column(cards: list[tuple[str, str, str]]) -> str:
     return f'<div style="display:flex;flex-direction:column;gap:14px">{inner}</div>'
 
 
-def slide_html(s: dict) -> str:
+def slide_html(s: dict, video: bool = False) -> str:
     ink = s["bg"] == "ink"
     fg = PAPER if ink else INK
     muted = "#B9C3BD" if ink else "#4A5551"
@@ -111,7 +104,7 @@ def slide_html(s: dict) -> str:
     k = s["kind"]
     if k == "title":
         body = f"""
-<div style="display:flex;align-items:center;gap:24px">{logo_html(72, 23, 5)}<span style="font-family:'Roboto Slab',Georgia,serif;font-weight:600;font-size:44px">Guardian</span></div>
+<div style="display:flex;align-items:center;gap:24px">{logo_svg(72)}<span style="font-family:'Roboto Slab',Georgia,serif;font-weight:600;font-size:44px">Guardian</span></div>
 <div style="flex:1;display:flex;flex-direction:column;justify-content:center;gap:44px">
   <h1 style="font-family:'Roboto Slab',Georgia,serif;font-weight:700;font-size:128px;line-height:1.02;letter-spacing:-.015em;margin:0;max-width:1500px">{esc(s['h1'])}</h1>
   <p style="font-size:40px;line-height:1.35;margin:0;max-width:1300px">{esc(s['sub'])}</p>
@@ -157,7 +150,11 @@ def slide_html(s: dict) -> str:
 <div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:40px;margin-top:64px;flex:1;align-content:center">{steps}</div>"""
     elif k == "demo":
         pad = "96px 80px 90px 80px"
-        paras = "".join(f'<p style="font-size:28px;line-height:1.4;margin:0;border-top:1px solid {rule};padding-top:20px">{esc(p)}</p>' for p in s["paras"])
+        shown = s["paras"][:1] if video else s["paras"]
+        para_px = 34 if video else 28
+        paras = "".join(f'<p style="font-size:{para_px}px;line-height:1.4;margin:0;border-top:1px solid {rule};padding-top:20px">{esc(p)}</p>' for p in shown)
+        if video:
+            paras += f'<p class="eyebrow" style="color:{muted};margin:0;padding-top:8px">Live recording follows</p>'
         if not os.path.isfile(os.path.join(SCREENS_DIR, s["image"])):
             s = {**s, "image": "trace-tasks-gate.png"}  # until `screens` captures the fresh one
         body = f"""
@@ -175,7 +172,7 @@ def slide_html(s: dict) -> str:
         tri, sev = s["row1"][4][0], s["row1"][5][0]
         row1 = ARROW.join(column(c) for c in s["row1"][:4]) + ARROW + (
             '<div style="position:relative;display:flex;align-items:center">'
-            '<span style="position:absolute;left:123px;right:123px;top:-40px;height:36px;border:2px dashed #E4746A;border-bottom:none;border-radius:14px 14px 0 0"></span>'
+            '<span style="position:absolute;left:129px;right:129px;top:-40px;height:36px;border:2px dashed #E4746A;border-bottom:none;border-radius:14px 14px 0 0"></span>'
             '<span style="position:absolute;left:0;right:0;top:-78px;text-align:center;font-family:Habibi,serif;font-size:24px;letter-spacing:.06em;text-transform:uppercase;color:#E4746A">repair ×1</span>'
             + node_card(*tri) + ARROW + node_card(*sev) + "</div>"
         )
@@ -211,7 +208,7 @@ def slide_html(s: dict) -> str:
     elif k == "closing":
         body = f"""
 <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center">
-  <div style="display:flex;align-items:center;gap:28px">{logo_html(96, 31, 6)}<span style="font-family:'Roboto Slab',Georgia,serif;font-weight:600;font-size:56px">Guardian</span></div>
+  <div style="display:flex;align-items:center;gap:28px">{logo_svg(96)}<span style="font-family:'Roboto Slab',Georgia,serif;font-weight:600;font-size:56px">Guardian</span></div>
   <p style="font-style:italic;font-size:60px;line-height:1.25;margin:64px 0 0 0;max-width:1440px">{esc(s['quote'])}</p>
   <p class="mono" style="font-size:32px;margin:72px 0 0 0;color:#6FB3E3">{esc(s['mono'])}</p>
   <p class="mono" style="font-size:32px;margin:12px 0 0 0;color:#6FB3E3">{esc(s['mono2'])}</p>
@@ -239,7 +236,7 @@ def render_slides() -> list[str]:
         for i, s in enumerate(SLIDES, 1):
             html_path = os.path.join(SLIDES_DIR, f"{i:02d}-{s['id']}.html")
             with open(html_path, "w", encoding="utf-8") as f:
-                f.write(slide_html(s))
+                f.write(slide_html(s, video=True))
             page.goto("file:///" + html_path.replace(os.sep, "/"))
             page.evaluate("document.fonts.ready.then(() => true)")
             page.wait_for_timeout(700)
@@ -519,14 +516,20 @@ def encode_clip(webm: str, out: str, cap: float | None = None) -> float:
     return duration_of(out)
 
 
+XFADE = 0.7  # seconds of crossfade between two blocks
+XFADE_CUT = 1.2  # a longer dissolve where minutes are cut between two live clips
+FADE_IN, FADE_OUT = 0.8, 1.2
+
+
 def assemble() -> None:
+    """Slides and clips become one MP4. Every boundary is a crossfade (a hard cut from a slide into a live page was
+    unreadable); the video fades in from black and out to black. The timeline records where each block is fully on
+    screen, and the script is written from it."""
     segs_dir = os.path.join(OUT, "segments")
     os.makedirs(segs_dir, exist_ok=True)
     clips_path = os.path.join(OUT, "clips.json")
     clips: dict[str, str] = json.load(open(clips_path, encoding="utf-8")) if os.path.isfile(clips_path) else {}
-    order: list[tuple[str, str, float]] = []  # (label, file, seconds)
-    t = 0.0
-    timeline: list[dict[str, Any]] = []
+    order: list[dict[str, Any]] = []  # {id, kind, file, seconds, notes?}
     n = 0
     for i, s in enumerate(SLIDES, 1):
         png = os.path.join(SLIDES_DIR, f"{i:02d}-{s['id']}.png")
@@ -535,30 +538,50 @@ def assemble() -> None:
         n += 1
         seg = os.path.join(segs_dir, f"{n:02d}-{s['id']}.mp4")
         encode_still(png, s["seconds"], seg)
-        timeline.append({"start": round(t, 1), "end": round(t + s["seconds"], 1), "kind": "slide", "id": s["id"], "notes": s["notes"]})
-        order.append((s["id"], seg, s["seconds"]))
-        t += s["seconds"]
+        order.append({"id": s["id"], "kind": "slide", "file": seg, "seconds": float(s["seconds"]), "notes": s["notes"]})
         clip_key = s.get("clip")
         if clip_key:
-            files = [clips[k] for k in ({"sweep": ["sweep-start", "sweep-paused"]}.get(clip_key, [clip_key])) if k in clips]
-            for k, webm in zip({"sweep": ["sweep-start", "sweep-paused"]}.get(clip_key, [clip_key]), files):
+            keys = {"sweep": ["sweep-start", "sweep-paused"]}.get(clip_key, [clip_key])
+            found = [k for k in keys if k in clips]
+            for k in found:
                 n += 1
                 seg = os.path.join(segs_dir, f"{n:02d}-{k}.mp4")
-                d = encode_clip(webm, seg)
-                timeline.append({"start": round(t, 1), "end": round(t + d, 1), "kind": "clip", "id": k})
-                order.append((k, seg, d))
-                t += d
-            if not files:
+                d = encode_clip(clips[k], seg)
+                order.append({"id": k, "kind": "clip", "file": seg, "seconds": d})
+            if not found:
                 say(f"  (no clip recorded for {clip_key}; the slide stands alone)")
-    lst = os.path.join(OUT, "concat.txt")
-    with open(lst, "w", encoding="utf-8") as f:
-        for _, seg, _d in order:
-            f.write(f"file '{seg.replace(os.sep, '/')}'\n")
+    # Crossfade chain: offset_i is where block i starts to fade in on the output's clock.
+    args = [ffmpeg(), "-y", "-loglevel", "error"]
+    for o in order:
+        args += ["-i", o["file"]]
+    last = len(order) - 1
+    parts = [f"[0:v]fade=t=in:st=0:d={FADE_IN}[v0]"]
+    parts.append(f"[{last}:v]fade=t=out:st={max(0.0, order[last]['seconds'] - FADE_OUT):.2f}:d={FADE_OUT}[vl]")
+    prev = "[v0]"
+    offset = 0.0
+    timeline: list[dict[str, Any]] = []
+    for i, o in enumerate(order):
+        if i == 0:
+            timeline.append({"start": 0.0, "id": o["id"], "kind": o["kind"], **({"notes": o["notes"]} if "notes" in o else {})})
+            continue
+        dur = XFADE_CUT if (o["kind"] == "clip" and order[i - 1]["kind"] == "clip") else XFADE
+        offset = offset + order[i - 1]["seconds"] - dur
+        src = "[vl]" if i == last else f"[{i}:v]"
+        out = f"[x{i}]"
+        parts.append(f"{prev}{src}xfade=transition=fade:duration={dur}:offset={offset:.2f}{out}")
+        prev = out
+        timeline.append({"start": round(offset + dur / 2, 1), "id": o["id"], "kind": o["kind"], **({"notes": o["notes"]} if "notes" in o else {})})
+    if len(order) == 1:
+        prev = "[v0]"
+    total = offset + order[last]["seconds"]
+    for i, seg in enumerate(timeline):
+        seg["end"] = round(timeline[i + 1]["start"], 1) if i + 1 < len(timeline) else round(total, 1)
     final = os.path.join(OUT, "guardian-demo.mp4")
-    subprocess.run([ffmpeg(), "-y", "-loglevel", "error", "-f", "concat", "-safe", "0", "-i", lst, "-c", "copy", final], check=True)
+    args += ["-filter_complex", ";".join(parts), "-map", prev, "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-r", str(FPS), "-pix_fmt", "yuv420p", "-movflags", "+faststart", "-an", final]
+    subprocess.run(args, check=True)
     total = duration_of(final)
     with open(os.path.join(OUT, "timeline.json"), "w", encoding="utf-8") as f:
-        json.dump({"total_seconds": round(total, 1), "segments": timeline}, f, indent=1)
+        json.dump({"total_seconds": round(total, 1), "crossfade_seconds": XFADE, "segments": timeline}, f, indent=1)
     write_script(timeline, total)
     say(f"video: {final} ({total:.0f} s = {int(total // 60)}:{int(total % 60):02d})")
 
@@ -616,7 +639,7 @@ def write_script(timeline: list[dict[str, Any]], total: float) -> None:
         "## Notes for the recording",
         "",
         "- Start each line when its block appears. Over a live clip, keep talking. Pause for a beat when the cursor clicks.",
-        "- The sweep block has two clips: the start (about 30 seconds of nodes as they light up) and the paused run. The minutes between them are cut.",
+        "- Every boundary is a crossfade of about a second; the timecodes mark the middle of each dissolve. The sweep block has two clips: the start (about 30 seconds of nodes as they light up) and the paused run; a longer dissolve stands for the minutes cut between them.",
         "- The numbers on the problem slide and on the sweep slide come from the real first sweep of 2026-09-13. `var/demo/timeline.json` has the exact segment boundaries.",
         "- To record the video again: `python scripts/record_demo.py all --reset` against the live site. The timecodes change with the clip lengths, so read the new table.",
         "- To add the voice-over: record it as one file (WAV or M4A) against the video, then run `python scripts/record_demo.py mux narration.wav`. The result is `var/demo/guardian-demo-final.mp4`.",
