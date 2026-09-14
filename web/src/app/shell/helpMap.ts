@@ -53,10 +53,12 @@ export const helpMap: Record<PageId, HelpContent> = {
   },
   flow: {
     title: 'Agent flow',
-    body: 'A technical view of one nightly run. Grey nodes are deterministic code; blue nodes call a model; amber is the human interrupt.',
+    body: 'The gren trace workbench: every run of the nightly sweep and intake graphs as Strands executed them. Pick a run, or a blueprint of a graph that has not run yet, pan and zoom the canvas, open a node for its inputs, structured output, attempts and cost, and answer a waiting gate from here.',
     points: [
+      { k: 'Colors', v: 'Grey nodes are deterministic code, blue call a model, green verify another node, amber is the human gate. Dashed red edges are repair loops.' },
+      { k: 'Drawer', v: 'Events (the engine log), Metrics (wall clock, speedup, verifier kill rate, tokens), Decisions, Tasks (gates), Spec (the YAML) and Output.' },
+      { k: 'Replay', v: 'Fork a run from any node to re-run it and everything downstream, for example the matcher after a photo arrives.' },
       { k: 'Why it is cheap', v: 'Only ambiguous candidates reach a model. Most nights cost cents.' },
-      { k: 'Interrupts', v: 'Tool‑level in triage and warranty; hook‑level guard on remedy so nothing sends without a recorded approval.' },
     ],
   },
 }

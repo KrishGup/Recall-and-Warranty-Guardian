@@ -2,7 +2,7 @@
 // Every refetch goes through a throttle so a burst of engine events refreshes at most ~2×/s.
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Api } from '../api/client'
-import type { Decisions, GrenEvent, GrenRun, GrenRunSummary } from '../api/types'
+import type { ActivityRow, Decisions, GrenEvent, GrenRun, GrenRunSummary } from '../api/types'
 import { errorMessage } from './model'
 
 /** Returns a stable trigger that runs `fn` at most once per `ms`, trailing. */
@@ -155,4 +155,28 @@ export function useDecisions(enabled: boolean) {
   }, [load])
   const refresh = useThrottled(() => void load(), 800)
   return { decisions, refresh }
+}
+
+/** Guardian's own account of a run: its activity rows (feeds pulled, matches, triage, gate, remedy), oldest first. */
+export function useActivity(runId: string | null) {
+  const [rows, setRows] = useState<ActivityRow[]>([])
+  const load = useCallback(async () => {
+    if (!runId || runId.startsWith('blueprint:')) {
+      setRows([])
+      return
+    }
+    try {
+      const r = await Api.activity(60)
+      const mine = r.nights.flatMap(n => n.rows).filter(x => x.run_id === runId)
+      mine.sort((a, b) => a.at.localeCompare(b.at))
+      setRows(mine)
+    } catch {
+      /* keep the last rows; the run itself reports connectivity */
+    }
+  }, [runId])
+  useEffect(() => {
+    void load()
+  }, [load])
+  const refresh = useThrottled(() => void load(), 1500)
+  return { rows, refresh }
 }

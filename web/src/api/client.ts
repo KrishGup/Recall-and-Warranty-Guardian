@@ -2,8 +2,8 @@
 // in production FastAPI serves the built app and both APIs from one origin.
 import { useEffect, useRef } from 'react'
 import type {
-  ActivityNight, AnswerResult, Decision, DecisionChoice, Decisions, GmailStatus, GrenArtifact, GrenEvent, GrenRun, GrenRunSummary, GuardianEvent, IntakeResult, Item,
-  ItemDetail, ItemsPage, ItemsQuery, NewItem, Preferences, Summary,
+  ActivityNight, AnswerResult, Decision, DecisionChoice, Decisions, GmailStatus, GrenArtifact, GrenEvent, GrenGraphFile, GrenGraphInfo, GrenRun, GrenRunSummary, GuardianEvent, IntakeResult, Item,
+  ItemDetail, ItemsPage, ItemsQuery, NewItem, Preferences, Summary, SweepOptions,
 } from './types'
 
 export class ApiError extends Error {
@@ -62,7 +62,7 @@ export interface ApiShape {
   activity(days?: number): Promise<{ nights: ActivityNight[] }>
   preferences(): Promise<Preferences>
   savePreferences(p: Preferences): Promise<Preferences>
-  sweep(): Promise<{ run_id: string }>
+  sweep(opts?: SweepOptions): Promise<{ run_id: string }>
   gmail: {
     status(): Promise<GmailStatus>
     connect(): Promise<{ url: string }>
@@ -78,6 +78,9 @@ export interface ApiShape {
     fork(id: string, from: string[]): Promise<{ run_id: string }>
     resume(id: string): Promise<{ run_id: string }>
     cancel(id: string): Promise<{ ok: boolean }>
+    graphs(): Promise<GrenGraphInfo[]>
+    graph(path: string): Promise<GrenGraphFile>
+    start(graph: string, input?: Record<string, unknown>): Promise<{ run_id: string }>
   }
 }
 
@@ -101,7 +104,7 @@ const real: ApiShape = {
   activity: (days = 7) => get(`/api/activity?days=${days}`),
   preferences: () => get('/api/preferences'),
   savePreferences: p => send('PUT', '/api/preferences', p),
-  sweep: () => send('POST', '/api/sweep', {}),
+  sweep: (opts = {}) => send('POST', '/api/sweep', opts),
   gmail: {
     status: () => get('/api/gmail/status'),
     connect: () => get('/api/gmail/connect'),
@@ -117,6 +120,9 @@ const real: ApiShape = {
     fork: (id, from) => send('POST', '/gren/api/run/fork', { id, from }),
     resume: id => send('POST', '/gren/api/run/resume', { id }),
     cancel: id => send('POST', '/gren/api/run/cancel', { id }),
+    graphs: () => get('/gren/api/graphs'),
+    graph: path => get(`/gren/api/graph?path=${enc(path)}`),
+    start: (graph, input = {}) => send('POST', '/gren/api/runs', { graph, input }),
   },
 }
 

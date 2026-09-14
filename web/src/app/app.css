@@ -317,3 +317,14 @@ body.g-dragging-y { cursor: row-resize; user-select: none; }
   .g-nights { grid-template-columns: 1fr; }
   .g-flow__meta { font-size: 12px; }
 }
+
+/* ---- Agent flow page: the trace workbench fills the main area below the breadcrumb and the page header ---- */
+.g-main--flow { display: flex; flex-direction: column; overflow: hidden; padding-bottom: 16px; }
+.g-flowpage { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.g-flowhead { flex: 0 0 auto; margin-bottom: 12px; }
+.g-flowhead__actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.g-flowhead__stream { font-family: var(--font-ui); font-size: 13px; color: var(--ink2); display: inline-flex; align-items: center; gap: 8px; margin-inline-end: 4px; white-space: nowrap; }
+@media (max-width: 860px) {
+  .g-main--flow { padding-bottom: 8px; }
+  .g-flowhead { margin-bottom: 8px; }
+}
