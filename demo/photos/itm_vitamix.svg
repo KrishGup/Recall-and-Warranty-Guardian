@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="480" height="360" viewBox="0 0 480 360">
+  <rect width="480" height="360" fill="#F7F4F3"/>
+  <rect width="480" height="64" fill="#FCBA04"/>
+  <text x="30" y="41" font-family="Arial, sans-serif" font-size="15" font-weight="700" letter-spacing="2" fill="#FFFFFF">KITCHEN</text>
+  <rect x="0.5" y="0.5" width="479" height="359" fill="none" stroke="#000F08" stroke-opacity="0.15"/>
+  <text x="30" y="130" font-family="Georgia, serif" font-size="30" font-weight="700" fill="#000F08">Vitamix</text>
+  <text x="30" y="190" font-family="Georgia, serif" font-size="22" fill="#000F08">Ascent A2500 blender</text>
+  <text x="30" y="246" font-family="Consolas, monospace" font-size="14" fill="#4A5551">A2500</text>
+  <text x="30" y="330" font-family="Arial, sans-serif" font-size="11" fill="#4A5551">Guardian demo label photo &#183; not the real product</text>
+</svg>

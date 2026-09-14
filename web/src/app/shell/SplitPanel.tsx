@@ -1,6 +1,6 @@
 // Item detail split panel (bottom of the content column): receipt, warranty and recall checks for one item,
 // from GET /api/items/{id}. Resizable 160 px – 50 % of the viewport on desktop, a 60 vh sheet on mobile.
-import { useCallback, useEffect, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'react'
 import { Api } from '../../api/client'
 import type { ItemDetail, MatchCandidate } from '../../api/types'
 import { readNumber, writeNumber } from '../../theme/prefs'
@@ -14,7 +14,7 @@ import { useResize } from './useResize'
 const KEY = 'guardian.splitH'
 
 export function SplitPanel({ itemId, onClose }: { itemId: string; onClose: () => void }) {
-  const { theme, toast, narrow, dataVersion } = useShell()
+  const { theme, toast, narrow, dataVersion, bumpData } = useShell()
   const max = Math.max(160, Math.round((typeof window !== 'undefined' ? window.innerHeight : 900) * 0.5))
   const [h, setH] = useState(() => clamp(readNumber(KEY, 300), 160, max))
   const set = useCallback((v: number) => {
@@ -26,6 +26,18 @@ export function SplitPanel({ itemId, onClose }: { itemId: string; onClose: () =>
   const item = detail.data
 
   const sub = item ? [item.brand, item.model_number ?? (item.vehicle ? `VIN …${item.vehicle.vin.slice(-4)}` : null), item.category].filter(Boolean).join(' · ') : ''
+
+  async function remove() {
+    if (!item) return
+    try {
+      await Api.removeItem(item.id)
+      toast(`Removed ${item.name} from inventory.`)
+      onClose()
+      bumpData()
+    } catch (err) {
+      toast(`Could not remove the item: ${errMsg(err)}`)
+    }
+  }
 
   return (
     <section aria-label="Item detail" className="g-split" style={narrow ? undefined : { height: h }} aria-busy={detail.loading}>
@@ -46,8 +58,8 @@ export function SplitPanel({ itemId, onClose }: { itemId: string; onClose: () =>
         {!item && !detail.error && <SplitSkeleton />}
         {item && (
           <>
-            <ReceiptColumn item={item} onToast={toast} />
-            <WarrantyColumn item={item} color={warrantyColor(theme, item.warranty.elapsed_pct ?? 0)} onToast={toast} />
+            <ReceiptColumn item={item} onToast={toast} onReload={detail.reload} />
+            <WarrantyColumn item={item} color={warrantyColor(theme, item.warranty.elapsed_pct ?? 0)} onToast={toast} onRemove={remove} />
             <RecallColumn item={item} />
           </>
         )}
@@ -70,41 +82,166 @@ function SplitSkeleton() {
   )
 }
 
-function ReceiptColumn({ item, onToast }: { item: ItemDetail; onToast: (m: string) => void }) {
+function ReceiptColumn({ item, onToast, onReload }: { item: ItemDetail; onToast: (m: string) => void; onReload: () => void }) {
+  const fileRef = useRef<HTMLInputElement>(null)
+  const [uploading, setUploading] = useState(false)
+  const [emailOpen, setEmailOpen] = useState(false)
+
+  async function pickPhoto(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    setUploading(true)
+    try {
+      await Api.uploadPhoto(item.id, file)
+      onToast('Label photo added.')
+      onReload()
+    } catch (err) {
+      onToast(`Could not add the photo: ${errMsg(err)}`)
+    } finally {
+      setUploading(false)
+    }
+  }
+  async function removePhoto() {
+    setUploading(true)
+    try {
+      await Api.removePhoto(item.id)
+      onToast('Photo removed.')
+      onReload()
+    } catch (err) {
+      onToast(`Could not remove the photo: ${errMsg(err)}`)
+    } finally {
+      setUploading(false)
+    }
+  }
+  function openOriginalEmail() {
+    if (item.gmail_message_id) {
+      window.open(`https://mail.google.com/mail/u/0/#all/${item.gmail_message_id}`, '_blank', 'noopener,noreferrer')
+      return
+    }
+    if (item.receipt_text) {
+      setEmailOpen(true)
+      return
+    }
+    onToast('No original email was captured for this item (it was entered manually).')
+  }
+
   return (
     <div>
       <div className="g-eyebrow" style={{ marginBottom: 8 }}>
         Receipt
       </div>
-      <div className="g-receipt" aria-label="Receipt image placeholder">
-        receipt thumbnail · {item.retailer ?? 'unknown retailer'}
-      </div>
+      {item.photo_url ? (
+        <img src={item.photo_url} alt={`Label or receipt photo for ${item.name}`} className="g-receipt g-receipt--photo" />
+      ) : (
+        <div className="g-receipt" aria-label="No label photo on file">
+          receipt thumbnail · {item.retailer ?? 'unknown retailer'}
+        </div>
+      )}
       {item.receipt_text && (
         <pre className="g-receipt-text" dir="ltr" aria-label="Receipt text">
           {item.receipt_text}
         </pre>
       )}
       <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
-        <button type="button" className="g-btn g-btn--sm" onClick={() => onToast('The original email is not available in this build.')}>
+        <button type="button" className="g-btn g-btn--sm" onClick={openOriginalEmail}>
           Open original email
         </button>
-        <button type="button" className="g-btn g-btn--sm" onClick={() => onToast('Label photo upload is not available in this build.')}>
-          Add label photo
+        <input ref={fileRef} type="file" accept="image/*" hidden onChange={pickPhoto} aria-hidden="true" tabIndex={-1} />
+        <button type="button" className="g-btn g-btn--sm" onClick={() => fileRef.current?.click()} disabled={uploading}>
+          {uploading ? 'Working…' : item.photo_url ? 'Replace label photo' : 'Add label photo'}
         </button>
+        {item.photo_url && (
+          <button type="button" className="g-btn g-btn--sm g-btn--text" onClick={removePhoto} disabled={uploading}>
+            Remove photo
+          </button>
+        )}
+      </div>
+      {emailOpen && <EmailModal item={item} onClose={() => setEmailOpen(false)} onToast={onToast} />}
+    </div>
+  )
+}
+
+function EmailModal({ item, onClose, onToast }: { item: ItemDetail; onClose: () => void; onToast: (m: string) => void }) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [onClose])
+  function copyText() {
+    const text = item.receipt_text ?? ''
+    const done = () => onToast('Copied.')
+    if (navigator.clipboard?.writeText) navigator.clipboard.writeText(text).then(done, done)
+    else done()
+  }
+  function download() {
+    const subject = `${item.brand} ${item.name}`.trim()
+    const eml = `From: ${item.retailer ?? 'unknown sender'}\r\nSubject: ${subject}\r\nDate: ${item.purchase_date}\r\n\r\n${item.receipt_text ?? ''}`
+    const blob = new Blob([eml], { type: 'message/rfc822' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${item.id}.eml`
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    URL.revokeObjectURL(url)
+  }
+  return (
+    <div className="g-overlay" onMouseDown={e => e.target === e.currentTarget && onClose()}>
+      <div role="dialog" aria-modal="true" aria-labelledby="email-h" className="g-dialog">
+        <div className="g-dialog__head">
+          <h2 id="email-h" className="g-h2">
+            Original email
+          </h2>
+          <button type="button" className="g-btn g-btn--icon" onClick={onClose} aria-label="Close">
+            ×
+          </button>
+        </div>
+        <div className="g-dialog__body">
+          <p className="g-small g-muted" style={{ margin: '0 0 10px' }}>
+            The message Guardian ingested for {item.retailer ? `this ${item.retailer} purchase` : 'this item'}, captured as plain text.
+          </p>
+          <pre className="g-receipt-text" dir="ltr" style={{ maxHeight: '40vh' }}>
+            {item.receipt_text}
+          </pre>
+          <div className="g-dialog__foot">
+            <button type="button" className="g-btn" onClick={copyText}>
+              Copy
+            </button>
+            <button type="button" className="g-btn g-btn--primary" onClick={download}>
+              Download as .eml
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   )
 }
 
-function WarrantyColumn({ item, color, onToast }: { item: ItemDetail; color: string; onToast: (m: string) => void }) {
+function WarrantyColumn({ item, color, onToast, onRemove }: { item: ItemDetail; color: string; onToast: (m: string) => void; onRemove: () => Promise<void> }) {
   const w = item.warranty
   const [open, setOpen] = useState(false)
   const [text, setText] = useState('')
   const [busy, setBusy] = useState(false)
+  const [confirmRemove, setConfirmRemove] = useState(false)
+  const [removing, setRemoving] = useState(false)
   useEffect(() => {
     setOpen(false)
     setText('')
+    setConfirmRemove(false)
   }, [item.id])
+  const expired = w.ends_on != null && w.ends_on < new Date().toISOString().slice(0, 10)
+  async function confirmedRemove() {
+    setRemoving(true)
+    try {
+      await onRemove()
+    } finally {
+      setRemoving(false)
+    }
+  }
   async function send(e: FormEvent) {
     e.preventDefault()
     if (!text.trim() || busy) return
@@ -164,6 +301,27 @@ function WarrantyColumn({ item, color, onToast }: { item: ItemDetail; color: str
           </div>
         </form>
       )}
+      <div style={{ marginTop: 16, paddingTop: 16, borderTop: '1px solid var(--line)' }}>
+        {!confirmRemove ? (
+          <button type="button" className="g-btn g-btn--text" onClick={() => setConfirmRemove(true)}>
+            Remove from inventory
+          </button>
+        ) : (
+          <div className="g-problem">
+            <p className="g-small" style={{ margin: 0 }}>
+              {expired ? "This item's warranty has ended. Remove it from your inventory? Guardian will stop watching it." : 'Stop tracking this item? Guardian will no longer watch it for recalls or warranty windows.'}
+            </p>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <button type="button" className="g-btn g-btn--critical" onClick={confirmedRemove} disabled={removing}>
+                {removing ? 'Removing…' : 'Remove item'}
+              </button>
+              <button type="button" className="g-btn" onClick={() => setConfirmRemove(false)} disabled={removing}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   )
 }

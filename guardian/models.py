@@ -60,6 +60,9 @@ class InventoryItem(BaseModel):
     source: Literal["manual", "csv", "intake", "seed"] = "manual"
     created_at: str = Field(default_factory=now_iso)
     notes: str | None = None
+    photo_filename: str | None = None  # label/receipt photo on file under Store.photos_dir(item_id)
+    photo_content_type: str | None = None
+    gmail_message_id: str | None = None  # set when the item came from a synced Gmail message; lets "open original email" deep-link
 
 
 class RecallProduct(BaseModel):
@@ -201,7 +204,7 @@ class ActionReport(BaseModel):
 
 # ---- Guardian-level records ----
 
-DecisionChoice = Literal["request_remedy", "no_longer_own", "not_mine", "snooze", "fine", "report_problem", "done"]
+DecisionChoice = Literal["request_remedy", "no_longer_own", "not_mine", "snooze", "fine", "report_problem", "done", "review_and_attest", "skip_claim"]
 
 
 class DecisionOption(BaseModel):
@@ -212,7 +215,7 @@ class DecisionOption(BaseModel):
 
 class Decision(BaseModel):
     id: str = Field(default_factory=lambda: new_id("dec"))
-    kind: Literal["recall_remedy", "warranty_checkin", "advisory"]
+    kind: Literal["recall_remedy", "warranty_checkin", "advisory", "settlement_claim"]
     severity: Severity
     state: Literal["pending", "answered", "expired", "snoozed"] = "pending"
     created_at: str = Field(default_factory=now_iso)
@@ -229,6 +232,7 @@ class Decision(BaseModel):
     message: str = ""
     remedy_label: str = ""
     options: list[DecisionOption] = Field(default_factory=list)
+    extra_facts: list[dict[str, str]] = Field(default_factory=list)  # label/value pairs for kinds with no item/recall/match, e.g. settlement_claim
     answer: dict[str, Any] | None = None  # {choice, by, at, comment}
     outcome: dict[str, Any] | None = None  # {title, subtitle, steps[]}
     snooze_until: str | None = None

@@ -60,6 +60,13 @@ export function excerpt(s: string | null | undefined, n: number): string {
   return t.length <= n ? t : `${t.slice(0, n - 1).trimEnd()}…`
 }
 
+/** Full, unambiguous date for warranty windows: "Oct 12, 2026". `iso` may be a bare YYYY-MM-DD or a full timestamp. */
+export function fullDate(iso: string | null | undefined): string {
+  if (!iso) return '—'
+  const d = new Date(iso.length === 10 ? `${iso}T12:00:00` : iso)
+  return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })
+}
+
 export function plural(n: number, one: string, many = `${one}s`): string {
   return `${n.toLocaleString()} ${n === 1 ? one : many}`
 }

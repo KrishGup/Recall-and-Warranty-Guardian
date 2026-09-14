@@ -22,7 +22,8 @@ def _guardian(bridge: Optional[str], data: Optional[str], runs: Optional[str], q
 
 @app.command()
 def serve(port: int = typer.Option(8787, "--port"), host: str = typer.Option("127.0.0.1", "--host"), bridge: Optional[str] = typer.Option(None, "--bridge", help="bedrock | anthropic | claude-code | inbox | mock"),
-          data: Optional[str] = typer.Option(None, "--data", help="household store dir (default var/household)"), runs: Optional[str] = typer.Option(None, "--runs", help="gren runs dir (default var/runs)")) -> None:
+          data: Optional[str] = typer.Option(None, "--data", help="household store dir (default var/household)"), runs: Optional[str] = typer.Option(None, "--runs", help="gren runs dir (default var/runs)"),
+          schedule: bool = typer.Option(True, "--schedule/--no-schedule", help="run the nightly sweep and Gmail sync automatically in the background (real model spend, capped by GUARDIAN_DAILY_BUDGET_USD)")) -> None:
     """Serve the Guardian API, the gren run API under /gren, and the built dashboard."""
     import uvicorn
 
@@ -30,15 +31,18 @@ def serve(port: int = typer.Option(8787, "--port"), host: str = typer.Option("12
 
     if bridge == "mock":
         os.environ.setdefault("GREN_ALLOW_MOCK", "1")
-    application = create_guardian_app(data_dir=data, runs_dir=runs, bridge=bridge, quiet=False)
+    application = create_guardian_app(data_dir=data, runs_dir=runs, bridge=bridge, quiet=False, schedule=schedule)
     g = application.state.guardian
-    typer.echo(f"guardian: http://{host}:{port}  (data: {g.store.root}, runs: {g.run_store.root}, bridge: {bridge or 'auto'}, feeds: {os.environ.get('GUARDIAN_FEEDS', 'live')})")
+    typer.echo(f"guardian: http://{host}:{port}  (data: {g.store.root}, runs: {g.run_store.root}, bridge: {bridge or 'auto'}, feeds: {os.environ.get('GUARDIAN_FEEDS', 'live')}, background scheduler: {'on' if schedule else 'off'})")
     uvicorn.run(application, host=host, port=port, log_level="warning")
 
 
 @app.command()
-def seed(file: str = typer.Option(os.path.join(ROOT, "demo", "household.json"), "--file"), reset: bool = typer.Option(True, "--reset/--keep"), data: Optional[str] = typer.Option(None, "--data")) -> None:
+def seed(file: str = typer.Option(os.path.join(ROOT, "demo", "household.json"), "--file"), reset: bool = typer.Option(True, "--reset/--keep"), data: Optional[str] = typer.Option(None, "--data"),
+         case_studies: bool = typer.Option(True, "--case-studies/--no-case-studies", help="also seed the battery-recall and class-action-settlement example decisions")) -> None:
     """Load a household (items, preferences) from a JSON file. --reset clears the store first."""
+    from .case_studies import seed_case_studies
+    from .demo_photos import attach_all
     from .models import Household, Preferences
     from .service import Guardian
 
@@ -55,6 +59,11 @@ def seed(file: str = typer.Option(os.path.join(ROOT, "demo", "household.json"), 
         g.add_item(row, source="seed")
         n += 1
     typer.echo(f"seeded household '{hh.name}' with {n} item(s) into {g.store.root}")
+    if case_studies:
+        cs = seed_case_studies(g)
+        typer.echo(f"seeded {cs['items']} case-study item(s) and {cs['decisions']} pending decision(s) (battery recall, class-action settlement)")
+    n_photos = attach_all(g)
+    typer.echo(f"attached {n_photos} demo label photo(s)")
 
 
 @app.command()

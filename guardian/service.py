@@ -39,6 +39,11 @@ WARRANTY_OPTIONS = [
     DecisionOption(key="fine", label="It's fine", style="outline"),
     DecisionOption(key="snooze", label="Ask me tomorrow", style="text"),
 ]
+SETTLEMENT_OPTIONS = [
+    DecisionOption(key="review_and_attest", label="Review and attest", style="primary"),
+    DecisionOption(key="skip_claim", label="Skip this settlement", style="outline"),
+    DecisionOption(key="snooze", label="Ask me later", style="text"),
+]
 
 
 def _local_hhmm(iso: str) -> str:
@@ -96,8 +101,10 @@ class Guardian:
 
     # ------------------------------------------------------------------ construction
     @classmethod
-    def build(cls, data_dir: str | None = None, runs_dir: str | None = None, bridge: str | None = None, quiet: bool = True, with_gren_app: bool = True):
-        """Create the store, the gren run store and control. Returns (guardian, gren_fastapi_app_or_None)."""
+    def build(cls, data_dir: str | None = None, runs_dir: str | None = None, bridge: str | None = None, quiet: bool = True, with_gren_app: bool = True, schedule: bool = False):
+        """Create the store, the gren run store and control. Returns (guardian, gren_fastapi_app_or_None).
+        `schedule=True` (only `guardian serve` sets this) starts the background scheduler (nightly sweep, Gmail
+        sync); every other caller, including the test suite, gets a Guardian that only acts when asked."""
         store = Store(data_dir)
         runs_root = os.path.abspath(runs_dir or os.environ.get("GUARDIAN_RUNS") or os.path.join("var", "runs"))
         run_store = RunStore(runs_root)
@@ -118,6 +125,8 @@ class Guardian:
         g = cls(store, run_store, control, bridge=bridge, log=log)
         if not store.household().created_at or not os.path.exists(os.path.join(store.root, "household.json")):
             store.save_household(store.household())
+        if schedule:
+            g._start_scheduler()
         return g, gren_app
 
     # ------------------------------------------------------------------ spend guard
@@ -430,10 +439,10 @@ class Guardian:
                 d.state, d.snooze_until = "snoozed", tomorrow.isoformat()
                 d.outcome = {"title": "Snoozed until tomorrow", "subtitle": "Logged. Nothing else to do.", "steps": [{"text": "You answered: ask me tomorrow", "when": "Just now", "done": True}, {"text": "Guardian will resurface this at 08:00 tomorrow", "when": tomorrow.strftime("%b %d"), "done": False}]}
                 self.store.log(Activity(source="Household", text=f"Snoozed: {d.headline or d.item_name}", result="resurfaces tomorrow 08:00", tone="muted", run_id=d.run_id, item_id=d.item_id, decision_id=d.id))
-            elif choice in ("no_longer_own", "not_mine", "fine", "done"):
+            elif choice in ("no_longer_own", "not_mine", "fine", "done", "skip_claim"):
                 d.state = "answered"
-                what = {"no_longer_own": "no longer own it", "not_mine": "not mine", "fine": "it's fine", "done": "done"}[choice]
-                d.outcome = {"title": "Match closed" if d.kind == "recall_remedy" else "Noted", "subtitle": "Logged. Nothing else to do.", "steps": [{"text": f"You answered: {what}", "when": "Just now", "done": True}, {"text": "Match closed and logged; item status updated" if d.kind == "recall_remedy" else "No claim drafted", "when": "Just now", "done": True}]}
+                what = {"no_longer_own": "no longer own it", "not_mine": "not mine", "fine": "it's fine", "done": "done", "skip_claim": "skip this settlement"}[choice]
+                d.outcome = {"title": "Match closed" if d.kind == "recall_remedy" else ("Settlement skipped" if choice == "skip_claim" else "Noted"), "subtitle": "Logged. Nothing else to do.", "steps": [{"text": f"You answered: {what}", "when": "Just now", "done": True}, {"text": "Match closed and logged; item status updated" if d.kind == "recall_remedy" else "No claim drafted", "when": "Just now", "done": True}]}
                 if d.match_id:
                     m = self.store.match(d.match_id)
                     if m is not None:
@@ -445,6 +454,10 @@ class Guardian:
                     item.status = "disposed"
                     self.store.upsert_item(item)
                 self.store.log(Activity(source="Household", text=f"Answered '{what}' for {d.item_name}", result="match closed" if d.kind == "recall_remedy" else "no claim", tone="ok", run_id=d.run_id, item_id=d.item_id, decision_id=d.id))
+            elif choice == "review_and_attest":
+                d.state = "answered"
+                d.outcome = {"title": "Claim drafting started", "subtitle": "Guardian prefills the claim form; you review and attest before anything is submitted.", "steps": [{"text": "You approved: review and attest", "when": "Just now", "done": True}, {"text": "Claim form assembly is the next milestone (see read_this_labubu.md)", "when": "Now", "done": False}]}
+                self.store.log(Activity(source="Household", text=f"Approved 'review and attest' for {d.item_name}", result="claim assembly is the next milestone", tone="ok", run_id=d.run_id, item_id=d.item_id, decision_id=d.id))
             else:  # request_remedy / report_problem
                 d.state = "answered"
                 d.outcome = {"title": "Approved", "subtitle": "Guardian is drafting and sending the request.", "steps": [{"text": f"You approved: {d.remedy_label.lower() or choice.replace('_', ' ')}", "when": "Just now", "done": True}, {"text": "Remedy request being drafted", "when": "Now", "done": False}]}
@@ -582,7 +595,9 @@ class Guardian:
             rationale = f"{len(dropped)} lexical candidate(s) dropped by the date-window filter before any model call." if dropped else f"No candidates in {it.sweeps} sweep(s)."
         sources = ["NHTSA"] if it.category == "Vehicle" else (["openFDA"] if it.category == "Food" else ["CPSC"])
         w = warranty_policy.view(it)
-        return {**it.model_dump(exclude={"receipt_text", "notes"}), "warranty": w, "recall": {"state": state, "label": label, "rationale": rationale, "sources": sources, "sweeps": it.sweeps}}
+        photo_url = f"/api/items/{it.id}/photo" if it.photo_filename else None
+        return {**it.model_dump(exclude={"receipt_text", "notes", "photo_filename", "photo_content_type"}), "warranty": w, "photo_url": photo_url,
+                "recall": {"state": state, "label": label, "rationale": rationale, "sources": sources, "sweeps": it.sweeps}}
 
     def match_view(self, m: MatchCandidate) -> dict[str, Any]:
         r = self.store.recall(m.recall_id)
@@ -642,18 +657,20 @@ class Guardian:
         if r:
             f, t = r.sold_window()
             facts.append({"label": "Sold window", "value": f"{f or '?'} to {t or '?'}" if (f or t) else "not stated"})
+        facts.extend(d.extra_facts)
         created_local = _local_hhmm(d.created_at)
         try:
             hours_left = max(0, int((datetime.fromisoformat((d.expires_at or d.created_at).replace("Z", "+00:00")) - datetime.now(timezone.utc)).total_seconds() // 3600))
         except ValueError:
             hours_left = 0
-        src = f"{r.source_label} recall {r.native_id}" if r else ("Warranty window" if d.kind == "warranty_checkin" else "Advisory")
+        src = f"{r.source_label} recall {r.native_id}" if r else {"warranty_checkin": "Warranty window", "settlement_claim": "Class action settlement", "advisory": "Advisory"}.get(d.kind, "Advisory")
         meta = f"{src} · surfaced {created_local} {'today' if _local_date(d.created_at) == date.today().isoformat() else _local_date(d.created_at)}" + (f" · expires in {hours_left} h" if d.state == "pending" else "")
         past_label = None
         if d.state != "pending":
             ch = (d.answer or {}).get("choice")
-            past_label = {"request_remedy": "Remedy requested" if not d.action else "Remedy sent", "no_longer_own": "Closed · no longer owned", "not_mine": "Closed · not mine", "snooze": "Snoozed", "fine": "Checked in · fine", "report_problem": "Claim drafted", "done": "Done"}.get(ch or "", d.state)
-        return {**d.model_dump(), "item_name": d.item_name or (f"{it.brand} {it.name}".strip() if it else ""), "badge": "Critical hazard" if d.severity == "critical" else ("Warranty window" if d.kind == "warranty_checkin" else "Standard hazard"),
+            past_label = {"request_remedy": "Remedy requested" if not d.action else "Remedy sent", "no_longer_own": "Closed · no longer owned", "not_mine": "Closed · not mine", "snooze": "Snoozed", "fine": "Checked in · fine", "report_problem": "Claim drafted", "done": "Done", "review_and_attest": "Claim drafted", "skip_claim": "Closed · skipped"}.get(ch or "", d.state)
+        badge = "Critical hazard" if d.severity == "critical" else ({"warranty_checkin": "Warranty window", "settlement_claim": "Class action settlement"}.get(d.kind, "Standard hazard"))
+        return {**d.model_dump(), "item_name": d.item_name or (f"{it.brand} {it.name}".strip() if it else ""), "badge": badge,
                 "meta": meta, "title": d.headline, "recall": self.recall_view(r) if r else None, "match": ({"stage": m.stage, "key": m.key, "confidence_label": facts[-2]["value"] if r and m else (facts[-1]["value"] if m else ""), "rationale": m.rationale} if m else None),
                 "facts": facts, "options": [o.model_dump() for o in d.options], "past_label": past_label}
 
@@ -726,7 +743,7 @@ class Guardian:
             "decisions_pending": len(pending),
             "forwarding_address": self.store.prefs().forwarding_address,
             "recent_activity": recent,
-            "ending_soon": [{"item_id": e["item_id"], "name": e["name"], "ends_on": e["ends_on"], "pct": e["pct"], "note": e["note"]} for e in warranty_policy.ending_soon(items, 60)[:4]],
+            "ending_soon": [{"item_id": e["item_id"], "name": e["name"], "ends_on": e["ends_on"], "days_left": e["days_left"], "pct": e["pct"], "note": e["note"]} for e in warranty_policy.ending_soon(items, 60)[:8]],
             "provider": {"bridge": bridge, "live": bool(avail) and bridge != "mock", "label": {"claude-code": "Claude Code (local, headless)", "bedrock": "Amazon Bedrock", "anthropic": "Anthropic API", "mock": "mock provider (no tokens)", "inbox": "inbox (orchestrator)"}.get(bridge, bridge) + ("" if avail else f" · unavailable: {reason}")},
             "spend": {"today_usd": self.spend_today(), "daily_budget_usd": self.daily_budget()},
             "runtime": {"mode": "agentcore" if self.remote else "local", "arn": self.remote.arn if self.remote else None, "busy": bool(self._remote_busy), "state_bucket": os.environ.get("GUARDIAN_S3_BUCKET") or None, "state_sync": self._state_sync},
@@ -767,3 +784,157 @@ class Guardian:
         self._emit_local("item.created", {"item_id": it.id})
         self.persist()
         return self.item_view(it)
+
+    def save_item_photo(self, item_id: str, data: bytes, filename: str, content_type: str) -> dict[str, Any]:
+        it = self.store.item(item_id)
+        if it is None:
+            raise KeyError(item_id)
+        if it.photo_filename:
+            self.store.delete_photo(it.id, it.photo_filename)
+        it.photo_filename = self.store.save_photo(it.id, data, filename)
+        it.photo_content_type = content_type
+        self.store.upsert_item(it)
+        self.store.log(Activity(source="Household", text=f"Added a label photo to {it.brand} {it.name}".strip(), tone="ok", item_id=it.id))
+        self._emit_local("item.updated", {"item_id": it.id})
+        self.persist()
+        return self.item_view(it)
+
+    def item_photo_file(self, item_id: str) -> tuple[str, str] | None:
+        it = self.store.item(item_id)
+        if it is None or not it.photo_filename:
+            return None
+        return self.store.photo_path(it.id, it.photo_filename), it.photo_content_type or "application/octet-stream"
+
+    def remove_item_photo(self, item_id: str) -> dict[str, Any]:
+        it = self.store.item(item_id)
+        if it is None:
+            raise KeyError(item_id)
+        if it.photo_filename:
+            self.store.delete_photo(it.id, it.photo_filename)
+            it.photo_filename, it.photo_content_type = None, None
+            self.store.upsert_item(it)
+            self.persist()
+        return self.item_view(it)
+
+    def remove_item(self, item_id: str) -> dict[str, Any]:
+        it = self.store.item(item_id)
+        if it is None:
+            raise KeyError(item_id)
+        name = f"{it.brand} {it.name}".strip()
+        for d in self.store.decisions():
+            if d.item_id == item_id and d.state == "pending":
+                d.state = "answered"
+                d.answer = {"choice": "no_longer_own", "by": "household", "at": now_iso(), "comment": "item removed from inventory"}
+                d.outcome = {"title": "Item removed", "subtitle": "Guardian stopped watching this item.", "steps": [{"text": "Item removed from inventory", "when": "Just now", "done": True}]}
+                self.store.upsert_decision(d)
+        if it.photo_filename:
+            self.store.delete_photo(it.id, it.photo_filename)
+        self.store.delete_item(item_id)
+        self.store.log(Activity(source="Household", text=f"Removed {name} from inventory", result="no longer watched", tone="muted", item_id=item_id))
+        self._emit_local("item.removed", {"item_id": item_id})
+        self.persist()
+        return {"ok": True, "item_id": item_id}
+
+    # ------------------------------------------------------------------ gmail
+    def gmail_status(self) -> dict[str, Any]:
+        from . import gmail
+
+        st = self.store.gmail_state()
+        return {"configured": gmail.configured(), "connected": bool(st.get("refresh_token")), "email": st.get("email"), "last_sync": st.get("last_sync")}
+
+    def gmail_connect_url(self) -> str:
+        from . import gmail
+
+        if not gmail.configured():
+            raise ValueError("Gmail is not configured: set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET (see .env.example)")
+        return gmail.auth_url(state=self.store.household().id)
+
+    def gmail_handle_callback(self, code: str) -> dict[str, Any]:
+        from . import gmail
+
+        tokens = gmail.exchange_code(code)
+        profile = gmail.get_profile(tokens["access_token"])
+        st = {
+            "refresh_token": tokens.get("refresh_token") or self.store.gmail_state().get("refresh_token"),
+            "access_token": tokens["access_token"],
+            "expires_at": time.time() + float(tokens.get("expires_in") or 3600),
+            "email": profile.get("emailAddress"),
+            "connected_at": now_iso(),
+            "last_sync": None,
+        }
+        self.store.save_gmail_state(st)
+        self.store.log(Activity(source="Household", text=f"Connected Gmail ({st['email']})", result="ready to sync receipts", tone="ok"))
+        self.persist()
+        return st
+
+    def gmail_disconnect(self) -> dict[str, Any]:
+        self.store.save_gmail_state({})
+        self.store.log(Activity(source="Household", text="Disconnected Gmail", tone="muted"))
+        self.persist()
+        return {"ok": True}
+
+    def gmail_sync(self, max_results: int = 15) -> dict[str, Any]:
+        """Pull recent receipt-shaped messages and run each through the existing intake pipeline. Best-effort: one
+        message failing to parse does not stop the others."""
+        from . import gmail
+
+        st = self.store.gmail_state()
+        if not st.get("refresh_token"):
+            raise ValueError("Gmail is not connected")
+        access, st = gmail.valid_access_token(st)
+        self.store.save_gmail_state(st)
+        ids = gmail.list_message_ids(access, max_results=max_results)
+        added = 0
+        for mid in ids:
+            try:
+                msg = gmail.get_message(access, mid)
+                if len((msg.get("text") or "").strip()) < 8:
+                    continue
+                res = self.intake(msg["text"], source="email")
+            except Exception as e:  # noqa: BLE001
+                self.log(f"gmail sync: message {mid} failed: {e}")
+                continue
+            if res.get("item"):
+                it = self.store.item(res["item"]["id"])
+                if it is not None and not it.gmail_message_id:
+                    it.gmail_message_id = mid
+                    self.store.upsert_item(it)
+                added += 1
+        st["last_sync"] = now_iso()
+        self.store.save_gmail_state(st)
+        self.store.log(Activity(source="Intake", text=f"Gmail sync checked {len(ids)} message(s)", result=f"{added} item(s) added", tone="ok"))
+        self.persist()
+        return {"checked": len(ids), "added": added}
+
+    # ------------------------------------------------------------------ background scheduler
+    def _start_scheduler(self) -> None:
+        threading.Thread(target=self._scheduler_loop, name="guardian-scheduler", daemon=True).start()
+        self.log("background scheduler started: nightly sweep every 24h, Gmail sync every 45m when connected")
+
+    def _scheduler_loop(self) -> None:
+        poll_s, sweep_every_s, gmail_every_s = 300, 24 * 3600, 45 * 60
+        while True:
+            try:
+                st = self.store.scheduler_state()
+                now = time.time()
+                if now - float(st.get("last_sweep_at") or 0) >= sweep_every_s:
+                    st["last_sweep_at"] = now
+                    self.store.save_scheduler_state(st)
+                    try:
+                        self.check_budget(reserve=0.05)
+                        self.start_sweep(trigger="scheduled")
+                    except ValueError as e:
+                        self.log(f"scheduled sweep skipped: {e}")
+                    except Exception as e:  # noqa: BLE001
+                        self.log(f"scheduled sweep failed: {e}")
+                if self.store.gmail_state().get("refresh_token") and now - float(st.get("last_gmail_sync_at") or 0) >= gmail_every_s:
+                    st = self.store.scheduler_state()
+                    st["last_gmail_sync_at"] = now
+                    self.store.save_scheduler_state(st)
+                    try:
+                        self.gmail_sync()
+                    except Exception as e:  # noqa: BLE001
+                        self.log(f"scheduled gmail sync failed: {e}")
+            except Exception as e:  # noqa: BLE001
+                self.log(f"scheduler loop error: {e}")
+            time.sleep(poll_s)

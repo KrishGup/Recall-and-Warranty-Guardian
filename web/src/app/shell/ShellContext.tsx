@@ -24,6 +24,8 @@ export interface Shell {
   refreshDecisions: () => void
   /** Bumps when Guardian data changed (SSE or a local mutation); pages refetch on it. */
   dataVersion: number
+  /** Call after a mutation the SSE stream won't itself report (e.g. deleting an item from the split panel) to make every page relying on dataVersion refetch immediately. */
+  bumpData: () => void
   /** Bumps on gren engine events; the Agent flow page refetches the run on it. */
   runVersion: number
   toast: (message: string) => void

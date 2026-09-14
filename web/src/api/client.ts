@@ -2,7 +2,7 @@
 // in production FastAPI serves the built app and both APIs from one origin.
 import { useEffect, useRef } from 'react'
 import type {
-  ActivityNight, AnswerResult, Decision, DecisionChoice, Decisions, GrenArtifact, GrenEvent, GrenRun, GrenRunSummary, GuardianEvent, IntakeResult, Item,
+  ActivityNight, AnswerResult, Decision, DecisionChoice, Decisions, GmailStatus, GrenArtifact, GrenEvent, GrenRun, GrenRunSummary, GuardianEvent, IntakeResult, Item,
   ItemDetail, ItemsPage, ItemsQuery, NewItem, Preferences, Summary,
 } from './types'
 
@@ -42,6 +42,9 @@ export async function get<T>(path: string): Promise<T> {
 export async function send<T>(method: 'POST' | 'PUT' | 'DELETE', path: string, body?: unknown): Promise<T> {
   return parse<T>(await fetch(path, { method, headers: { 'content-type': 'application/json', accept: 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) }))
 }
+export async function upload<T>(method: 'POST', path: string, form: FormData): Promise<T> {
+  return parse<T>(await fetch(path, { method, headers: { accept: 'application/json' }, body: form }))
+}
 
 export interface ApiShape {
   summary(): Promise<Summary>
@@ -49,6 +52,9 @@ export interface ApiShape {
   item(id: string): Promise<ItemDetail>
   createItem(body: NewItem): Promise<Item>
   importItems(items: NewItem[]): Promise<{ created: number; items: Item[] }>
+  removeItem(id: string): Promise<{ ok: boolean; item_id: string }>
+  uploadPhoto(itemId: string, file: File): Promise<Item>
+  removePhoto(itemId: string): Promise<Item>
   intake(text: string, source?: 'paste' | 'email'): Promise<IntakeResult>
   reportProblem(itemId: string, text: string): Promise<{ ok: boolean; decision: Decision | null; message: string }>
   decisions(): Promise<Decisions>
@@ -57,6 +63,12 @@ export interface ApiShape {
   preferences(): Promise<Preferences>
   savePreferences(p: Preferences): Promise<Preferences>
   sweep(): Promise<{ run_id: string }>
+  gmail: {
+    status(): Promise<GmailStatus>
+    connect(): Promise<{ url: string }>
+    sync(): Promise<{ checked: number; added: number }>
+    disconnect(): Promise<{ ok: boolean }>
+  }
   gren: {
     runs(all?: boolean): Promise<GrenRunSummary[]>
     run(id: string): Promise<GrenRun>
@@ -75,6 +87,13 @@ const real: ApiShape = {
   item: id => get(`/api/items/${enc(id)}`),
   createItem: body => send('POST', '/api/items', body),
   importItems: items => send('POST', '/api/items/import', { items }),
+  removeItem: id => send('DELETE', `/api/items/${enc(id)}`),
+  uploadPhoto: (itemId, file) => {
+    const form = new FormData()
+    form.set('file', file)
+    return upload('POST', `/api/items/${enc(itemId)}/photo`, form)
+  },
+  removePhoto: itemId => send('DELETE', `/api/items/${enc(itemId)}/photo`),
   intake: (text, source = 'paste') => send('POST', '/api/intake', { text, source }),
   reportProblem: (itemId, text) => send('POST', `/api/items/${enc(itemId)}/problem`, { text }),
   decisions: () => get('/api/decisions'),
@@ -83,6 +102,12 @@ const real: ApiShape = {
   preferences: () => get('/api/preferences'),
   savePreferences: p => send('PUT', '/api/preferences', p),
   sweep: () => send('POST', '/api/sweep', {}),
+  gmail: {
+    status: () => get('/api/gmail/status'),
+    connect: () => get('/api/gmail/connect'),
+    sync: () => send('POST', '/api/gmail/sync'),
+    disconnect: () => send('POST', '/api/gmail/disconnect'),
+  },
   gren: {
     runs: (all = false) => get(`/gren/api/runs${all ? '?all=1' : ''}`),
     run: id => get(`/gren/api/run?id=${enc(id)}`),

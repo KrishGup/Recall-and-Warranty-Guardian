@@ -47,7 +47,8 @@ def view(item: InventoryItem, today: date | None = None) -> dict[str, Any]:
     pct = int(round(100 * min(1.0, max(0.0, (today - bought).days / total))))
     ended = today > ends
     src = {"receipt": "receipt", "category_default": "estimate", "manufacturer": "manufacturer", "none": ""}[w.source]
-    label = f"{w.term_months} mo · " + ("ended" if ended else f"ends {w.ends_on[:7]}") + (f" · {src}" if src and src != "receipt" else "")
+    full_date = ends.strftime("%b %d, %Y")
+    label = f"{w.term_months} mo · " + (f"ended {full_date}" if ended else f"ends {full_date}") + (f" · {src}" if src and src != "receipt" else "")
     if w.source == "category_default":
         note = "Category default: receipt had no warranty line. Shown as an estimate."
     elif w.source == "manufacturer":
@@ -55,7 +56,7 @@ def view(item: InventoryItem, today: date | None = None) -> dict[str, Any]:
     else:
         note = "Term read from receipt."
     if ended:
-        note += f" Expired {w.ends_on}."
+        note += f" Expired {full_date}."
     return {"term_months": w.term_months, "ends_on": w.ends_on, "source": w.source, "extended": w.extended, "elapsed_pct": pct, "label": label, "note": note}
 
 

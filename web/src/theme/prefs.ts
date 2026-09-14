@@ -32,6 +32,14 @@ export function writeNumber(key: string, value: number) {
   write(key, String(value))
 }
 
+export function readBool(key: string, fallback: boolean): boolean {
+  const v = read(key, '')
+  return v === '' ? fallback : v === '1'
+}
+export function writeBool(key: string, value: boolean) {
+  write(key, value ? '1' : '0')
+}
+
 export function applyPrefs(scheme: Scheme, dir: Dir) {
   const el = document.documentElement
   el.dataset.theme = scheme

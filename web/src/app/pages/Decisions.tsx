@@ -14,6 +14,10 @@ function toastFor(choice: DecisionChoice): string {
       return 'Remedy requested. Guardian takes it from here and follows up in 10 business days.'
     case 'report_problem':
       return 'Claim drafting started. Guardian asks once before anything is sent.'
+    case 'review_and_attest':
+      return 'Claim drafting started. Guardian prefills the form; you review and attest before anything is submitted.'
+    case 'skip_claim':
+      return "Noted. Settlement skipped; you won't be asked about it again."
     case 'snooze':
       return 'Guardian will ask again tomorrow at 08:00.'
     case 'fine':
@@ -146,7 +150,7 @@ export function Decisions() {
 function DecisionCard({ d, busy, onAnswer, onOpenItem }: { d: Decision; busy: boolean; onAnswer: (d: Decision, choice: DecisionChoice) => void; onOpenItem: (id: string) => void }) {
   const [open, setOpen] = useState(false)
   const critical = d.severity === 'critical'
-  const variant = critical ? '' : d.kind === 'warranty_checkin' ? ' g-deccard--warranty' : ' g-deccard--standard'
+  const variant = critical ? '' : d.kind === 'warranty_checkin' ? ' g-deccard--warranty' : d.kind === 'settlement_claim' ? ' g-deccard--settlement' : ' g-deccard--standard'
   const itemId = d.item_id
   return (
     <article aria-labelledby={`dec-${d.id}`} className={`g-card g-deccard${variant}`} aria-busy={busy}>

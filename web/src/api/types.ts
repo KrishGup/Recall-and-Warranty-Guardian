@@ -51,6 +51,8 @@ export interface Item {
   status: 'watched' | 'resolved' | 'disposed'
   recall: RecallStatus
   created_at: string
+  photo_url: string | null // GET this URL for the label/receipt photo, when present
+  gmail_message_id: string | null // set when the item came from a synced Gmail message
 }
 
 export interface RecallSummary {
@@ -130,7 +132,7 @@ export interface IntakeResult {
   error: string | null
 }
 
-export type DecisionChoice = 'request_remedy' | 'no_longer_own' | 'not_mine' | 'snooze' | 'fine' | 'report_problem' | 'done'
+export type DecisionChoice = 'request_remedy' | 'no_longer_own' | 'not_mine' | 'snooze' | 'fine' | 'report_problem' | 'done' | 'review_and_attest' | 'skip_claim'
 
 export interface DecisionOption {
   key: DecisionChoice
@@ -140,7 +142,7 @@ export interface DecisionOption {
 
 export interface Decision {
   id: string
-  kind: 'recall_remedy' | 'warranty_checkin' | 'advisory'
+  kind: 'recall_remedy' | 'warranty_checkin' | 'advisory' | 'settlement_claim'
   severity: Severity
   state: 'pending' | 'answered' | 'expired' | 'snoozed'
   created_at: string
@@ -195,6 +197,7 @@ export interface EndingSoon {
   item_id: string
   name: string
   ends_on: string
+  days_left: number
   pct: number
   note: string
 }
@@ -223,6 +226,13 @@ export interface Preferences {
   phone: string
   forwarding_address: string
   sensitivities: { infant: boolean; pregnancy: boolean; elderly: boolean; allergens: string[] }
+}
+
+export interface GmailStatus {
+  configured: boolean // GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET set on the server
+  connected: boolean
+  email: string | null
+  last_sync: string | null
 }
 
 /** Server-sent events on /api/events. Guardian events carry `at`; gren engine events carry `seq` and `run_id`. */

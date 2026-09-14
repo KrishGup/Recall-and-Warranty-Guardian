@@ -8,7 +8,10 @@ export function Logo({ status, open, size = 28 }: { status: AgentStatusKey; open
   const isOpen = open ?? status !== 'idle'
   const dot = Math.round((size * 9) / 28)
   const off = (size - dot) / 2
-  const base: CSSProperties = { position: 'absolute', inset: 0, borderRadius: '50%' }
+  // Inset the disk and the lid a few pixels so the wrapper's own background shows through as a deliberate,
+  // visible ring around the mark instead of a 0px seam that only shows as antialiasing.
+  const border = Math.max(3, Math.round(size / 7))
+  const base: CSSProperties = { position: 'absolute', inset: border, borderRadius: '50%' }
   return (
     <span aria-hidden="true" style={{ position: 'relative', width: size, height: size, borderRadius: '50%', background: '#F7F4F3', display: 'inline-block', overflow: 'hidden', flex: '0 0 auto' }}>
       <span style={{ ...base, background: '#000F08' }} />

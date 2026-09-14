@@ -20,7 +20,7 @@ def test_severity_keyword_pass():
 def test_warranty_from_receipt_and_category_default():
     vit = InventoryItem(name="Ascent A2500", brand="Vitamix", category="Kitchen", purchase_date="2016-10-01", price=449.95, warranty=Warranty(term_months=120, source="receipt"))
     v = warranty.view(vit, today=date(2026, 9, 13))
-    assert v["ends_on"] == "2026-10-01" and v["source"] == "receipt" and v["elapsed_pct"] >= 99 and v["label"].startswith("120 mo · ends 2026-10")
+    assert v["ends_on"] == "2026-10-01" and v["source"] == "receipt" and v["elapsed_pct"] >= 99 and v["label"].startswith("120 mo · ends Oct 01, 2026")
     dehum = InventoryItem(name="50-pint dehumidifier", brand="Frigidaire", category="Appliance", purchase_date="2023-07-21")
     d = warranty.view(dehum, today=date(2026, 9, 13))
     assert d["term_months"] == 12 and d["source"] == "category_default" and "estimate" in d["label"] and d["elapsed_pct"] == 100

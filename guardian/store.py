@@ -112,6 +112,48 @@ class Store:
         self._upsert("items.json", item.model_dump())
         return item
 
+    def delete_item(self, item_id: str) -> bool:
+        with self.lock:
+            rows = self._list("items.json")
+            kept = [r for r in rows if r.get("id") != item_id]
+            if len(kept) == len(rows):
+                return False
+            self._save_list("items.json", kept)
+            self._save_list("matches.json", [m for m in self._list("matches.json") if m.get("item_id") != item_id])
+        photo_dir = os.path.join(self.root, "photos", item_id)
+        if os.path.isdir(photo_dir):
+            for f in os.listdir(photo_dir):
+                try:
+                    os.remove(os.path.join(photo_dir, f))
+                except OSError:
+                    pass
+            try:
+                os.rmdir(photo_dir)
+            except OSError:
+                pass
+        return True
+
+    # ---- photos (label / receipt images) ----
+    def save_photo(self, item_id: str, data: bytes, filename: str) -> str:
+        d = os.path.join(self.root, "photos", item_id)
+        os.makedirs(d, exist_ok=True)
+        safe = "".join(c for c in filename if c.isalnum() or c in "._-") or "photo"
+        name = f"{random.randbytes(4).hex()}-{safe}"
+        with open(os.path.join(d, name), "wb") as f:
+            f.write(data)
+        return name
+
+    def photo_path(self, item_id: str, filename: str) -> str:
+        return os.path.join(self.root, "photos", item_id, filename)
+
+    def delete_photo(self, item_id: str, filename: str) -> None:
+        p = self.photo_path(item_id, filename)
+        if os.path.exists(p):
+            try:
+                os.remove(p)
+            except OSError:
+                pass
+
     def bump_sweeps(self, item_ids: Iterable[str]) -> None:
         ids = set(item_ids)
         with self.lock:
@@ -233,6 +275,20 @@ class Store:
     def save_feeds_state(self, st: dict[str, Any]) -> None:
         _atomic_write(self._p("feeds.json"), st)
 
+    # ---- gmail link (OAuth tokens; never a password) ----
+    def gmail_state(self) -> dict[str, Any]:
+        return _read(self._p("gmail.json"), {}) or {}
+
+    def save_gmail_state(self, st: dict[str, Any]) -> None:
+        _atomic_write(self._p("gmail.json"), st)
+
+    # ---- background scheduler bookkeeping ----
+    def scheduler_state(self) -> dict[str, Any]:
+        return _read(self._p("scheduler.json"), {}) or {}
+
+    def save_scheduler_state(self, st: dict[str, Any]) -> None:
+        _atomic_write(self._p("scheduler.json"), st)
+
     # ---- outbox (what would have gone out over SNS / SES) ----
     def outbox_write(self, kind: str, payload: dict[str, Any]) -> str:
         d = os.path.join(self.root, "outbox")
@@ -257,14 +313,20 @@ class Store:
     # ---- lifecycle ----
     def reset(self) -> None:
         with self.lock:
-            for f in ("items.json", "recalls.json", "matches.json", "decisions.json", "activity.jsonl", "sweeps.json", "feeds.json", "prefs.json", "household.json"):
+            for f in ("items.json", "recalls.json", "matches.json", "decisions.json", "activity.jsonl", "sweeps.json", "feeds.json", "prefs.json", "household.json", "scheduler.json", "gmail.json"):
                 p = self._p(f)
                 if os.path.exists(p):
                     os.remove(p)
-            d = os.path.join(self.root, "outbox")
-            if os.path.isdir(d):
-                for f in os.listdir(d):
-                    try:
-                        os.remove(os.path.join(d, f))
-                    except OSError:
-                        pass
+            for sub in ("outbox", "photos"):
+                d = os.path.join(self.root, sub)
+                if os.path.isdir(d):
+                    for root, _dirs, files in os.walk(d, topdown=False):
+                        for f in files:
+                            try:
+                                os.remove(os.path.join(root, f))
+                            except OSError:
+                                pass
+                        try:
+                            os.rmdir(root)
+                        except OSError:
+                            pass

@@ -73,3 +73,30 @@ def test_without_a_token_everything_is_open(tmp_path, monkeypatch):
     monkeypatch.delenv("GUARDIAN_API_TOKEN", raising=False)
     c = _client(tmp_path)
     assert c.post("/api/items", json={"name": "Kettle", "purchase_date": "2026-01-02"}).status_code == 200
+
+
+def test_delete_item_and_photo_round_trip(tmp_path):
+    c = _client(tmp_path)
+    item = c.post("/api/items", json={"name": "Kettle", "brand": "Fellow", "category": "Kitchen", "purchase_date": "2026-01-02"}).json()
+    item_id = item["id"]
+    assert item["photo_url"] is None
+
+    up = c.post(f"/api/items/{item_id}/photo", files={"file": ("label.jpg", b"\xff\xd8\xff fake", "image/jpeg")})
+    assert up.status_code == 200 and up.json()["photo_url"] == f"/api/items/{item_id}/photo"
+    got = c.get(f"/api/items/{item_id}/photo")
+    assert got.status_code == 200 and got.headers["content-type"] == "image/jpeg"
+    assert c.post(f"/api/items/{item_id}/photo", files={"file": ("x.txt", b"not an image", "text/plain")}).status_code == 400
+
+    assert c.delete(f"/api/items/{item_id}/photo").json()["photo_url"] is None
+    assert c.get(f"/api/items/{item_id}/photo").status_code == 404
+
+    assert c.delete(f"/api/items/{item_id}").json() == {"ok": True, "item_id": item_id}
+    assert c.get(f"/api/items/{item_id}").status_code == 404
+    assert c.get("/api/items").json()["total"] == 0
+
+
+def test_gmail_status_without_configuration(tmp_path):
+    c = _client(tmp_path)
+    st = c.get("/api/gmail/status").json()
+    assert st == {"configured": False, "connected": False, "email": None, "last_sync": None}
+    assert c.get("/api/gmail/connect").status_code == 400

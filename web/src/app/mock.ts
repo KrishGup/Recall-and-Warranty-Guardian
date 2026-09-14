@@ -65,6 +65,7 @@ function mkItem(p: Seed): Item {
     vehicle: p.vehicle ?? null, status: 'watched',
     recall: { state: p.state, label: p.label, rationale: p.rationale, sources: p.sources, sweeps: p.sweeps },
     created_at: at('11:40', -30),
+    photo_url: null, gmail_message_id: null,
   }
 }
 
@@ -190,9 +191,9 @@ function summary(): Summary {
     forwarding_address: ADDRESS,
     recent_activity: tonightRows(),
     ending_soon: [
-      { item_id: 'itm_vitamix', name: 'Vitamix Ascent A2500', ends_on: '2026-10-01', pct: 96, note: 'Guardian will ask "anything wrong with it?" on Sep 17.' },
-      { item_id: 'itm_frigidaire', name: 'Frigidaire dehumidifier', ends_on: '2026-07 (estimate)', pct: 62, note: 'Term from category default; receipt had no warranty line.' },
-      { item_id: 'itm_babyletto', name: 'Babyletto crib', ends_on: '2027-01-09', pct: 40, note: '12‑month term read from receipt.' },
+      { item_id: 'itm_vitamix', name: 'Vitamix Ascent A2500', ends_on: plusDays(18), days_left: 18, pct: 96, note: 'Guardian will ask "anything wrong with it?" on Sep 17.' },
+      { item_id: 'itm_frigidaire', name: 'Frigidaire dehumidifier', ends_on: plusDays(34), days_left: 34, pct: 62, note: 'Term from category default; receipt had no warranty line.' },
+      { item_id: 'itm_babyletto', name: 'Babyletto crib', ends_on: plusDays(55), days_left: 55, pct: 40, note: '12‑month term read from receipt.' },
     ],
     provider: { bridge: 'mock', live: false, label: 'mock provider (no tokens)' },
   }
@@ -269,6 +270,7 @@ function createItem(body: NewItem, source: string): Item {
     vehicle: body.vin ? { vin: body.vin, year: 0, make: body.brand, model: body.name } : null, status: 'watched',
     recall: { state: 'unchecked', label: 'Not yet swept', rationale: 'This item has not been through a nightly sweep yet.', sources: body.category === 'Vehicle' ? ['NHTSA'] : body.category === 'Food' ? ['openFDA'] : ['CPSC'], sweeps: 0 },
     created_at: nowIso(),
+    photo_url: null, gmail_message_id: null,
   }
   state.items.unshift(it)
   const hhmm = new Date().toTimeString().slice(0, 5)
@@ -295,7 +297,7 @@ function outcomeFor(d: Decision, choice: DecisionChoice): NonNullable<Decision['
   if (choice === 'snooze') {
     return { title: 'Snoozed until tomorrow', subtitle: 'Logged. Nothing else to do.', steps: [{ text: 'You answered: ask me tomorrow', when: 'Just now', done: true }, { text: 'Guardian will resurface this at 08:00 tomorrow', when: tomorrow, done: false }] }
   }
-  const what = { no_longer_own: 'no longer own it', not_mine: 'not mine', fine: "it's fine", done: 'done' }[choice] ?? choice
+  const what = { no_longer_own: 'no longer own it', not_mine: 'not mine', fine: "it's fine", done: 'done', review_and_attest: 'review and attest', skip_claim: 'skip this settlement' }[choice] ?? choice
   return { title: d.kind === 'recall_remedy' ? 'Match closed' : 'Noted', subtitle: 'Logged. Nothing else to do.', steps: [{ text: `You answered: ${what}`, when: 'Just now', done: true }, { text: d.kind === 'recall_remedy' ? 'Match closed and logged; item status updated' : 'No claim drafted', when: 'Just now', done: true }] }
 }
 
@@ -307,7 +309,7 @@ function answer(id: string, choice: DecisionChoice): AnswerResult {
   d.answer = { choice, by: 'dashboard', at: nowIso() }
   d.state = choice === 'snooze' ? 'snoozed' : 'answered'
   d.outcome = outcomeFor(d, choice)
-  d.past_label = { request_remedy: 'Remedy requested', no_longer_own: 'Closed · no longer owned', not_mine: 'Closed · not mine', snooze: 'Snoozed', fine: 'Checked in · fine', report_problem: 'Claim drafted', done: 'Done' }[choice]
+  d.past_label = { request_remedy: 'Remedy requested', no_longer_own: 'Closed · no longer owned', not_mine: 'Closed · not mine', snooze: 'Snoozed', fine: 'Checked in · fine', report_problem: 'Claim drafted', done: 'Done', review_and_attest: 'Claim drafted', skip_claim: 'Closed · skipped' }[choice]
   d.meta = d.meta.replace(/ · expires in .*$/, '')
   state.answeredNow = true
   const it = state.items.find(x => x.id === d.item_id)
@@ -415,6 +417,25 @@ const impl: ApiShape = {
     const created = items.map(b => createItem(b, 'csv'))
     return { created: created.length, items: created }
   },
+  removeItem: async id => {
+    await delay(250)
+    state.items = state.items.filter(x => x.id !== id)
+    return { ok: true, item_id: id }
+  },
+  uploadPhoto: async (itemId, file) => {
+    await delay(400)
+    const it = state.items.find(x => x.id === itemId)
+    if (!it) throw new Error(`item ${itemId} not found`)
+    it.photo_url = URL.createObjectURL(file)
+    return clone(it)
+  },
+  removePhoto: async itemId => {
+    await delay(200)
+    const it = state.items.find(x => x.id === itemId)
+    if (!it) throw new Error(`item ${itemId} not found`)
+    it.photo_url = null
+    return clone(it)
+  },
   intake: async text => {
     await delay(1800)
     const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean)
@@ -465,6 +486,15 @@ const impl: ApiShape = {
       state.extraRows.push(row(hhmm, 'CPSC', 'Pulled 0 new CPSC recalls', '0 candidates', 'ok'), row(hhmm, 'Guardian', 'Sweep complete', 'Nothing new', 'ok'))
     }, 4500)
     return { run_id: RUN_ID }
+  },
+  gmail: {
+    status: async () => {
+      await delay(120)
+      return { configured: false, connected: false, email: null, last_sync: null }
+    },
+    connect: async () => ({ url: '#' }),
+    sync: async () => ({ checked: 0, added: 0 }),
+    disconnect: async () => ({ ok: true }),
   },
   gren: {
     runs: async () => [runSummary()],

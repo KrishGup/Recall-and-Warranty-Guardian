@@ -25,8 +25,8 @@ import queue
 import threading
 from typing import Any
 
-from fastapi import FastAPI, Request
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
+from fastapi import FastAPI, File, Request, UploadFile
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from ..models import Preferences, now_iso
@@ -64,8 +64,8 @@ class Broadcaster:
             self.clients.discard(q)
 
 
-def create_guardian_app(data_dir: str | None = None, runs_dir: str | None = None, bridge: str | None = None, web_dist: str | None = None, quiet: bool = True) -> FastAPI:
-    guardian, gren_app = Guardian.build(data_dir=data_dir, runs_dir=runs_dir, bridge=bridge, quiet=quiet, with_gren_app=True)
+def create_guardian_app(data_dir: str | None = None, runs_dir: str | None = None, bridge: str | None = None, web_dist: str | None = None, quiet: bool = True, schedule: bool = False) -> FastAPI:
+    guardian, gren_app = Guardian.build(data_dir=data_dir, runs_dir=runs_dir, bridge=bridge, quiet=quiet, with_gren_app=True, schedule=schedule)
     broadcast = Broadcaster()
     guardian.listeners.append(broadcast.publish)
     app = FastAPI(title="Guardian", docs_url="/api/docs", redoc_url=None, openapi_url="/api/openapi.json")
@@ -150,6 +150,31 @@ def create_guardian_app(data_dir: str | None = None, runs_dir: str | None = None
         b = await body(request)
         return await asyncio.to_thread(guardian.report_problem, item_id, str(b.get("text") or ""))
 
+    @app.delete("/api/items/{item_id}")
+    async def delete_item(item_id: str) -> Any:
+        return await asyncio.to_thread(guardian.remove_item, item_id)
+
+    @app.post("/api/items/{item_id}/photo")
+    async def upload_photo(item_id: str, file: UploadFile = File(...)) -> Any:
+        if not (file.content_type or "").startswith("image/"):
+            return _err(400, "only image uploads are accepted")
+        data = await file.read()
+        if len(data) > 12 * 1024 * 1024:
+            return _err(400, "photo is too large (12 MB max)")
+        return await asyncio.to_thread(guardian.save_item_photo, item_id, data, file.filename or "photo.jpg", file.content_type or "image/jpeg")
+
+    @app.get("/api/items/{item_id}/photo")
+    async def get_photo(item_id: str) -> Any:
+        found = await asyncio.to_thread(guardian.item_photo_file, item_id)
+        if not found or not os.path.exists(found[0]):
+            return _err(404, "no photo on file for this item")
+        path, content_type = found
+        return FileResponse(path, media_type=content_type, headers={"cache-control": "private, max-age=86400"})
+
+    @app.delete("/api/items/{item_id}/photo")
+    async def delete_photo(item_id: str) -> Any:
+        return await asyncio.to_thread(guardian.remove_item_photo, item_id)
+
     @app.post("/api/intake")
     async def intake(request: Request) -> Any:
         b = await body(request)
@@ -179,6 +204,33 @@ def create_guardian_app(data_dir: str | None = None, runs_dir: str | None = None
     async def save_preferences(request: Request) -> Any:
         b = await body(request)
         return (await asyncio.to_thread(guardian.save_preferences, Preferences.model_validate(b))).model_dump()
+
+    # ---- gmail ----
+    @app.get("/api/gmail/status")
+    async def gmail_status() -> Any:
+        return await asyncio.to_thread(guardian.gmail_status)
+
+    @app.get("/api/gmail/connect")
+    async def gmail_connect() -> Any:
+        return {"url": await asyncio.to_thread(guardian.gmail_connect_url)}
+
+    @app.get("/api/gmail/callback")
+    async def gmail_callback(code: str = "", error: str = "") -> Any:
+        if error:
+            return RedirectResponse(f"/settings?gmail=error&reason={error}")
+        try:
+            await asyncio.to_thread(guardian.gmail_handle_callback, code)
+        except Exception as e:  # noqa: BLE001
+            return RedirectResponse(f"/settings?gmail=error&reason={type(e).__name__}")
+        return RedirectResponse("/settings?gmail=connected")
+
+    @app.post("/api/gmail/sync")
+    async def gmail_sync() -> Any:
+        return await asyncio.to_thread(guardian.gmail_sync)
+
+    @app.post("/api/gmail/disconnect")
+    async def gmail_disconnect() -> Any:
+        return await asyncio.to_thread(guardian.gmail_disconnect)
 
     # ---- sweep ----
     @app.post("/api/sweep")

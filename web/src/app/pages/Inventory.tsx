@@ -177,7 +177,7 @@ function Row({ it, selected, onOpen, color }: { it: Item; selected: boolean; onO
   return (
     <div role="row" aria-selected={selected} className="g-table__row" onClick={onOpen}>
       <div role="cell" style={{ display: 'flex', gap: 12, alignItems: 'center', minWidth: 0 }}>
-        <span aria-hidden="true" className="g-thumb" />
+        {it.photo_url ? <img src={it.photo_url} alt="" aria-hidden="true" className="g-thumb g-thumb--photo" /> : <span aria-hidden="true" className="g-thumb" />}
         <div style={{ minWidth: 0 }}>
           <button
             type="button"

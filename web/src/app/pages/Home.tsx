@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { fmt } from '../../api/client'
 import { warrantyColor } from '../../theme/tokens'
 import { Bar, ErrorNote, Skeleton, Status } from '../../ui/primitives'
-import { toneVar } from '../format'
+import { fullDate, plural, toneVar } from '../format'
 import { useShell } from '../shell/ShellContext'
 
 export function Home() {
@@ -130,7 +130,9 @@ export function Home() {
                   <button type="button" className="g-linkbtn" onClick={() => openItem(w.item_id)}>
                     {w.name}
                   </button>
-                  <span className="g-num g-small g-muted g-bidi">ends {w.ends_on}</span>
+                  <span className="g-num g-small g-muted g-bidi" title={w.ends_on}>
+                    Ends {fullDate(w.ends_on)} · {w.days_left <= 0 ? 'today' : `in ${plural(w.days_left, 'day')}`}
+                  </span>
                 </div>
                 <Bar pct={w.pct} color={warrantyColor(theme, w.pct)} style={{ marginTop: 8 }} />
                 <div className="g-small g-muted" style={{ marginTop: 6 }}>

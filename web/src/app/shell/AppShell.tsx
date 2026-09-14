@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { Api, useEventSource } from '../../api/client'
 import type { Decision, Decisions, GuardianEvent, Summary } from '../../api/types'
-import { readNumber, useNarrow, usePrefs, writeNumber } from '../../theme/prefs'
+import { readBool, readNumber, useNarrow, usePrefs, writeNumber } from '../../theme/prefs'
 import { AGENT_STATUS, BREAKPOINT_NARROW } from '../../theme/tokens'
 import { Logo } from '../../ui/Logo'
 import { clamp, errMsg } from '../format'
@@ -17,6 +17,7 @@ import '../app.css'
 
 const MOCK = import.meta.env.VITE_MOCK === '1'
 const NAV_KEY = 'guardian.navW'
+export const NOTIFY_KEY = 'guardian.notify'
 
 interface NavDef {
   id: PageId
@@ -108,12 +109,39 @@ export function AppShell({ children }: { children: ReactNode }) {
     },
     [refreshSummary, refreshDecisions],
   )
+  const bumpData = useCallback(() => {
+    setDataVersion(v => v + 1)
+    refreshSummary()
+    refreshDecisions()
+  }, [refreshSummary, refreshDecisions])
+  // Silent unless something needs you: a critical decision fires a desktop notification only if the tab is not the
+  // one being looked at and the household opted in (Settings > "Desktop notifications"); we never auto-prompt for
+  // permission. Each decision id notifies at most once.
+  const notifiedRef = useRef<Set<string>>(new Set())
+  const maybeNotify = useCallback(
+    (decisionId: string, body: string) => {
+      if (!decisionId || notifiedRef.current.has(decisionId)) return
+      notifiedRef.current.add(decisionId)
+      if (typeof Notification === 'undefined' || Notification.permission !== 'granted' || !readBool(NOTIFY_KEY, false)) return
+      if (document.visibilityState === 'visible') return
+      const n = new Notification('Guardian needs you', { body, tag: 'guardian-critical' })
+      n.onclick = () => {
+        window.focus()
+        navigate('/decisions')
+        n.close()
+      }
+    },
+    [navigate],
+  )
   useEventSource(MOCK ? null : '/api/events', (e: GuardianEvent) => {
     if (!e || e.type === 'hello') return
     // Guardian events (sweep.*, decision.*, item.*) and engine events (run.*, node.*, gate.*) both change what the
     // pages show; refetch at most once per ~second instead of polling.
     schedule('run')
     schedule('data')
+    if (e.type === 'decision.created' && e.data?.severity === 'critical') {
+      maybeNotify(String(e.data.decision_id ?? ''), 'A critical recall matches an item you own. One decision is waiting.')
+    }
   })
   // Safety net while a sweep runs (mock mode has no SSE; a dropped stream should not freeze the header).
   const working = summary?.agent_status === 'working'
@@ -147,7 +175,6 @@ export function AppShell({ children }: { children: ReactNode }) {
   // ---- navigation side effects: title, scroll + focus main, close panels ----
   const firstNav = useRef(true)
   useEffect(() => {
-    document.title = `Guardian · ${TITLES[page]}`
     if (page !== 'home' && page !== 'inventory') setSelectedItemId(null)
     if (firstNav.current) {
       firstNav.current = false
@@ -161,6 +188,18 @@ export function AppShell({ children }: { children: ReactNode }) {
     }
     // runs on route change only
   }, [location.pathname]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Document title: a "(1)" prefix while a critical decision is pending and this tab is not the one being looked
+  // at, cleared the moment it is focused again — a no-permission-required companion to the desktop notification.
+  useEffect(() => {
+    const hasCritical = decisions?.pending.some(d => d.severity === 'critical') ?? false
+    const set = () => {
+      document.title = `${hasCritical && document.visibilityState !== 'visible' ? '(1) ' : ''}Guardian · ${TITLES[page]}`
+    }
+    set()
+    document.addEventListener('visibilitychange', set)
+    return () => document.removeEventListener('visibilitychange', set)
+  }, [page, decisions])
 
   // ?scheme=dark|light and ?dir=rtl|ltr preset the appearance (demo links, screenshot capture); persisted like the toggles.
   useEffect(() => {
@@ -243,6 +282,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       decisionsError,
       refreshDecisions,
       dataVersion,
+      bumpData,
       runVersion,
       toast,
       selectedItemId,
@@ -254,7 +294,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       copyAddress,
       runSweep,
     }),
-    [page, prefs.theme, prefs.dark, prefs.dir, prefs.toggleScheme, prefs.toggleDir, rtl, narrow, summary, summaryError, refreshSummary, decisions, decisionsError, refreshDecisions, dataVersion, runVersion, toast, selectedItemId, openItem, closeItem, helpOpen, toggleHelp, address, copyAddress, runSweep],
+    [page, prefs.theme, prefs.dark, prefs.dir, prefs.toggleScheme, prefs.toggleDir, rtl, narrow, summary, summaryError, refreshSummary, decisions, decisionsError, refreshDecisions, dataVersion, bumpData, runVersion, toast, selectedItemId, openItem, closeItem, helpOpen, toggleHelp, address, copyAddress, runSweep],
   )
 
   return (
@@ -277,9 +317,6 @@ export function AppShell({ children }: { children: ReactNode }) {
           </span>
           <button type="button" className="g-pill g-desk" onClick={prefs.toggleScheme} aria-pressed={prefs.dark}>
             {prefs.dark ? 'Light' : 'Dark'}
-          </button>
-          <button type="button" className="g-pill g-desk" onClick={prefs.toggleDir} aria-label="Toggle text direction">
-            {rtl ? 'LTR' : 'RTL'}
           </button>
           <button type="button" className={`g-pill${helpOpen ? ' g-pill--on' : ''}`} onClick={toggleHelp} aria-pressed={helpOpen} aria-label="Toggle info panel">
             <span aria-hidden="true" className="g-pill__i">
