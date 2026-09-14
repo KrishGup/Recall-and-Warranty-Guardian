@@ -45,10 +45,23 @@ export function SplitPanel({ itemId, onClose }: { itemId: string; onClose: () =>
         <span aria-hidden="true" className="g-sep__grip" />
       </div>
       <div className="g-split__head">
-        <div style={{ minWidth: 0 }}>
-          <h2 className="g-split__title">{item ? item.name : detail.error ? 'Item detail' : <Skeleton w={220} h={18} />}</h2>
-          <div className="g-small g-muted">{item ? sub : detail.error ? '' : <Skeleton w={160} h={12} />}</div>
+        <div className="g-split__ident">
+          {item?.photo_url ? <img src={item.photo_url} alt="" aria-hidden="true" className="g-split__thumb" /> : <span aria-hidden="true" className="g-split__thumb" />}
+          <div style={{ minWidth: 0 }}>
+            <h2 className="g-split__title">{item ? item.name : detail.error ? 'Item detail' : <Skeleton w={220} h={18} />}</h2>
+            <div className="g-small g-muted">{item ? sub : detail.error ? '' : <Skeleton w={160} h={12} />}</div>
+          </div>
         </div>
+        {item && (
+          <div className="g-split__chips g-desk" aria-label="Item status">
+            <Status color={item.warranty.elapsed_pct == null ? 'var(--faint)' : warrantyColor(theme, item.warranty.elapsed_pct)} size={10}>
+              <span className="g-bidi">{item.warranty.elapsed_pct == null ? 'No warranty term' : item.warranty.label}</span>
+            </Status>
+            <Status color={recallVar(item.recall.state)} size={10}>
+              {item.recall.label}
+            </Status>
+          </div>
+        )}
         <button type="button" className="g-btn g-btn--icon" onClick={onClose} aria-label="Close item detail">
           ×
         </button>
@@ -72,7 +85,7 @@ function SplitSkeleton() {
   return (
     <>
       {[0, 1, 2].map(i => (
-        <div key={i} aria-hidden="true">
+        <div key={i} aria-hidden="true" className="g-split__col">
           <Skeleton w={80} h={12} style={{ marginBottom: 10 }} />
           <Skeleton h={i === 0 ? 120 : 14} style={{ marginBottom: 8 }} />
           <Skeleton w="70%" h={14} />
@@ -127,7 +140,7 @@ function ReceiptColumn({ item, onToast, onReload }: { item: ItemDetail; onToast:
   }
 
   return (
-    <div>
+    <div className="g-split__col">
       <div className="g-eyebrow" style={{ marginBottom: 8 }}>
         Receipt
       </div>
@@ -258,7 +271,7 @@ function WarrantyColumn({ item, color, onToast, onRemove }: { item: ItemDetail; 
     }
   }
   return (
-    <div>
+    <div className="g-split__col">
       <div className="g-eyebrow" style={{ marginBottom: 8 }}>
         Warranty
       </div>
@@ -343,7 +356,7 @@ function RecallColumn({ item }: { item: ItemDetail }) {
   const r = item.recall
   const color = recallVar(r.state)
   return (
-    <div>
+    <div className="g-split__col">
       <div className="g-eyebrow" style={{ marginBottom: 8 }}>
         Recall checks
       </div>

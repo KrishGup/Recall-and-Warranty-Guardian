@@ -197,7 +197,11 @@ body.g-dragging-y { cursor: row-resize; user-select: none; }
 .g-table__head { display: grid; grid-template-columns: 2fr 1fr 1fr 1.4fr 1.2fr; gap: 12px; padding: 10px 16px; background: var(--tint); font-family: var(--font-ui); font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink2); }
 .g-table__row { display: grid; grid-template-columns: 2fr 1fr 1fr 1.4fr 1.2fr; gap: 8px 12px; padding: 12px 16px; border-bottom: 1px solid var(--line); align-items: center; border-inline-start: 3px solid transparent; cursor: pointer; }
 .g-table__row:hover { background: var(--tint); }
-.g-table__row[aria-selected='true'] { background: var(--tint); border-inline-start-color: var(--primary); }
+/* Selected row: the primary rule plus a faint primary wash and the thumbnail ringed, so the open item stays obvious
+   above the detail panel and is not just "the hovered row". */
+.g-table__row[aria-selected='true'] { background: color-mix(in srgb, var(--primary) 8%, var(--surface)); border-inline-start-color: var(--primary); }
+.g-table__row[aria-selected='true'] .g-thumb { box-shadow: 0 0 0 2px var(--primary); border-color: var(--primary); }
+.g-table__row[aria-selected='true'] .g-linkbtn { font-weight: 600; }
 .g-thumb { width: 40px; height: 40px; border-radius: 8px; flex: 0 0 auto; background: repeating-linear-gradient(135deg, var(--tint) 0 4px, var(--surface) 4px 8px); border: 1px solid var(--line); }
 .g-thumb--photo { object-fit: cover; }
 .g-cell-label { display: none; font-family: var(--font-ui); font-size: 11px; text-transform: uppercase; color: var(--ink2); margin-inline-end: 8px; }
@@ -226,11 +230,19 @@ body.g-dragging-y { cursor: row-resize; user-select: none; }
 
 /* ---- split panel: item detail ---- */
 .g-split { flex: 0 0 auto; max-height: 85vh; background: var(--surface); border-top: 1px solid var(--line); display: flex; flex-direction: column; position: relative; inset-inline: 0; bottom: 0; z-index: 45; box-shadow: 0 -8px 24px rgba(0, 15, 8, 0.12); }
-.g-split__head { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 0 20px 10px; border-bottom: 1px solid var(--line); }
+.g-split__head { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 0 20px 12px; border-bottom: 1px solid var(--line); }
+.g-split__ident { display: flex; align-items: center; gap: 12px; min-width: 0; flex: 1; }
+.g-split__thumb { width: 44px; height: 44px; border-radius: 10px; flex: 0 0 auto; border: 1px solid var(--line); background: repeating-linear-gradient(135deg, var(--tint) 0 4px, var(--surface) 4px 8px); object-fit: cover; }
 .g-split__title { font-family: var(--font-heading); font-size: 18px; font-weight: 600; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.g-split__body { flex: 1; min-height: 0; overflow-y: auto; padding: 16px 20px; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr)); gap: 20px; align-content: start; }
-.g-receipt { aspect-ratio: 4 / 3; border-radius: 10px; border: 1px solid var(--line); background: repeating-linear-gradient(135deg, var(--tint) 0 6px, var(--surface) 6px 12px); display: flex; align-items: center; justify-content: center; font-family: var(--font-mono); font-size: 12px; color: var(--ink2); text-align: center; padding: 8px; }
-.g-receipt--photo { background: var(--tint); object-fit: contain; padding: 0; }
+.g-split__chips { display: flex; align-items: center; gap: 6px 14px; flex-wrap: wrap; justify-content: flex-end; }
+.g-split__body { flex: 1; min-height: 0; overflow-y: auto; padding: 0 20px 16px; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr)); align-content: start; }
+/* Each column owns its padding and a hairline on its leading edge so the three sections read as separate panes
+   without the receipt image or a long recall title ever crossing into the neighbour. */
+.g-split__col { min-width: 0; padding: 16px 20px; border-inline-start: 1px solid var(--line); }
+.g-split__col:first-child { border-inline-start: 0; padding-inline-start: 0; }
+.g-split__col:last-child { padding-inline-end: 0; }
+.g-receipt { display: flex; width: 100%; max-width: 340px; box-sizing: border-box; aspect-ratio: 4 / 3; border-radius: 10px; border: 1px solid var(--line); background: repeating-linear-gradient(135deg, var(--tint) 0 6px, var(--surface) 6px 12px); align-items: center; justify-content: center; font-family: var(--font-mono); font-size: 12px; color: var(--ink2); text-align: center; padding: 8px; }
+.g-receipt--photo { display: block; height: auto; background: var(--tint); object-fit: contain; padding: 0; }
 .g-receipt-text { max-height: 180px; overflow: auto; margin: 10px 0 0; padding: 10px 12px; border-radius: 8px; background: var(--tint); font-family: var(--font-mono); font-size: 12px; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; text-align: left; }
 .g-matches { list-style: none; margin: 10px 0 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
 .g-match { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; font-size: 13px; }
@@ -310,6 +322,9 @@ body.g-dragging-y { cursor: row-resize; user-select: none; }
   .g-help__sep { display: none; }
   .g-split { position: fixed; height: 60vh; bottom: calc(60px + env(safe-area-inset-bottom)); border-radius: 16px 16px 0 0; }
   .g-split__sep { cursor: default; }
+  .g-split__chips { display: none; }
+  .g-split__col { border-inline-start: 0; padding-inline: 0; border-top: 1px solid var(--line); }
+  .g-split__col:first-child { border-top: 0; }
   .g-toast { bottom: calc(76px + env(safe-area-inset-bottom)); }
   .g-table__head { display: none; }
   .g-table__row { grid-template-columns: 1fr; }
