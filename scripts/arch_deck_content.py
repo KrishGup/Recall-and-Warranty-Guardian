@@ -15,7 +15,7 @@ SLIDES: list[dict] = [
         "id": "title",
         "kind": "title",
         "h1": "Recall & Warranty Guardian",
-        "sub": "The architecture: gren graphs on the Strands Agents SDK, Claude through the Strands model provider (the Anthropic API today, Amazon Bedrock when the account is authorized), one human gate, one household.",
+        "sub": "The architecture: gren graphs on the Strands Agents SDK, Claude through the Strands model provider, one human gate, one household.",
         "tagline": "The best output of the agent is silence.",
         "footer_eyebrow": "Agents for Humans · Everyday Agents · Strands Agents SDK · Apache-2.0",
         "footer_mono": f"{REPO}  ·  live: {LIVE}",
