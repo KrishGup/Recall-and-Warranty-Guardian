@@ -32,3 +32,9 @@ deploy/agentcore/agentcore/cdk/cdk.out/
 deploy/agentcore/agentcore/cdk/dist/
 deploy/agentcore/agentcore/.cache/
 deploy/agentcore/.git/
+
+# Devpost / Builder Center submission texts and media (local working copies)
+submission-files/
+
+# generated from docs/architecture_gen.py
+docs/architecture.html
