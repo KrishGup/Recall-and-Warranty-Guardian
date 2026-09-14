@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "guardian"
-version = "0.1.0"
+version = "1.0.0"
 description = "Recall & Warranty Guardian: a background agent on Strands Agents (via gren) that watches recall feeds and warranty windows for a household and only interrupts for real decisions"
 readme = "README.md"
 requires-python = ">=3.11"

@@ -45,7 +45,7 @@ Speaker notes (the voice-over script) are the `data-speaker-notes` attributes; t
 - No other animation. Cuts between slides are hard cuts; no transitions.
 
 ## Assets
-`assets/screens/*.png` are real captures of the Guardian dashboard from the repo (`docs/screens/` and `var/screens/`, seeded with `demo/household.json`). Re-export from the running app if the UI has changed before recording. No stock imagery; the logo and node diagram are CSS.
+`assets/screens/*.png` are real captures of the Guardian dashboard (`python scripts/record_demo.py screens`, or the paused-run capture from the recording). Re-capture if the UI has changed before recording. No stock imagery; the logo and node diagram are CSS.
 
 ## Open items before recording
 - Numbers on slides 2 and 12 come from the README's 13 Sep 2026 live sweep (594 / 1,200 / 3 / 7,143 / 5 + 3 / 235 s / $0.41). Re-run `guardian sweep` and update if they change.

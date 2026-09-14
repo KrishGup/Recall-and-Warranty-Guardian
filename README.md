@@ -2,6 +2,16 @@
 
 **Agents for Humans hackathon (AWS, Strands Agents SDK). Everyday Agents track. Apache-2.0 license.**
 
+| Submission | Link |
+|---|---|
+| Live dashboard | https://guardian.44-214-230-44.sslip.io (reads are open; actions need the token) |
+| Demo video (4:56) | https://youtu.be/WmGESGlI4kE |
+| Devpost project | https://devpost.com/software/recall-and-warranty-guardian |
+| Builder Center posts | [part 1](https://builder.aws.com/post/3JINqAnLdvrKfReWr8rzO5ONrWD_p/agents-for-humans-building-recall-and-warranty-guardian-part-1), [part 2](https://builder.aws.com/post/3JIemdwSSCkWtZnVl65Kp3icZlc_p/agents-for-humans-building-recall-and-warranty-guardian-part-2) |
+| Architecture | `docs/architecture.png`, `docs/deck/Guardian-Architecture.pdf`, `ARCHITECTURE.md` |
+| What did not work on AWS, and what shipped instead | `docs/PROBLEMS_EXPERIENCED.md` |
+| Release | tag `v1.0.0-submission` (2026-09-14) |
+
 Guardian is a background agent for a household. It makes an inventory of the products that the household owns, from forwarded receipts. Each night, it compares the inventory with the government recall feeds. It monitors the warranty windows. It speaks to the household only when a recall applies to a product that the household owns and a decision is necessary. After one approval, it writes and sends the remedy request with the receipt attached. Then it follows up.
 
 > The best output of the agent is silence. The primary metric of the product is how rarely it must speak to you.
