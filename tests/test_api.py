@@ -100,3 +100,31 @@ def test_gmail_status_without_configuration(tmp_path):
     st = c.get("/api/gmail/status").json()
     assert st == {"configured": False, "connected": False, "email": None, "last_sync": None}
     assert c.get("/api/gmail/connect").status_code == 400
+
+
+def test_dashboard_hosting_serves_the_pwa_entry_points(tmp_path):
+    # A stand-in for `npm run build`: the shell, the service worker, the manifest, and one hashed asset.
+    dist = tmp_path / "dist"
+    (dist / "assets").mkdir(parents=True)
+    (dist / "index.html").write_text("<!doctype html><title>Guardian</title>", encoding="utf-8")
+    (dist / "sw.js").write_text("self.addEventListener('fetch', () => {})", encoding="utf-8")
+    (dist / "workbox-abc123.js").write_text("// workbox", encoding="utf-8")
+    (dist / "manifest.webmanifest").write_text('{"name":"Guardian"}', encoding="utf-8")
+    (dist / "assets" / "index-abc.js").write_text("console.log(1)", encoding="utf-8")
+    app = create_guardian_app(data_dir=str(tmp_path / "household"), runs_dir=str(tmp_path / "runs"), bridge="mock", web_dist=str(dist))
+    c = TestClient(app)
+
+    sw = c.get("/sw.js")
+    assert sw.status_code == 200 and "javascript" in sw.headers["content-type"] and sw.headers["cache-control"] == "no-cache"
+    assert c.get("/workbox-abc123.js").headers["cache-control"] == "no-cache"
+    man = c.get("/manifest.webmanifest")
+    assert man.status_code == 200 and man.headers["content-type"].startswith("application/manifest+json") and man.json()["name"] == "Guardian"
+    assert c.get("/assets/index-abc.js").status_code == 200
+    # Client-side routes fall back to the shell, and the shell itself is never held by an intermediate cache.
+    for route in ("/", "/decisions", "/flow/trace"):
+        r = c.get(route)
+        assert r.status_code == 200 and "Guardian" in r.text and r.headers["cache-control"] == "no-cache"
+    # The API and the gren mount are not the SPA.
+    assert c.get("/api/health").json()["ok"] is True
+    assert c.get("/api/nope").status_code == 404
+    assert c.get("/../pyproject.toml").status_code in (200, 404) and "[project]" not in c.get("/../pyproject.toml").text

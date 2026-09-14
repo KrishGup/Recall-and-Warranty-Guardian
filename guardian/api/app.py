@@ -272,11 +272,17 @@ def create_guardian_app(data_dir: str | None = None, runs_dir: str | None = None
 
     @app.get("/{path:path}", response_class=HTMLResponse)
     async def spa(path: str) -> Any:
+        if path.startswith("api/"):
+            return _err(404, f"no such API route: /{path}")
         candidate = os.path.abspath(os.path.join(web_dist, path)) if path else index
         if path and candidate.startswith(os.path.abspath(web_dist)) and os.path.isfile(candidate):
+            # The PWA entry points must never be held by an intermediate cache: the browser checks sw.js for a new
+            # build on each visit, and the manifest names the icons and shortcuts.
+            if path in ("sw.js", "manifest.webmanifest") or path.startswith("workbox-"):
+                return FileResponse(candidate, headers={"cache-control": "no-cache"})
             return FileResponse(candidate)
         if os.path.isfile(index):
-            return FileResponse(index)
+            return FileResponse(index, headers={"cache-control": "no-cache"})
         return HTMLResponse("<p style='font-family:serif;padding:24px'>Guardian API is running. Build the dashboard with <code>cd web && npm run build</code>, or run <code>npm run dev</code> for the Vite dev server.</p>")
 
     return app
