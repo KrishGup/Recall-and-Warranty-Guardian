@@ -68,8 +68,8 @@ The **Agent flow** page of the dashboard is the gren trace workbench. It has the
 | Plan component | Attachment point | State |
 |---|---|---|
 | EC2 live server | `scripts/deploy_ec2.py` and `deploy/ec2/install.sh`: one instance, Caddy with automatic HTTPS, systemd timer for the nightly sweep, state mirrored to S3 | deployed |
-| Bedrock | The `bedrock` provider of gren (`BedrockModel`, cross-region inference profiles for `haiku`, `sonnet`, `opus`) | code path exists. The account waits for Bedrock authorization. |
-| AgentCore Runtime | `deploy/agentcore`: the `BedrockAgentCoreApp` entrypoint. `payload.kind` selects `sweep`, `intake`, `answer`, `status`, `seed`, or `sync` | built and tested locally. Account quotas block the deployment. |
+| Bedrock | The `bedrock` provider of gren (`BedrockModel`, cross-region inference profiles for `haiku`, `sonnet`, `opus`) | code path exists and is tested. The account was not authorized at submission (support case 178934068800881). The live site runs the same graphs on the `anthropic` provider; see `docs/PROBLEMS_EXPERIENCED.md`. |
+| AgentCore Runtime | `deploy/agentcore`: the `BedrockAgentCoreApp` entrypoint. `payload.kind` selects `sweep`, `intake`, `answer`, `status`, `seed`, or `sync` | built and tested locally. The account quotas (0) blocked the deployment at submission; the same service runs on EC2. |
 | AgentCore Memory | preferences and household facts. Today: `prefs.json` and the store | not started |
 | AgentCore Gateway | the recall feed tools as MCP. gren ships an MCP server. The feed functions are plain Python | not started |
 | EventBridge Scheduler | would call `POST /api/sweep` each night. Today: the systemd timer on the EC2 server | replaced by the timer |

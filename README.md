@@ -28,10 +28,11 @@ Guardian is a background agent for a household. It makes an inventory of the pro
 | Intake graph (redact, extract, save) | `guardian intake "..."` with the headless Claude Code provider |
 | Dashboard (Home, Decisions, Inventory, Activity, Settings, Agent flow) with the full trace workbench of the run graph | `web/`. `docs/AGENT_FLOW.md` describes the workbench. |
 | Providers: Amazon Bedrock, Anthropic API, headless Claude Code, mock | gren selects the provider from the environment. See the Quickstart. |
-| A live deployment on one EC2 instance with automatic HTTPS | https://guardian.44-214-230-44.sslip.io, made by `scripts/deploy_ec2.py` |
+| A live deployment on one EC2 instance with automatic HTTPS | https://guardian.44-214-230-44.sslip.io, made by `scripts/deploy_ec2.py`. It runs the graphs on the Anthropic API. |
 
 Not done yet:
 
+- Amazon Bedrock as the live provider. The account's authorization was pending at submission (support case 178934068800881). The `bedrock` provider is in the code and in the tests; the live site runs the same graphs on the Anthropic API. See `docs/PROBLEMS_EXPERIENCED.md`.
 - AgentCore Runtime, Memory, and Gateway. The account quotas block the deployment. See `docs/AWS_SETUP.md`.
 - SNS and SES delivery. Messages go to `var/household/outbox` unless `GUARDIAN_SNS=1` or `GUARDIAN_SES_FROM` is set with AWS credentials.
 - Cognito.
@@ -81,7 +82,7 @@ flowchart LR
   FU --> OUT[SES / SNS<br/>or the outbox]
 ```
 
-Code does the plumbing. Agents do the judgment. Feed pagination, VIN decoding, UPC equality, sold-window arithmetic, and the notification budget are code. An agent decides if "LED projecting finger light toys" is the recalled product, or if a plan is worth an interruption tonight. Each agent output is a validated structured object. `ARCHITECTURE.md` explains how the graph compiles onto Strands (`GraphBuilder`, AND-join edge conditions, gates as interrupts, memoized resume) and where the AWS pieces attach.
+Code does the plumbing. Agents do the judgment. Feed pagination, VIN decoding, UPC equality, sold-window arithmetic, and the notification budget are code. An agent decides if "LED projecting finger light toys" is the recalled product, or if a plan is worth an interruption tonight. Each agent output is a validated structured object. `ARCHITECTURE.md` explains how the graph compiles onto Strands (`GraphBuilder`, AND-join edge conditions, gates as interrupts, memoized resume) and where the AWS pieces attach. `docs/PROBLEMS_EXPERIENCED.md` records what did not work on the AWS side during the hackathon (Bedrock authorization, AgentCore quotas) and what shipped instead.
 
 ## Quickstart
 

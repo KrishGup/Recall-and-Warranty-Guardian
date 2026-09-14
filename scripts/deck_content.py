@@ -199,7 +199,7 @@ SLIDES: list[dict] = [
             ("Map fan-out", "matcher, warranty and remedy map over lists with structured_output_model. Retries, fallback model, timeouts and the spend cap are enforced by the engine."),
             ("Side effects, once", "followup declares side_effect and requires_gate. The frozen constraint gate_before_side_effect makes it unreachable without approval; it runs at most once per run."),
         ],
-        "footnote": f"Runs on one EC2 instance with automatic HTTPS at {LIVE}; Claude on Amazon Bedrock is the provider. The AgentCore Runtime deployment is built and tested locally (deploy/agentcore); SES delivery is a switch. See ARCHITECTURE.md §5.",
+        "footnote": f"Runs on one EC2 instance with automatic HTTPS at {LIVE}; Claude on the Anthropic API is the provider; Amazon Bedrock is the planned path (account authorization pending at submission). The AgentCore Runtime deployment is built and tested locally (deploy/agentcore). See ARCHITECTURE.md §5 and docs/PROBLEMS_EXPERIENCED.md.",
         "notes": "On Strands: every node is a MultiAgentBase executor in a GraphBuilder. Edges come from data references, with AND-join conditions. The gate is a Strands interrupt that survives a process exit. The verifier has kill authority with one bounded repair round, and side effects run once, behind the gate.",
     },
     {
