@@ -1,5 +1,14 @@
-"""Generate architecture.html (one SVG, computed coordinates) for the Guardian architecture diagram."""
+"""Generate architecture.html (one SVG, computed coordinates) for the Guardian architecture diagram.
+
+    python docs/architecture_gen.py [--provider bedrock|anthropic] [--png]
+
+--provider anthropic draws the fallback that ships when Amazon Bedrock is not authorized for the account: the
+Anthropic API is the live provider, Bedrock and AgentCore are marked as planned. --png renders architecture.png
+through Playwright (2x, the brand fonts from Google Fonts)."""
 import os
+import sys
+
+PROVIDER = "anthropic" if "anthropic" in sys.argv else "bedrock"
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 W, H = 1600, 1000
@@ -101,7 +110,7 @@ out.append('<pattern id="hatch" patternUnits="userSpaceOnUse" width="6" height="
 out.append("</defs>")
 out.append(f'<rect width="{W}" height="{H}" fill="{PAPER}"/>')
 text(54, 72, "Recall & Warranty Guardian", 30, HEAD, INK, "700")
-text(54, 104, "A background agent for one household: gren graphs on the Strands Agents SDK, Claude on Amazon Bedrock, one human gate. Apache-2.0.", 15, BODY, INK2)
+text(54, 104, "A background agent for one household: gren graphs on the Strands Agents SDK, " + ("Claude on Amazon Bedrock" if PROVIDER == "bedrock" else "Claude on the Anthropic API (Amazon Bedrock pending account authorization)") + ", one human gate. Apache-2.0.", 15, BODY, INK2)
 
 # inputs column
 text(54, 168, "INPUTS", 12, UI, INK2, style="letter-spacing:.12em")
@@ -195,11 +204,15 @@ AY = 852
 out.append(f'<rect x="54" y="{AY}" width="1492" height="122" rx="16" fill="{SURF}" stroke="{LINE}" stroke-width="1.5"/>')
 text(74, AY + 22, "AWS", 12, UI, INK2, style="letter-spacing:.12em")
 cells = [
-    ("Amazon Bedrock", ["Claude Haiku 4.5, Sonnet 5, Opus 5", "through global inference profiles.", "Structured output on every agent node."], None),
+    ("Amazon Bedrock", ["Claude Haiku 4.5, Sonnet 5, Opus 5", "through global inference profiles.", "Structured output on every agent node."], None)
+    if PROVIDER == "bedrock"
+    else ("Claude · Anthropic API", ["Same graphs, contracts and tests; the", "provider is GREN_BRIDGE. Bedrock is the", "planned path: not authorized (case open)."], ("LIVE", ACCENT, INK)),
     ("Amazon S3", ["State bucket: the household store and", "the run store mirror after each change;", "releases and config."], None),
     ("Amazon SES", ["Sends the remedy request with the", "receipt attached. Outbox until the", "sender identity is verified."], None),
     ("Amazon EC2 + Caddy", ["One instance, automatic HTTPS, systemd", "timer at 06:00 UTC, deployed by", "scripts/deploy_ec2.py."], ("LIVE", ACCENT, INK)),
-    ("Bedrock AgentCore", ["Runtime entrypoint built and tested", "locally. Deploys when the account", "quotas allow."], ("NEXT", TINT, INK2)),
+    ("Bedrock AgentCore", ["Runtime entrypoint built and tested", "locally. Deploys when the account", "quotas allow."], ("NEXT", TINT, INK2))
+    if PROVIDER == "bedrock"
+    else ("Bedrock AgentCore", ["Runtime entrypoint and CDK built and", "tested locally. Account quotas were 0;", "the same service runs on EC2 instead."], ("BLOCKED", TINT, INK2)),
     ("Strands Agents SDK", ["Every node is a Strands executor. Gates", "are Strands interrupts. The run resumes", "from the checkpoint."], None),
 ]
 for i, (title, rows, pill) in enumerate(cells):
@@ -214,7 +227,7 @@ for i, (title, rows, pill) in enumerate(cells):
 path(f"M{GX},500 L150,500 L150,{AY - 1}", PRIMARY, 1.5, "4 4")   # agents -> bedrock
 path(f"M520,692 L520,{AY - 1}", INK2, 1.5, "4 4")                                # store -> s3
 path(f"M1000,692 L1000,{AY - 1}", INK2, 1.5, "4 4")                              # api -> ec2
-text(158, 640, "model calls", 10.5, UI, PRIMARY)
+text(158, 640, "model calls" if PROVIDER == "bedrock" else "model calls (Anthropic API)", 10.5, UI, PRIMARY)
 text(528, 760, "state mirror", 10.5, UI, INK2)
 text(1008, 760, "hosts API + dashboard", 10.5, UI, INK2)
 text(54, 992, "github.com/KrishGup/Recall-and-Warranty-Guardian · Agents for Humans hackathon · Everyday Agents track", 11.5, UI, INK2)
@@ -225,4 +238,17 @@ html = f"""<!doctype html><html><head><meta charset="utf-8">
 <style>html,body{{margin:0;background:{PAPER}}}</style></head><body>{''.join(out)}</body></html>"""
 with open(os.path.join(HERE, "architecture.html"), "w", encoding="utf-8") as f:
     f.write(html)
-print("architecture.html written")
+print(f"architecture.html written (provider: {PROVIDER})")
+
+if "--png" in sys.argv:
+    from playwright.sync_api import sync_playwright  # type: ignore
+
+    with sync_playwright() as p:
+        b = p.chromium.launch()
+        page = b.new_page(viewport={"width": W, "height": H}, device_scale_factor=2)
+        page.goto("file:///" + os.path.join(HERE, "architecture.html").replace(os.sep, "/"))
+        page.evaluate("document.fonts.ready.then(() => true)")
+        page.wait_for_timeout(1200)
+        page.screenshot(path=os.path.join(HERE, "architecture.png"), clip={"x": 0, "y": 0, "width": W, "height": H})
+        b.close()
+    print("architecture.png written")
